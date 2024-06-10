@@ -1,0 +1,29 @@
+{
+  "template": "https://github.com/radix-ai/poetry-cookiecutter",
+  "commit": "a969f1d182ec39d7d27ccb1116cf60ba736adcfa",
+  "checkout": null,
+  "context": {
+    "cookiecutter": {
+      "project_type": "package",
+      "project_name": "RAGLite",
+      "project_description": "A RAG extension for SQLite.",
+      "project_url": "https://github.com/radix-ai/raglite",
+      "author_name": "Laurent Sorber",
+      "author_email": "laurent@radix.ai",
+      "python_version": "3.10",
+      "development_environment": "strict",
+      "with_conventional_commits": "1",
+      "with_fastapi_api": "0",
+      "with_typer_cli": "0",
+      "continuous_integration": "GitHub",
+      "private_package_repository_name": "",
+      "private_package_repository_url": "",
+      "__docker_image": "python:$PYTHON_VERSION-slim",
+      "__docstring_style": "NumPy",
+      "__project_name_kebab_case": "raglite",
+      "__project_name_snake_case": "raglite",
+      "_template": "https://github.com/radix-ai/poetry-cookiecutter"
+    }
+  },
+  "directory": null
+}
