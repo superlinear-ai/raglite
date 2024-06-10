@@ -42,7 +42,7 @@ def vector_search(
     # Embed the prompt.
     prompt_embedding = embed_strings([prompt])
     # Find the neighbouring proposition indices.
-    proposition_indices, cosine_distance = index.query(prompt_embedding, k=4 * num_results)
+    proposition_indices, cosine_distance = index.query(prompt_embedding, k=8 * num_results)
     cosine_similarity = 1 - cosine_distance[0, :]
     # Find the neighbouring chunk rowids.
     chunk_offsets = np.searchsorted(chunk_size_cumsum, proposition_indices[0, :], side="right")

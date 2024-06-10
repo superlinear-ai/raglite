@@ -1,12 +1,13 @@
 """Retrieval-augmented generation."""
 
-from collections.abc import Callable, Generator
+from collections.abc import Callable
+from typing import Iterator
 
 from llama_cpp import Llama
 from sqlalchemy.engine import URL
 
 from raglite.llm import default_llm
-from raglite.search import fusion_search, get_chunks
+from raglite.search import get_chunks, hybrid_search
 
 SYSTEM_PROMPT = """
 Answer the user's question with the given contexts only.
@@ -20,10 +21,10 @@ def rag(  # noqa: PLR0913
     num_contexts: int = 5,
     context_neighbors: tuple[int, ...] = (-1, 1),
     temperature: float = 0.7,
-    search: Callable[[str], tuple[list[int], list[float]]] = fusion_search,
+    search: Callable[[str], tuple[list[int], list[float]]] = hybrid_search,
     llm: Callable[[], Llama] = default_llm,
     db_url: str | URL = "sqlite:///raglite.sqlite",
-) -> Generator[str, None, None]:
+) -> Iterator[str]:
     """Retrieval-augmented generation."""
     # Retrieve relevant chunks.
     chunk_rowids, _ = search(prompt, num_results=num_contexts, db_url=db_url)

@@ -1,5 +1,6 @@
 """Index documents."""
 
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -11,9 +12,49 @@ from tqdm.auto import tqdm
 from raglite.chunk_splitter import split_chunks
 from raglite.database_models import Chunk, ChunkANNIndex, Document, create_database_engine
 from raglite.markdown_converter import document_to_markdown
-from raglite.proposition_extractor import extract_propositions
 from raglite.sentence_splitter import split_sentences
 from raglite.string_embedder import embed_strings
+
+
+def create_chunk_records(
+    document_id: str,
+    chunks: list[str],
+    multi_vector_embeddings: list[np.ndarray],
+    multi_vector_weight: float = 0.2,
+    embed: Callable[[list[str]], np.ndarray] = embed_strings,
+) -> list[Chunk]:
+    """Process chunks into headers, body and improved embeddings."""
+    # Create the chunk records.
+    chunk_records = []
+    contextualized_chunks = []
+    headers = ""
+    for i, chunk in enumerate(chunks):
+        # Create and append the contextualised chunk, which includes the current Markdown headers.
+        contextualized_chunks.append(headers + "\n\n" + chunk)
+        # Create and append the chunk record.
+        chunk_record = Chunk.from_body(
+            document_id=document_id, index=i, body=chunk, headers=headers
+        )
+        chunk_records.append(chunk_record)
+        # Update the Markdown headers with those of this chunk.
+        headers = chunk_record.extract_headers()
+    # Embed the contextualised chunks.
+    contextualized_embeddings = embed(contextualized_chunks)
+    contextualized_embeddings = contextualized_embeddings / np.linalg.norm(
+        contextualized_embeddings, axis=1, keepdims=True
+    )
+    # Update the chunk records with improved multi vector embeddings that combine its multi vector
+    # embedding with its contextualised chunk embedding.
+    for chunk_record, multi_vector_embedding, contextualized_embedding in zip(
+        chunk_records, multi_vector_embeddings, contextualized_embeddings, strict=True
+    ):
+        chunk_embedding = (
+            multi_vector_weight * multi_vector_embedding
+            + (1 - multi_vector_weight) * contextualized_embedding[np.newaxis, :]
+        )
+        chunk_embedding = chunk_embedding / np.linalg.norm(chunk_embedding, axis=1, keepdims=True)
+        chunk_record.multi_vector_embedding = chunk_embedding
+    return chunk_records
 
 
 def insert_document(doc_path: Path, db_url: str | URL = "sqlite:///raglite.sqlite") -> None:
@@ -30,39 +71,23 @@ def insert_document(doc_path: Path, db_url: str | URL = "sqlite:///raglite.sqlit
         sentences = split_sentences(doc)
         pbar.update(1)
         pbar.set_description("Splitting chunks")
-        chunks = split_chunks(sentences)
+        chunks, multi_vector_embeddings = split_chunks(sentences)
         pbar.update(1)
-    # Process the chunks into propositions and store them in the database.
+    # Create and store the chunk records.
     with Session(engine) as session:
         # Add the document to the document table.
         document_record = Document.from_path(doc_path)
         if session.get(Document, document_record.id) is None:
             session.add(document_record)
             session.commit()
-        # Add the document chunks to the chunk table.
-        headers = ""
-        for i, chunk in enumerate(
-            tqdm(chunks, desc="Extracting propositions", unit="chunk", dynamic_ncols=True)
+        # Create the chunk records.
+        chunk_records = create_chunk_records(document_record.id, chunks, multi_vector_embeddings)
+        # Store the chunk records.
+        for chunk_record in tqdm(
+            chunk_records, desc="Storing chunks", unit="chunk", dynamic_ncols=True
         ):
-            # Initialise the chunk record.
-            chunk_record = Chunk.from_body(
-                document_id=document_record.id,
-                index=i,
-                body=chunk,
-                headers=headers,
-            )
-            # Update the Markdown headers with those of this chunk.
-            headers = chunk_record.extract_headers()
-            # Continue if we've already inserted this chunk.
             if session.get(Chunk, chunk_record.id) is not None:
                 continue
-            # Extract propositions and compute their embeddings.
-            chunk_record.propositions = extract_propositions(
-                document_topic=headers.splitlines()[0].strip("# "),
-                chunk_headers=chunk_record.headers,
-                chunk_body=chunk_record.body,
-            )
-            chunk_record.proposition_embeddings = embed_strings(chunk_record.propositions)
             session.add(chunk_record)
             session.commit()
 
@@ -88,14 +113,14 @@ def update_index(index_id: str = "default", db_url: str | URL = "sqlite:///ragli
             pbar.update(num_chunks_indexed)
             if num_chunks_unindexed == 0:
                 return
-            X_unindexed = np.vstack([chunk.proposition_embeddings for chunk in unindexed_chunks])  # noqa: N806
+            X_unindexed = np.vstack([chunk.multi_vector_embedding for chunk in unindexed_chunks])  # noqa: N806
             if num_chunks_indexed == 0:
                 chunk_ann_index.index = NNDescent(X_unindexed, metric="cosine", compressed=True)
             else:
                 chunk_ann_index.index.prepare()
                 chunk_ann_index.index.update(X_unindexed)
             chunk_ann_index.chunk_sizes.extend(
-                [len(chunk.propositions) for chunk in unindexed_chunks]
+                [chunk.multi_vector_embedding.shape[0] for chunk in unindexed_chunks]
             )
             pbar.update(num_chunks_unindexed)
             # Store the updated chunk ANN index.

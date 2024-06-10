@@ -16,12 +16,12 @@ pip install raglite
 
 ## Features
 
-1. 👐 Permissive open source dependencies
+1. ❤️ Only lightweight and permissive open source dependencies
 2. 🛡️ Fully local RAG with [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) as an LLM provider and [SQLite](https://github.com/sqlite/sqlite) as a local database
-3. ✍️ Automatic conversion to Markdown of any input document
+3. ✍️ Automatic conversion of any input document to Markdown
 4. ✂️ Optimal Markdown-aware [level 4 semantic chunking](https://medium.com/@anuragmishra_27746/five-levels-of-chunking-strategies-in-rag-notes-from-gregs-video-7b735895694d)
-5. 🌈 Multiple vector chunk embedding with [hypothetical queries](https://python.langchain.com/v0.2/docs/how_to/multi_vector/#hypothetical-queries)
-6. 🔍 Hybrid search that combines [SQLite's BM25 full-text search](https://sqlite.org/fts5.html) with [PyNNDescent's ANN vector search](https://github.com/lmcinnes/pynndescent) using [Reciprocal Rank Fusion](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf)
+5. 🌈 [Multiple vector chunk retrieval](https://python.langchain.com/v0.2/docs/how_to/multi_vector/)
+6. 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) that combines [SQLite's BM25 full-text search](https://sqlite.org/fts5.html) with [PyNNDescent's ANN vector search](https://github.com/lmcinnes/pynndescent)
 
 ## Using
 

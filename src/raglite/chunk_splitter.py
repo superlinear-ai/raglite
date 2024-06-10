@@ -2,6 +2,7 @@
 
 import re
 import warnings
+from collections.abc import Callable
 
 import numpy as np
 from scipy.optimize import linprog
@@ -10,29 +11,40 @@ from scipy.sparse import coo_matrix
 from raglite.string_embedder import embed_strings
 
 
-def split_chunks(sentences: list[str], max_size: int = 1440, window_size: int = 3) -> list[str]:
-    """Split sentences into semantic chunks."""
+def split_chunks(
+    sentences: list[str],
+    max_size: int = 1440,
+    window_size: int = 3,
+    embed: Callable[[list[str]], np.ndarray] = embed_strings,
+) -> tuple[list[str], list[np.ndarray]]:
+    """Split sentences into optimal semantic chunks."""
     # Window the sentences.
-    windows = ["".join(sentences[i : i + window_size]) for i in range(len(sentences))]
-    window_embeddings = embed_strings(windows)
+    whisker_size = (window_size - 1) // 2
+    windows = [
+        "".join(sentences[max(0, i - whisker_size) : min(i + whisker_size + 1, len(sentences))])
+        for i in range(len(sentences))
+    ]
+    window_embeddings = embed(windows)
+    # Normalise the sentence embeddings to unit norm.
+    window_embeddings = window_embeddings / np.linalg.norm(window_embeddings, axis=1, keepdims=True)
     # Select nonoutlying sentences.
     window_length = np.asarray([len(window) for window in windows])
     q15, q85 = np.quantile(window_length, [0.15, 0.85])
     outlying_windows = (window_length <= q15) | (q85 <= window_length)
-    # Normalise the sentence embeddings to unit norm.
-    X = window_embeddings.copy()  # noqa: N806
-    X = X / np.linalg.norm(X, axis=1, keepdims=True)  # noqa: N806
     # Remove the global discourse vector.
+    X = window_embeddings.copy()  # noqa: N806
     discourse = np.mean(X[~outlying_windows, :], axis=0)
     X = X - np.outer(X @ discourse, discourse)  # noqa: N806
     # Renormalise to unit norm.
     X = X / np.linalg.norm(X, axis=1, keepdims=True)  # noqa: N806
     # For each partition point in the list of sentences, compute the similarity of the windows
     # before and after the partition point.
-    windows_before = X[:-window_size]
-    windows_after = X[window_size:]
+    windows_before = X[: -(1 + 2 * whisker_size)]
+    windows_after = X[1 + 2 * whisker_size :]
     partition_similarity = np.ones(len(sentences) - 1, dtype=X.dtype)
-    partition_similarity[window_size - 1 :] = np.sum(windows_before * windows_after, axis=1)
+    partition_similarity[whisker_size:-whisker_size] = np.sum(
+        windows_before * windows_after, axis=1
+    )
     # Make partition similarity nonnegative before modification and optimisation.
     partition_similarity = 1e-4 + (partition_similarity + 1) / 2
     # Modify the partition similarity to encourage splitting on Markdown headers.
@@ -78,10 +90,14 @@ def split_chunks(sentences: list[str], max_size: int = 1440, window_size: int = 
         integrality=[1] * A.shape[1],
     )
     assert res.success, "Optimization of chunk partitions failed."
-    # Split the sentences into optimal chunks.
+    # Split the sentences and their window embeddings into optimal chunks.
     partition_indices = (np.where(res.x)[0] + 1).tolist()
     chunks = [
         "".join(sentences[i:j])
         for i, j in zip([0, *partition_indices], [*partition_indices, len(sentences)], strict=True)
     ]
-    return chunks
+    multi_vector_embeddings = [
+        window_embeddings[i:j]
+        for i, j in zip([0, *partition_indices], [*partition_indices, len(sentences)], strict=True)
+    ]
+    return chunks, multi_vector_embeddings

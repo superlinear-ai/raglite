@@ -97,14 +97,19 @@ class Chunk(SQLModel, table=True):
     index: int = Field(..., index=True)
     headers: str
     body: str
-    propositions: list[str] | None = Field(default=None, sa_column=Column(JSON))
-    proposition_embeddings: np.ndarray | None = Field(default=None, sa_column=Column(NumpyArray))
+    multi_vector_embedding: np.ndarray = Field(..., sa_column=Column(NumpyArray))
 
     # Add relationship so we can access chunk.document.
     document: Document = Relationship(back_populates="chunks")
 
     @staticmethod
-    def from_body(document_id: str, index: int, body: str, headers: str = "") -> "Chunk":
+    def from_body(
+        document_id: str,
+        index: int,
+        body: str,
+        headers: str = "",
+        multi_vector_embedding: np.ndarray | None = None,
+    ) -> "Chunk":
         """Create a chunk from Markdown."""
         return Chunk(
             id=hash_bytes(body.encode()),
@@ -112,6 +117,9 @@ class Chunk(SQLModel, table=True):
             index=index,
             headers=headers,
             body=body,
+            multi_vector_embedding=multi_vector_embedding
+            if multi_vector_embedding is not None
+            else np.empty(0),
         )
 
     def extract_headers(self) -> str:
