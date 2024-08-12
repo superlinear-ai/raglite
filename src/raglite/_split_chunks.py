@@ -1,25 +1,24 @@
 """Split a document into semantic chunks."""
 
 import re
-import warnings
 from collections.abc import Callable
 
 import numpy as np
 from scipy.optimize import linprog
 from scipy.sparse import coo_matrix
 
-from raglite.string_embedder import embed_strings
+from raglite._embed import embed_strings
 
 
 def split_chunks(
     sentences: list[str],
     max_size: int = 1440,
-    window_size: int = 3,
+    sentence_window_size: int = 3,
     embed: Callable[[list[str]], np.ndarray] = embed_strings,
 ) -> tuple[list[str], list[np.ndarray]]:
     """Split sentences into optimal semantic chunks."""
     # Window the sentences.
-    whisker_size = (window_size - 1) // 2
+    whisker_size = (sentence_window_size - 1) // 2
     windows = [
         "".join(sentences[max(0, i - whisker_size) : min(i + whisker_size + 1, len(sentences))])
         for i in range(len(sentences))
@@ -47,17 +46,17 @@ def split_chunks(
     )
     # Make partition similarity nonnegative before modification and optimisation.
     partition_similarity = 1e-4 + (partition_similarity + 1) / 2
-    # Modify the partition similarity to encourage splitting on Markdown headers.
-    prev_sentence_is_header = True
+    # Modify the partition similarity to encourage splitting on Markdown headings.
+    prev_sentence_is_heading = True
     for i, sentence in enumerate(sentences[:-1]):
-        is_header = bool(re.match(r"^#+\s", sentence.replace("\n", "").strip()))
-        if is_header:
-            # Encourage splitting before a header.
-            if not prev_sentence_is_header:
+        is_heading = bool(re.match(r"^#+\s", sentence.replace("\n", "").strip()))
+        if is_heading:
+            # Encourage splitting before a heading.
+            if not prev_sentence_is_heading:
                 partition_similarity[i - 1] = partition_similarity[i - 1] / 4
-            # Don't split immediately after a header.
+            # Don't split immediately after a heading.
             partition_similarity[i] = 1.0
-        prev_sentence_is_header = is_header
+        prev_sentence_is_heading = is_heading
     # Solve an optimisation problem to find the best partition points.
     sentence_length = np.asarray([len(sentence) for sentence in sentences])
     sentence_length_cumsum = np.cumsum(sentence_length)
@@ -68,8 +67,8 @@ def split_chunks(
         r = sentence_length_cumsum[i - 1] if i > 0 else 0
         idx = np.searchsorted(sentence_length_cumsum - r, max_size)
         if idx == i:
-            warnings.warn("Sentence with length larger than chunk max_size detected.", stacklevel=2)
-            continue
+            error_message = "Sentence with length larger than chunk max_size detected."
+            raise ValueError(error_message)
         if idx == len(sentence_length_cumsum):
             break
         cols = list(range(i, idx))

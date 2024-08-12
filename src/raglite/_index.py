@@ -1,77 +1,81 @@
 """Index documents."""
 
-from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 import numpy as np
 from pynndescent import NNDescent
-from sqlalchemy.engine import URL
 from sqlmodel import Session, select
 from tqdm.auto import tqdm
 
-from raglite.chunk_splitter import split_chunks
-from raglite.database_models import Chunk, ChunkANNIndex, Document, create_database_engine
-from raglite.markdown_converter import document_to_markdown
-from raglite.sentence_splitter import split_sentences
-from raglite.string_embedder import embed_strings
+from raglite._config import RAGLiteConfig
+from raglite._database import Chunk, ChunkANNIndex, Document, create_database_engine
+from raglite._embed import embed_strings
+from raglite._markdown import document_to_markdown
+from raglite._split_chunks import split_chunks
+from raglite._split_sentences import split_sentences
 
 
-def create_chunk_records(
+def _create_chunk_records(
     document_id: str,
     chunks: list[str],
     multi_vector_embeddings: list[np.ndarray],
-    multi_vector_weight: float = 0.2,
-    embed: Callable[[list[str]], np.ndarray] = embed_strings,
+    *,
+    config: RAGLiteConfig | None = None,
 ) -> list[Chunk]:
-    """Process chunks into headers, body and improved embeddings."""
+    """Process chunks into headings, body and improved embeddings."""
     # Create the chunk records.
     chunk_records = []
     contextualized_chunks = []
-    headers = ""
+    headings = ""
     for i, chunk in enumerate(chunks):
-        # Create and append the contextualised chunk, which includes the current Markdown headers.
-        contextualized_chunks.append(headers + "\n\n" + chunk)
+        # Create and append the contextualised chunk, which includes the current Markdown headings.
+        contextualized_chunks.append(headings + "\n\n" + chunk)
         # Create and append the chunk record.
         chunk_record = Chunk.from_body(
-            document_id=document_id, index=i, body=chunk, headers=headers
+            document_id=document_id, index=i, body=chunk, headings=headings
         )
         chunk_records.append(chunk_record)
-        # Update the Markdown headers with those of this chunk.
-        headers = chunk_record.extract_headers()
+        # Update the Markdown headings with those of this chunk.
+        headings = chunk_record.extract_headings()
     # Embed the contextualised chunks.
-    contextualized_embeddings = embed(contextualized_chunks)
-    contextualized_embeddings = contextualized_embeddings / np.linalg.norm(
-        contextualized_embeddings, axis=1, keepdims=True
-    )
-    # Update the chunk records with improved multi vector embeddings that combine its multi vector
+    contextualized_embeddings = embed_strings(contextualized_chunks, config=config)
+    # Update the chunk records with improved multi-vector embeddings that combine its multi-vector
     # embedding with its contextualised chunk embedding.
     for chunk_record, multi_vector_embedding, contextualized_embedding in zip(
         chunk_records, multi_vector_embeddings, contextualized_embeddings, strict=True
     ):
         chunk_embedding = (
-            multi_vector_weight * multi_vector_embedding
-            + (1 - multi_vector_weight) * contextualized_embedding[np.newaxis, :]
+            config.multi_vector_weight * multi_vector_embedding
+            + (1 - config.multi_vector_weight) * contextualized_embedding[np.newaxis, :]
         )
         chunk_embedding = chunk_embedding / np.linalg.norm(chunk_embedding, axis=1, keepdims=True)
         chunk_record.multi_vector_embedding = chunk_embedding
     return chunk_records
 
 
-def insert_document(doc_path: Path, db_url: str | URL = "sqlite:///raglite.sqlite") -> None:
-    """Insert a document."""
+def insert_document(doc_path: Path, *, config: RAGLiteConfig | None = None) -> None:
+    """Insert a document into the database."""
+    # Use the default config if not provided.
+    config = config or RAGLiteConfig()
     # Preprocess the document into chunks.
     with tqdm(total=4, unit="step", dynamic_ncols=True) as pbar:
         pbar.set_description("Initializing database")
-        engine = create_database_engine(db_url)
+        engine = create_database_engine(config.db_url)
         pbar.update(1)
         pbar.set_description("Converting to Markdown")
         doc = document_to_markdown(doc_path)
         pbar.update(1)
         pbar.set_description("Splitting sentences")
-        sentences = split_sentences(doc)
+        sentences = split_sentences(doc, max_len=config.chunk_max_size)
         pbar.update(1)
         pbar.set_description("Splitting chunks")
-        chunks, multi_vector_embeddings = split_chunks(sentences)
+        chunks, multi_vector_embeddings = split_chunks(
+            sentences,
+            max_size=config.chunk_max_size,
+            sentence_window_size=config.chunk_sentence_window_size,
+            embed=partial(embed_strings, config=config),
+        )
         pbar.update(1)
     # Create and store the chunk records.
     with Session(engine) as session:
@@ -81,7 +85,9 @@ def insert_document(doc_path: Path, db_url: str | URL = "sqlite:///raglite.sqlit
             session.add(document_record)
             session.commit()
         # Create the chunk records.
-        chunk_records = create_chunk_records(document_record.id, chunks, multi_vector_embeddings)
+        chunk_records = _create_chunk_records(
+            document_record.id, chunks, multi_vector_embeddings, config=config
+        )
         # Store the chunk records.
         for chunk_record in tqdm(
             chunk_records, desc="Storing chunks", unit="chunk", dynamic_ncols=True
@@ -92,12 +98,15 @@ def insert_document(doc_path: Path, db_url: str | URL = "sqlite:///raglite.sqlit
             session.commit()
 
 
-def update_index(index_id: str = "default", db_url: str | URL = "sqlite:///raglite.sqlite") -> None:
+def update_vector_index(config: RAGLiteConfig | None = None) -> None:
     """Update the chunk ANN index with any unindexed chunks."""
-    engine = create_database_engine(db_url)
+    config = config or RAGLiteConfig()
+    engine = create_database_engine(config.db_url)
     with Session(engine) as session:
         # Get the chunk ANN index from the database, or create a new one.
-        chunk_ann_index = session.get(ChunkANNIndex, index_id) or ChunkANNIndex(id=index_id)
+        chunk_ann_index = session.get(ChunkANNIndex, config.ann_vector_index_id) or ChunkANNIndex(
+            id=config.ann_vector_index_id
+        )
         num_chunks_indexed = len(chunk_ann_index.chunk_sizes)
         # Get the unindexed chunks.
         statement = select(Chunk).offset(num_chunks_indexed)
@@ -115,10 +124,13 @@ def update_index(index_id: str = "default", db_url: str | URL = "sqlite:///ragli
                 return
             X_unindexed = np.vstack([chunk.multi_vector_embedding for chunk in unindexed_chunks])  # noqa: N806
             if num_chunks_indexed == 0:
-                chunk_ann_index.index = NNDescent(X_unindexed, metric="cosine", compressed=True)
-            else:
+                chunk_ann_index.index = NNDescent(
+                    X_unindexed, metric=config.ann_vector_index_metric
+                )
                 chunk_ann_index.index.prepare()
+            else:
                 chunk_ann_index.index.update(X_unindexed)
+                chunk_ann_index.index.prepare()
             chunk_ann_index.chunk_sizes.extend(
                 [chunk.multi_vector_embedding.shape[0] for chunk in unindexed_chunks]
             )
