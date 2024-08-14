@@ -23,7 +23,7 @@ def _create_chunk_records(
     *,
     config: RAGLiteConfig | None = None,
 ) -> list[Chunk]:
-    """Process chunks into headings, body and improved embeddings."""
+    """Process chunks into headings, body and improved multi-vector embeddings."""
     # Create the chunk records.
     chunk_records = []
     contextualized_chunks = []

@@ -15,10 +15,8 @@ def default_llm() -> Llama:
     llm = Llama.from_pretrained(
         repo_id="bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",  # https://github.com/meta-llama/llama-models
         filename="*Q4_K_M.gguf",
-        n_ctx=0,
-        n_gpu_layers=-1,
-        use_mlock=True,
-        use_mmap=False,
+        n_ctx=8192,  # 0 = Use the model's context size (default is 512).
+        n_gpu_layers=-1,  # -1 = Offload all layers to the GPU (default is 0).
         verbose=False,
     )
     llm.set_cache(LlamaRAMCache())
@@ -31,10 +29,8 @@ def default_embedder() -> Llama:
     embedder = Llama.from_pretrained(
         repo_id="ChristianAzinn/snowflake-arctic-embed-l-gguf",  # https://github.com/Snowflake-Labs/arctic-embed
         filename="*f16.GGUF",
-        n_ctx=0,
-        n_gpu_layers=-1,
-        use_mlock=True,
-        use_mmap=False,
+        n_ctx=0,  # 0 = Use the model's context size (default is 512).
+        n_gpu_layers=-1,  # -1 = Offload all layers to the GPU (default is 0).
         verbose=False,
         embedding=True,
     )

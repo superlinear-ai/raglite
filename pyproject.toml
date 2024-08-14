@@ -22,7 +22,7 @@ python = ">=3.10,<4.0"
 # Markdown conversion:
 pdftext = ">=0.3.10"
 pypandoc-binary = { version = ">=1.13", optional = true }
-scikit-learn = ">=1.5.1"
+scikit-learn = ">=1.4.2"
 # Markdown formatting:
 markdown-it-py = ">=3.0.0"
 mdformat-gfm = ">=0.3.6"
@@ -35,43 +35,21 @@ huggingface-hub = ">=0.22.0"
 llama-cpp-python = [
   { version = ">=0.2.88", markers = "(sys_platform != 'darwin' or platform_machine != 'arm64') and (extra != 'cuda121' and extra != 'cuda122' and extra != 'cuda123' and extra != 'cuda124')" },
   # Metal
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-metal/llama_cpp_python-0.2.88-cp310-cp310-macosx_11_0_arm64.whl", markers = "sys_platform == 'darwin' and platform_machine == 'arm64' and python_version == '3.10'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-metal/llama_cpp_python-0.2.88-cp311-cp311-macosx_11_0_arm64.whl", markers = "sys_platform == 'darwin' and platform_machine == 'arm64' and python_version == '3.11'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-metal/llama_cpp_python-0.2.88-cp312-cp312-macosx_11_0_arm64.whl", markers = "sys_platform == 'darwin' and platform_machine == 'arm64' and python_version == '3.12'" },
-  # CUDA 12.1
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu121/llama_cpp_python-0.2.88-cp310-cp310-linux_x86_64.whl", markers = "sys_platform == 'linux' and python_version == '3.10' and extra == 'cuda121'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu121/llama_cpp_python-0.2.88-cp310-cp310-win_amd64.whl", markers = "sys_platform == 'win32' and python_version == '3.10' and extra == 'cuda121'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu121/llama_cpp_python-0.2.88-cp311-cp311-linux_x86_64.whl", markers = "sys_platform == 'linux' and python_version == '3.11' and extra == 'cuda121'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu121/llama_cpp_python-0.2.88-cp311-cp311-win_amd64.whl", markers = "sys_platform == 'win32' and python_version == '3.11' and extra == 'cuda121'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu121/llama_cpp_python-0.2.88-cp312-cp312-linux_x86_64.whl", markers = "sys_platform == 'linux' and python_version == '3.12' and extra == 'cuda121'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu121/llama_cpp_python-0.2.88-cp312-cp312-win_amd64.whl", markers = "sys_platform == 'win32' and python_version == '3.12' and extra == 'cuda121'" },
-  # CUDA 12.2
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu123/llama_cpp_python-0.2.88-cp310-cp310-linux_x86_64.whl", markers = "sys_platform == 'linux' and python_version == '3.10' and extra == 'cuda122'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu123/llama_cpp_python-0.2.88-cp310-cp310-win_amd64.whl", markers = "sys_platform == 'win32' and python_version == '3.10' and extra == 'cuda122'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu123/llama_cpp_python-0.2.88-cp311-cp311-linux_x86_64.whl", markers = "sys_platform == 'linux' and python_version == '3.11' and extra == 'cuda122'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu123/llama_cpp_python-0.2.88-cp311-cp311-win_amd64.whl", markers = "sys_platform == 'win32' and python_version == '3.11' and extra == 'cuda122'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu123/llama_cpp_python-0.2.88-cp312-cp312-linux_x86_64.whl", markers = "sys_platform == 'linux' and python_version == '3.12' and extra == 'cuda122'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu123/llama_cpp_python-0.2.88-cp312-cp312-win_amd64.whl", markers = "sys_platform == 'win32' and python_version == '3.12' and extra == 'cuda122'" },
-  # CUDA 12.3
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu123/llama_cpp_python-0.2.88-cp310-cp310-linux_x86_64.whl", markers = "sys_platform == 'linux' and python_version == '3.10' and extra == 'cuda123'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu123/llama_cpp_python-0.2.88-cp310-cp310-win_amd64.whl", markers = "sys_platform == 'win32' and python_version == '3.10' and extra == 'cuda123'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu123/llama_cpp_python-0.2.88-cp311-cp311-linux_x86_64.whl", markers = "sys_platform == 'linux' and python_version == '3.11' and extra == 'cuda123'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu123/llama_cpp_python-0.2.88-cp311-cp311-win_amd64.whl", markers = "sys_platform == 'win32' and python_version == '3.11' and extra == 'cuda123'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu123/llama_cpp_python-0.2.88-cp312-cp312-linux_x86_64.whl", markers = "sys_platform == 'linux' and python_version == '3.12' and extra == 'cuda123'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu123/llama_cpp_python-0.2.88-cp312-cp312-win_amd64.whl", markers = "sys_platform == 'win32' and python_version == '3.12' and extra == 'cuda123'" },
+  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.88-metal/llama_cpp_python-0.2.88-cp310-cp310-macosx_11_0_arm64.whl", markers = "sys_platform == 'darwin' and platform_machine == 'arm64' and python_version == '3.10'" },
+  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.88-metal/llama_cpp_python-0.2.88-cp311-cp311-macosx_11_0_arm64.whl", markers = "sys_platform == 'darwin' and platform_machine == 'arm64' and python_version == '3.11'" },
+  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.88-metal/llama_cpp_python-0.2.88-cp312-cp312-macosx_11_0_arm64.whl", markers = "sys_platform == 'darwin' and platform_machine == 'arm64' and python_version == '3.12'" },
   # CUDA 12.4
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu124/llama_cpp_python-0.2.88-cp310-cp310-linux_x86_64.whl", markers = "sys_platform == 'linux' and python_version == '3.10' and extra == 'cuda124'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu124/llama_cpp_python-0.2.88-cp310-cp310-win_amd64.whl", markers = "sys_platform == 'win32' and python_version == '3.10' and extra == 'cuda124'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu124/llama_cpp_python-0.2.88-cp311-cp311-linux_x86_64.whl", markers = "sys_platform == 'linux' and python_version == '3.11' and extra == 'cuda124'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu124/llama_cpp_python-0.2.88-cp311-cp311-win_amd64.whl", markers = "sys_platform == 'win32' and python_version == '3.11' and extra == 'cuda124'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu124/llama_cpp_python-0.2.88-cp312-cp312-linux_x86_64.whl", markers = "sys_platform == 'linux' and python_version == '3.12' and extra == 'cuda124'" },
-  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.85-cu124/llama_cpp_python-0.2.88-cp312-cp312-win_amd64.whl", markers = "sys_platform == 'win32' and python_version == '3.12' and extra == 'cuda124'" },
+  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.88-cu124/llama_cpp_python-0.2.88-cp310-cp310-linux_x86_64.whl", markers = "sys_platform == 'linux' and python_version == '3.10' and extra == 'cuda124'" },
+  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.88-cu124/llama_cpp_python-0.2.88-cp310-cp310-win_amd64.whl", markers = "sys_platform == 'win32' and python_version == '3.10' and extra == 'cuda124'" },
+  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.88-cu124/llama_cpp_python-0.2.88-cp311-cp311-linux_x86_64.whl", markers = "sys_platform == 'linux' and python_version == '3.11' and extra == 'cuda124'" },
+  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.88-cu124/llama_cpp_python-0.2.88-cp311-cp311-win_amd64.whl", markers = "sys_platform == 'win32' and python_version == '3.11' and extra == 'cuda124'" },
+  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.88-cu124/llama_cpp_python-0.2.88-cp312-cp312-linux_x86_64.whl", markers = "sys_platform == 'linux' and python_version == '3.12' and extra == 'cuda124'" },
+  { url = "https://github.com/abetlen/llama-cpp-python/releases/download/v0.2.88-cu124/llama_cpp_python-0.2.88-cp312-cp312-win_amd64.whl", markers = "sys_platform == 'win32' and python_version == '3.12' and extra == 'cuda124'" },
 ]
 pydantic = ">=2.7.0"
 # Approximate Nearest Neighbors:
 pynndescent = ">=0.5.12"
 # Storage:
-requests = ">=2.31.0"
 sqlmodel-slim = ">=0.0.18"
 # Progress:
 tqdm = ">=4.66.0"
@@ -79,9 +57,6 @@ tqdm = ">=4.66.0"
 ragas = { version = ">=0.1.12", optional = true }
 
 [tool.poetry.extras] # https://python-poetry.org/docs/pyproject/#extras
-cuda121 = []
-cuda122 = []
-cuda123 = []
 cuda124 = []
 eval = ["ragas"]
 pandoc = ["pypandoc-binary"]

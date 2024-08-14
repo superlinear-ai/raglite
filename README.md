@@ -14,7 +14,7 @@ To install this package (including Metal acceleration if on macOS), run:
 pip install raglite
 ```
 
-To add CUDA 12.x support, use the `cuda12[1-4]` extra:
+To add CUDA 12.4 support, use the `cuda124` extra:
 
 ```sh
 pip install raglite[cuda124]

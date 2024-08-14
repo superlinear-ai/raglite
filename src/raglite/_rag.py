@@ -26,8 +26,8 @@ def rag(
     system_prompt = f"""
 You are a friendly and knowledgeable assistant that provides complete and insightful answers.
 Answer the user's question using only the context below.
-Don't reference the context as if it were provided to you, nor as a document or text that can be referenced.
-Instead, use the context as if it is part of your working memory.
+When responding, you MUST NOT reference the existence of the context, directly or indirectly.
+Instead, you MUST treat the context as if its contents are entirely part of your working memory.
 
 {contexts}""".strip()
     stream = config.llm.create_chat_completion(
