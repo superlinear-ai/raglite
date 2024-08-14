@@ -29,7 +29,7 @@ def parsed_pdf_to_markdown(pages: list[dict[str, Any]]) -> list[str]:  # noqa: C
             for line in block["lines"]
             for span in line["spans"]
         ]
-        font_sizes = np.asarray(font_sizes)
+        font_sizes = np.asarray(font_sizes)  # type: ignore[assignment]
         font_sizes = np.round(font_sizes * 2) / 2
         unique_font_sizes, counts = np.unique(font_sizes, return_counts=True)
         # Determine the paragraph font size as the mode font size.
@@ -60,7 +60,7 @@ def parsed_pdf_to_markdown(pages: list[dict[str, Any]]) -> list[str]:  # noqa: C
                         elif span_font_size == mode_font_size:
                             idx = 6
                         else:
-                            idx = np.argmin(np.abs(heading_font_sizes - span_font_size))
+                            idx = np.argmin(np.abs(heading_font_sizes - span_font_size))  # type: ignore[assignment]
                         span["md"]["heading_level"] = idx + 1
                         heading_level[idx] += len(span["text"])
                     line["md"]["heading_level"] = np.argmax(heading_level) + 1
@@ -153,7 +153,7 @@ def parsed_pdf_to_markdown(pages: list[dict[str, Any]]) -> list[str]:  # noqa: C
     def merge_split_headings(pages: list[str]) -> list[str]:
         """Merge headings that are split across lines."""
 
-        def _merge_split_headings(match: re.Match) -> str:
+        def _merge_split_headings(match: re.Match[str]) -> str:
             atx_headings = [line.strip("# ").strip() for line in match.group().splitlines()]
             return f"{match.group(1)} {' '.join(atx_headings)}\n\n"
 

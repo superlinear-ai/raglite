@@ -8,14 +8,15 @@ from scipy.optimize import linprog
 from scipy.sparse import coo_matrix
 
 from raglite._embed import embed_strings
+from raglite._typing import FloatMatrix
 
 
 def split_chunks(
     sentences: list[str],
     max_size: int = 1440,
     sentence_window_size: int = 3,
-    embed: Callable[[list[str]], np.ndarray] = embed_strings,
-) -> tuple[list[str], list[np.ndarray]]:
+    embed: Callable[[list[str]], FloatMatrix] = embed_strings,
+) -> tuple[list[str], list[FloatMatrix]]:
     """Split sentences into optimal semantic chunks."""
     # Window the sentences.
     whisker_size = (sentence_window_size - 1) // 2

@@ -14,18 +14,22 @@ from sqlalchemy.engine import URL, Dialect, Engine, make_url
 from sqlalchemy.types import LargeBinary, TypeDecorator
 from sqlmodel import JSON, Column, Field, Relationship, Session, SQLModel, create_engine, text
 
+from raglite._typing import FloatMatrix
+
 
 def hash_bytes(data: bytes, max_len: int = 16) -> str:
     """Hash bytes to a hexadecimal string."""
     return sha256(data, usedforsecurity=False).hexdigest()[:max_len]
 
 
-class NumpyArray(TypeDecorator):
+class NumpyArray(TypeDecorator[np.ndarray[Any, np.dtype[np.floating[Any]]]]):
     """A NumPy array column type for SQLAlchemy."""
 
     impl = LargeBinary
 
-    def process_bind_param(self, value: np.ndarray | None, dialect: Dialect) -> bytes | None:
+    def process_bind_param(
+        self, value: np.ndarray[Any, np.dtype[np.floating[Any]]] | None, dialect: Dialect
+    ) -> bytes | None:
         """Convert a NumPy array to bytes."""
         if value is None:
             return None
@@ -33,14 +37,16 @@ class NumpyArray(TypeDecorator):
         np.save(buffer, value, allow_pickle=False, fix_imports=False)
         return buffer.getvalue()
 
-    def process_result_value(self, value: bytes | None, dialect: Dialect) -> np.ndarray | None:
+    def process_result_value(
+        self, value: bytes | None, dialect: Dialect
+    ) -> np.ndarray[Any, np.dtype[np.floating[Any]]] | None:
         """Convert bytes to a NumPy array."""
         if value is None:
             return None
-        return np.load(io.BytesIO(value), allow_pickle=False, fix_imports=False)
+        return np.load(io.BytesIO(value), allow_pickle=False, fix_imports=False)  # type: ignore[no-any-return]
 
 
-class PickledObject(TypeDecorator):
+class PickledObject(TypeDecorator[object]):
     """A pickled object column type for SQLAlchemy."""
 
     impl = LargeBinary
@@ -55,7 +61,7 @@ class PickledObject(TypeDecorator):
         """Convert bytes to a Python object."""
         if value is None:
             return None
-        return pickle.loads(value, fix_imports=False)  # noqa: S301
+        return pickle.loads(value, fix_imports=False)  # type: ignore[no-any-return]  # noqa: S301
 
 
 class Document(SQLModel, table=True):
@@ -99,7 +105,7 @@ class Chunk(SQLModel, table=True):
     index: int = Field(..., index=True)
     headings: str
     body: str
-    multi_vector_embedding: np.ndarray = Field(..., sa_column=Column(NumpyArray))
+    multi_vector_embedding: FloatMatrix = Field(..., sa_column=Column(NumpyArray))
     metadata_: dict[str, Any] = Field(default={}, sa_column=Column("metadata", JSON))
 
     # Add relationship so we can access chunk.document.
@@ -111,7 +117,7 @@ class Chunk(SQLModel, table=True):
         index: int,
         body: str,
         headings: str = "",
-        multi_vector_embedding: np.ndarray | None = None,
+        multi_vector_embedding: FloatMatrix | None = None,
         **kwargs: Any,
     ) -> "Chunk":
         """Create a chunk from Markdown."""
@@ -167,7 +173,7 @@ class ChunkANNIndex(SQLModel, table=True):
     id: str = Field(..., primary_key=True)
     chunk_sizes: list[int] = Field(default=[], sa_column=Column(JSON))
     index: NNDescent | None = Field(default=None, sa_column=Column(PickledObject))
-    query_adapter: np.ndarray | None = Field(default=None, sa_column=Column(NumpyArray))
+    query_adapter: FloatMatrix | None = Field(default=None, sa_column=Column(NumpyArray))
     metadata_: dict[str, Any] = Field(default={}, sa_column=Column("metadata", JSON))
 
     # Enable support for JSON, PickledObject, and NumpyArray columns.
@@ -199,7 +205,7 @@ class Eval(SQLModel, table=True):
         contexts: list[Chunk],
         ground_truth: str,
         **kwargs: Any,
-    ) -> "Chunk":
+    ) -> "Eval":
         """Create a chunk from Markdown."""
         document_id = contexts[0].document_id
         chunk_ids = [context.id for context in contexts]
@@ -237,26 +243,26 @@ def create_database_engine(db_url: str | URL = "sqlite:///raglite.sqlite") -> En
     # We use the chunk table as an external content table [1] to avoid duplicating the data.
     # [1] https://www.sqlite.org/fts5.html#external_content_tables
     with Session(engine) as session:
-        session.exec(
+        session.execute(
             text("""
         CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(body, content='chunk', content_rowid='rowid');
         """)
         )
-        session.exec(
+        session.execute(
             text("""
         CREATE TRIGGER IF NOT EXISTS chunk_fts_auto_insert AFTER INSERT ON chunk BEGIN
             INSERT INTO chunk_fts(rowid, body) VALUES (new.rowid, new.body);
         END;
         """)
         )
-        session.exec(
+        session.execute(
             text("""
         CREATE TRIGGER IF NOT EXISTS chunk_fts_auto_delete AFTER DELETE ON chunk BEGIN
             INSERT INTO chunk_fts(chunk_fts, rowid, body) VALUES('delete', old.rowid, old.body);
         END;
         """)
         )
-        session.exec(
+        session.execute(
             text("""
         CREATE TRIGGER IF NOT EXISTS chunk_fts_auto_update AFTER UPDATE ON chunk BEGIN
             INSERT INTO chunk_fts(chunk_fts, rowid, body) VALUES('delete', old.rowid, old.body);

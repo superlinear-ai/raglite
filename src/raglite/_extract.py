@@ -33,7 +33,7 @@ def extract_with_llm(
     config = config or RAGLiteConfig()
     # Update the system prompt with the JSON schema of the return type to help the LLM.
     system_prompt = (
-        return_type.system_prompt.strip() + "\n",
+        return_type.system_prompt.strip() + "\n",  # type: ignore[attr-defined]
         "Format your response according to this JSON schema:\n",
         return_type.model_json_schema(),
     )
@@ -47,7 +47,7 @@ def extract_with_llm(
     for _ in range(config.llm_max_tries):
         response = config.llm.create_chat_completion(
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": system_prompt},  # type: ignore[list-item,misc]
                 {"role": "user", "content": user_prompt},
             ],
             response_format={"type": "json_object", "schema": return_type.model_json_schema()},
@@ -55,13 +55,13 @@ def extract_with_llm(
             **kwargs,
         )
         try:
-            instance = return_type.model_validate_json(response["choices"][0]["message"]["content"])
+            instance = return_type.model_validate_json(response["choices"][0]["message"]["content"])  # type: ignore[arg-type,index]
         except (KeyError, ValueError, ValidationError):
             # Malformed response, not a JSON string, or not a valid instance of the return type.
             continue
         else:
             break
     else:
-        error_message = f"Failed to extract {return_type} from input {user_prompt}"
+        error_message = f"Failed to extract {return_type} from input {user_prompt}."
         raise ValueError(error_message)
     return instance

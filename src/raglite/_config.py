@@ -5,7 +5,7 @@ from functools import lru_cache
 
 import numpy as np
 import numpy.typing as npt
-from llama_cpp import Llama, LlamaRAMCache
+from llama_cpp import Llama, LlamaRAMCache  # type: ignore[attr-defined]
 from sqlalchemy.engine import URL
 
 

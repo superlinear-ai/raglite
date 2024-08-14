@@ -14,14 +14,14 @@ from raglite._embed import embed_strings
 from raglite._markdown import document_to_markdown
 from raglite._split_chunks import split_chunks
 from raglite._split_sentences import split_sentences
+from raglite._typing import FloatMatrix
 
 
 def _create_chunk_records(
     document_id: str,
     chunks: list[str],
-    multi_vector_embeddings: list[np.ndarray],
-    *,
-    config: RAGLiteConfig | None = None,
+    multi_vector_embeddings: list[FloatMatrix],
+    config: RAGLiteConfig,
 ) -> list[Chunk]:
     """Process chunks into headings, body and improved multi-vector embeddings."""
     # Create the chunk records.
@@ -86,7 +86,7 @@ def insert_document(doc_path: Path, *, config: RAGLiteConfig | None = None) -> N
             session.commit()
         # Create the chunk records.
         chunk_records = _create_chunk_records(
-            document_record.id, chunks, multi_vector_embeddings, config=config
+            document_record.id, chunks, multi_vector_embeddings, config
         )
         # Store the chunk records.
         for chunk_record in tqdm(
@@ -129,8 +129,8 @@ def update_vector_index(config: RAGLiteConfig | None = None) -> None:
                 )
                 chunk_ann_index.index.prepare()
             else:
-                chunk_ann_index.index.update(X_unindexed)
-                chunk_ann_index.index.prepare()
+                chunk_ann_index.index.update(X_unindexed)  # type: ignore[union-attr]
+                chunk_ann_index.index.prepare()  # type: ignore[union-attr]
             chunk_ann_index.chunk_sizes.extend(
                 [chunk.multi_vector_embedding.shape[0] for chunk in unindexed_chunks]
             )

@@ -22,7 +22,7 @@ def _mark_additional_sentence_boundaries(doc: spacy.tokens.Doc) -> spacy.tokens.
             char_idx.append(char_idx[-1] + len(line))
         for token in tokens:
             if token.type == "heading_open":
-                start_line, end_line = token.map
+                start_line, end_line = token.map  # type: ignore[misc]
                 heading_start = char_idx[start_line]
                 heading_end = char_idx[end_line]
                 headings.append((heading_start, heading_end))

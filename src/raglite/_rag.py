@@ -17,7 +17,7 @@ def rag(
     """Retrieval-augmented generation."""
     # Retrieve relevant chunks.
     config = config or RAGLiteConfig()
-    chunk_rowids, _ = search(prompt, num_results=num_contexts, config=config)
+    chunk_rowids, _ = search(prompt, num_results=num_contexts, config=config)  # type: ignore[call-arg]
     chunks = retrieve_segments(chunk_rowids, neighbors=context_neighbors)
     # Respond with an LLM.
     contexts = "\n\n".join(
@@ -40,4 +40,5 @@ Instead, you MUST treat the context as if its contents are entirely part of your
     )
     # Stream the response.
     for output in stream:
-        yield output["choices"][0]["delta"].get("content", "")
+        token: str = output["choices"][0]["delta"].get("content", "")  # type: ignore[assignment,index,union-attr]
+        yield token

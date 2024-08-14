@@ -40,6 +40,7 @@
                 "files.autoSave": "onFocusChange",
                 "jupyter.kernels.excludePythonEnvironments": ["/usr/local/bin/python"],
                 "mypy-type-checker.importStrategy": "fromEnvironment",
+                "mypy-type-checker.preferDaemon": true,
                 "notebook.codeActionsOnSave": {
                     "notebook.source.fixAll": "explicit",
                     "notebook.source.organizeImports": "explicit"

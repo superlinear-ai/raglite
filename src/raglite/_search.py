@@ -16,13 +16,17 @@ from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, ChunkANNIndex, create_database_engine
 from raglite._embed import embed_strings
 from raglite._extract import extract_with_llm
+from raglite._typing import FloatMatrix, IntVector
 
 
 @lru_cache(maxsize=1)
-def _chunk_ann_index(config: RAGLiteConfig) -> tuple[NNDescent, np.ndarray, np.ndarray | None]:
+def _chunk_ann_index(config: RAGLiteConfig) -> tuple[NNDescent, IntVector, FloatMatrix | None]:
     engine = create_database_engine(config.db_url)
     with Session(engine) as session:
         chunk_ann_index = session.get(ChunkANNIndex, config.ann_vector_index_id)
+        if chunk_ann_index is None:
+            error_message = "First run `update_vector_index()` to create an ANN vector index."
+            raise ValueError(error_message)
         index = chunk_ann_index.index
         chunk_size_cumsum = np.cumsum(np.asarray(chunk_ann_index.chunk_sizes, dtype=np.intp))
         query_adapter = chunk_ann_index.query_adapter
@@ -30,7 +34,7 @@ def _chunk_ann_index(config: RAGLiteConfig) -> tuple[NNDescent, np.ndarray, np.n
 
 
 def vector_search(
-    prompt: str | np.ndarray,
+    prompt: str | FloatMatrix,
     *,
     num_results: int = 3,
     query_adapter: bool = True,
@@ -91,14 +95,14 @@ def keyword_search(
         statement = text(
             "SELECT chunk.rowid, bm25(chunk_fts) FROM chunk JOIN chunk_fts ON chunk.rowid = chunk_fts.rowid WHERE chunk_fts MATCH :match ORDER BY rank LIMIT :limit;"
         )
-        results = session.exec(
+        results = session.execute(
             statement, params={"match": _prompt_to_fts_query(prompt), "limit": num_results}
         )
         # Unpack the results and make FTS5's negative BM25 scores [1] positive.
         # https://www.sqlite.org/fts5.html#the_bm25_function
         chunk_rowids, bm25_score = zip(*results, strict=True)
-        chunk_rowids, bm25_score = list(chunk_rowids), [-s for s in bm25_score]
-    return chunk_rowids, bm25_score
+        chunk_rowids, bm25_score = list(chunk_rowids), [-s for s in bm25_score]  # type: ignore[assignment]
+    return chunk_rowids, bm25_score  # type: ignore[return-value]
 
 
 def reciprocal_rank_fusion(
@@ -107,7 +111,7 @@ def reciprocal_rank_fusion(
     """Reciprocal Rank Fusion."""
     # Compute the RRF score.
     rowids = {rowid for ranking in rankings for rowid in ranking}
-    rowid_score = defaultdict(float)
+    rowid_score: defaultdict[int, float] = defaultdict(float)
     for ranking in rankings:
         rowid_index = {rowid: i for i, rowid in enumerate(ranking)}
         for rowid in rowids:
@@ -145,7 +149,7 @@ def fusion_search(
         """An array of queries that help answer the user prompt."""
 
         queries: list[Annotated[str, Field(min_length=1)]] = Field(
-            ..., description="A single query that helps answer the user prompt.", min_items=1
+            ..., description="A single query that helps answer the user prompt."
         )
         system_prompt: ClassVar[str] = """
 The user will give you a prompt in search of an answer.
@@ -191,7 +195,7 @@ def retrieve_segments(
             if chunk is not None:
                 chunks.add(chunk)
             # Extend the chunk with its neighbouring chunks.
-            if neighbors is not None and len(neighbors) > 0:
+            if chunk is not None and neighbors is not None and len(neighbors) > 0:
                 for offset in sorted(neighbors, key=abs):
                     where = (
                         Chunk.document_id == chunk.document_id,
@@ -201,11 +205,11 @@ def retrieve_segments(
                     if neighbor is not None:
                         chunks.add(neighbor)
     # Sort the chunks by document_id and index (needed for groupby).
-    chunks = sorted(chunks, key=lambda chunk: (chunk.document_id, chunk.index))
+    chunks = sorted(chunks, key=lambda chunk: (chunk.document_id, chunk.index))  # type: ignore[assignment]
     # Group the chunks into contiguous segments.
-    segments = []
+    segments: list[list[Chunk]] = []
     for _, group in groupby(chunks, key=lambda chunk: chunk.document_id):
-        segment = []
+        segment: list[Chunk] = []
         for chunk in group:
             if not segment or chunk.index == segment[-1].index + 1:
                 segment.append(chunk)
@@ -215,7 +219,7 @@ def retrieve_segments(
         segments.append(segment)
     # Convert the segments into strings.
     segments = [
-        segment[0].headings.strip() + "\n\n" + "".join(chunk.body for chunk in segment).strip()
+        segment[0].headings.strip() + "\n\n" + "".join(chunk.body for chunk in segment).strip()  # type: ignore[misc]
         for segment in segments
     ]
-    return segments
+    return segments  # type: ignore[return-value]

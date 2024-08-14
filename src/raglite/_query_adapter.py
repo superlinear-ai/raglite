@@ -156,7 +156,7 @@ The answer MUST satisfy ALL of the following criteria:
             session.commit()
 
 
-def update_query_adapter(
+def update_query_adapter(  # noqa: C901
     *,
     max_triplets: int = 4096,
     max_triplets_per_eval: int = 64,
@@ -207,10 +207,8 @@ def update_query_adapter(
             select(Eval).order_by(Eval.id).limit(max(8, max_triplets // max_triplets_per_eval))
         ).all()
         if len(evals) * max_triplets_per_eval < config.embedder.n_embd():
-            error_message = (
-                "Run `insert_evals` to generate sufficient Evals before updating the query adapter"
-            )
-            raise ValueError
+            error_message = "First run `insert_evals()` to generate sufficient Evals."
+            raise ValueError(error_message)
         # Loop over the evals to generate (q, p, n) triplets.
         Q = np.zeros((0, config.embedder.n_embd()))  # We want double precision here.  # noqa: N806
         P = np.zeros_like(Q)  # noqa: N806
@@ -231,17 +229,23 @@ def update_query_adapter(
             # Extract (q, p, n) triplets by comparing the retrieved chunks with the eval.
             num_triplets = 0
             for i, retrieved_chunk in enumerate(retrieved_chunks):
+                # Raise an error if the retrieved chunk is None.
+                if retrieved_chunk is None:
+                    error_message = (
+                        f"The chunk with rowid {chunk_rowids[i]} is missing from the database."
+                    )
+                    raise ValueError(error_message)
                 # Select irrelevant chunks.
                 if retrieved_chunk.id not in eval_.chunk_ids:
                     # Look up all positive chunks that are ranked lower than this negative one.
-                    p = [
+                    p_mve = [
                         np.mean(chunk.multi_vector_embedding, axis=0, keepdims=True)
                         for chunk in retrieved_chunks[i + 1 :]
-                        if chunk.id in eval_.chunk_ids
+                        if chunk is not None and chunk.id in eval_.chunk_ids
                     ]
-                    if not p:
+                    if not p_mve:
                         continue
-                    p = np.vstack(p)
+                    p = np.vstack(p_mve)
                     n = np.repeat(
                         np.mean(retrieved_chunk.multi_vector_embedding, axis=0, keepdims=True),
                         p.shape[0],
@@ -298,15 +302,15 @@ def answer_evals(
     with Session(engine) as session:
         evals = session.exec(select(Eval)).all()
     # Answer evals with RAG.
-    answers = []
+    answers: list[str] = []
     for eval_ in tqdm(evals, desc="Answering evals", unit="eval", dynamic_ncols=True):
         response = rag(eval_.question, search=search, config=config)
         answer = "".join(response)
         answers.append(answer)
     # Evaluate the answers.
-    test_set = {
+    test_set: dict[str, list[str | list[str]]] = {
         "question": [eval_.question for eval_ in evals],
-        "answer": answers,
+        "answer": answers,  # type: ignore[dict-item]
         "contexts": [eval_.contexts for eval_ in evals],
         "ground_truth": [eval_.ground_truth for eval_ in evals],
     }
