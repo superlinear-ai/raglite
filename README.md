@@ -1,57 +1,81 @@
-[![Open in Dev Containers](https://img.shields.io/static/v1?label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/radix-ai/raglite)
+[![Open in Dev Containers](https://img.shields.io/static/v1?label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/radix-ai/raglite) [![Open in GitHub Codespaces](https://img.shields.io/static/v1?label=GitHub%20Codespaces&message=Open&color=blue&logo=github)](https://github.com/codespaces/new?hide_repo_select=true&ref=main&repo=812973394&skip_quickstart=true)
 
 # RAGLite
 
-A RAG extension for SQLite.
+RAGLite is a Python package for Retrieval-Augmented Generation (RAG) with SQLite.
 
-⚠️ This project is a work in progress!
+## Features
+
+1. ❤️ Only lightweight and permissive open source dependencies (e.g., no [PyTorch](https://github.com/pytorch/pytorch), [LangChain](https://github.com/langchain-ai/langchain), or [PyMuPDF](https://github.com/pymupdf/PyMuPDF))
+2. 🔒 Fully local RAG with [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) as an LLM provider and [SQLite](https://github.com/sqlite/sqlite) as a local database
+3. 🚀 Acceleration with Metal on macOS and with CUDA on Linux and Windows
+4. 📖 PDF to Markdown conversion on top of [pdftext](https://github.com/VikParuchuri/pdftext) and [pypdfium2](https://github.com/pypdfium2-team/pypdfium2)
+5. ✂️ Optimal [level 4 semantic chunking](https://medium.com/@anuragmishra_27746/five-levels-of-chunking-strategies-in-rag-notes-from-gregs-video-7b735895694d)
+6. 📌 Markdown-based [contextual chunk headings](https://d-star.ai/solving-the-out-of-context-chunk-problem-for-rag)
+7. 🌈 [Multi-vector chunk retrieval](https://python.langchain.com/v0.2/docs/how_to/multi_vector/)
+8. 🌀 Optimal closed-form linear query adapter by solving an [(orthogonal) Procrustes problem](https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem)
+9. 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) that combines [SQLite's BM25 full-text search](https://sqlite.org/fts5.html) with [PyNNDescent's ANN vector search](https://github.com/lmcinnes/pynndescent)
+10. ✍️ Optional support for automatic conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
 
 ## Installing
 
-To install this package, run:
+To install this package (including Metal acceleration if on macOS), run:
 
 ```sh
 pip install raglite
 ```
 
-## Features
+To add CUDA 12.4 support, use the `cuda124` extra:
 
-1. 👐 Permissive open source dependencies
-2. 🛡️ Fully local RAG with [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) as an LLM provider and [SQLite](https://github.com/sqlite/sqlite) as a local database
-3. ✍️ Automatic conversion to Markdown of any input document
-4. ✂️ Optimal Markdown-aware [level 4 semantic chunking](https://medium.com/@anuragmishra_27746/five-levels-of-chunking-strategies-in-rag-notes-from-gregs-video-7b735895694d)
-5. 🌈 Multiple vector chunk embedding with [hypothetical queries](https://python.langchain.com/v0.2/docs/how_to/multi_vector/#hypothetical-queries)
-6. 🔍 Hybrid search that combines [SQLite's BM25 full-text search](https://sqlite.org/fts5.html) with [PyNNDescent's ANN vector search](https://github.com/lmcinnes/pynndescent) using [Reciprocal Rank Fusion](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf)
+```sh
+pip install raglite[cuda124]
+```
+
+To add support for filetypes other than PDF, use the `pandoc` extra:
+
+```sh
+pip install raglite[pandoc]
+```
 
 ## Using
 
 Example usage:
 
 ```python
-# Index:
+# Configure the database and LLM:
+from raglite import RAGLiteConfig
+
+my_config = RAGLiteConfig(db_url="sqlite:///raglite.sqlite")
+
+# Index documents:
 from pathlib import Path
-from raglite.document_indexer import insert_document, update_index
+from raglite import insert_document, update_vector_index
 
-doc_path = Path("intelligence.pdf")
-insert_document(doc_path)
-update_index()
+insert_document(Path("On the Measure of Intelligence.pdf"), config=my_config)
+insert_document(Path("Situational Awareness.pdf"), config=my_config)
+update_vector_index(config=my_config)
 
-# Search:
-from raglite.search import keyword_search, vector_search, hybrid_search, fusion_search
+# Search for chunks:
+from raglite import hybrid_search, keyword_search, vector_search
 
 prompt = "How is intelligence measured?"
-results_vector = vector_search(prompt, num_results=5)
-results_bm25 = keyword_search(prompt, num_results=5)
-results_hybrid = hybrid_search(prompt, num_results=5)
-results_fusion = fusion_search(prompt, num_results=5)
+results_vector = vector_search(prompt, num_results=5, config=my_config)
+results_keyword = keyword_search(prompt, num_results=5, config=my_config)
+results_hybrid = hybrid_search(prompt, num_results=5, config=my_config)
 
-# RAG:
-from raglite.rag import rag
+# Answer questions with RAG:
+from raglite import rag
 
 prompt = "What is a 'SkillProgram'?"
-stream = rag(prompt, search=hybrid_search)
+stream = rag(prompt, search=hybrid_search, config=my_config)
 for update in stream:
     print(update, end="")
+
+# Improve RAG with an optimal query adapter (optional):
+from raglite import insert_evals, update_query_adapter
+
+insert_evals(num_evals=100, config=my_config)
+update_query_adapter(config=my_config)
 ```
 
 ## Contributing
