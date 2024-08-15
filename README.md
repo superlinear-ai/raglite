@@ -6,6 +6,19 @@ A Retrieval-Augmented Generation (RAG) library for SQLite.
 
 ⚠️ This project is a work in progress!
 
+## Features
+
+1. ❤️ Only lightweight and permissive open source dependencies (e.g., no [PyTorch](https://github.com/pytorch/pytorch), [LangChain](https://github.com/langchain-ai/langchain), or [PyMuPDF](https://github.com/pymupdf/PyMuPDF))
+2. 🔒 Fully local RAG with [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) as an LLM provider and [SQLite](https://github.com/sqlite/sqlite) as a local database
+3. 🚀 Acceleration with Metal on macOS and with CUDA on Linux and Windows
+4. 📖 PDF to Markdown conversion on top of [pdftext](https://github.com/VikParuchuri/pdftext) and [pypdfium2](https://github.com/pypdfium2-team/pypdfium2)
+5. ✂️ Optimal [level 4 semantic chunking](https://medium.com/@anuragmishra_27746/five-levels-of-chunking-strategies-in-rag-notes-from-gregs-video-7b735895694d)
+6. 📌 Markdown-based [contextual chunk headings](https://d-star.ai/solving-the-out-of-context-chunk-problem-for-rag)
+7. 🌈 [Multi-vector chunk retrieval](https://python.langchain.com/v0.2/docs/how_to/multi_vector/)
+8. 🌀 Optimal closed-form linear query adapter by solving an [(orthogonal) Procrustes problem](https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem)
+9. 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) that combines [SQLite's BM25 full-text search](https://sqlite.org/fts5.html) with [PyNNDescent's ANN vector search](https://github.com/lmcinnes/pynndescent)
+10. ✍️ Optional support for automatic conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
+
 ## Installing
 
 To install this package (including Metal acceleration if on macOS), run:
@@ -25,19 +38,6 @@ To add support for filetypes other than PDF, use the `pandoc` extra:
 ```sh
 pip install raglite[pandoc]
 ```
-
-## Features
-
-1. ❤️ Only lightweight and permissive open source dependencies (e.g., no [PyTorch](https://github.com/pytorch/pytorch), [LangChain](https://github.com/langchain-ai/langchain), or [PyMuPDF](https://github.com/pymupdf/PyMuPDF))
-2. 🔒 Fully local RAG with [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) as an LLM provider and [SQLite](https://github.com/sqlite/sqlite) as a local database
-3. 🚀 Acceleration with Metal on macOS and with CUDA on Linux and Windows
-4. 📖 PDF to Markdown conversion on top of [pdftext](https://github.com/VikParuchuri/pdftext) and [pypdfium2](https://github.com/pypdfium2-team/pypdfium2)
-5. ✂️ Optimal [level 4 semantic chunking](https://medium.com/@anuragmishra_27746/five-levels-of-chunking-strategies-in-rag-notes-from-gregs-video-7b735895694d)
-6. 📌 Markdown-based [contextual chunk headings](https://d-star.ai/solving-the-out-of-context-chunk-problem-for-rag)
-7. 🌈 [Multi-vector chunk retrieval](https://python.langchain.com/v0.2/docs/how_to/multi_vector/)
-8. 🌀 Optimal closed-form linear query adapter by solving an [(orthogonal) Procrustes problem](https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem)
-9. 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) that combines [SQLite's BM25 full-text search](https://sqlite.org/fts5.html) with [PyNNDescent's ANN vector search](https://github.com/lmcinnes/pynndescent)
-10. ✍️ Optional support for automatic conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
 
 ## Using
 
