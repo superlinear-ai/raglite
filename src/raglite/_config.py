@@ -56,6 +56,6 @@ class RAGLiteConfig:
     chunk_sentence_window_size: int = 3
     # Database config.
     db_url: str | URL = "sqlite:///raglite.sqlite"
-    # ANN config.
-    ann_vector_index_id: str = "default"
-    ann_vector_index_metric: str = "cosine"  # The query adapter supports "dot" and "cosine".
+    # Vector search config.
+    vector_search_index_id: str = "default"
+    vector_search_index_metric: str = "cosine"  # The query adapter supports "dot" and "cosine".

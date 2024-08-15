@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 from tqdm.auto import tqdm
 
 from raglite._config import RAGLiteConfig
-from raglite._database import Chunk, ChunkANNIndex, Eval, create_database_engine
+from raglite._database import Chunk, Eval, VectorSearchChunkIndex, create_database_engine
 from raglite._embed import embed_strings
 from raglite._extract import extract_with_llm
 from raglite._rag import rag
@@ -271,22 +271,22 @@ def update_query_adapter(  # noqa: C901
         # Compute the optimal query adapter A*.
         # TODO: Matmul in float16 is extremely slow compared to single or double precision, why?
         MT = (P - N).T @ Q  # noqa: N806
-        if config.ann_vector_index_metric == "dot":
+        if config.vector_search_index_metric == "dot":
             # Use the relaxed Procrustes solution.
             A_star = MT / np.linalg.norm(MT, ord="fro")  # noqa: N806
-        elif config.ann_vector_index_metric == "cosine":
+        elif config.vector_search_index_metric == "cosine":
             # Use the orthogonal Procrustes solution.
             U, _, VT = np.linalg.svd(MT, full_matrices=False)  # noqa: N806
             A_star = U @ VT  # noqa: N806
         else:
-            error_message = f"Unsupported ANN vector index metric: {config.ann_vector_index_metric}"
+            error_message = f"Unsupported ANN metric: {config.vector_search_index_metric}"
             raise ValueError(error_message)
         # Store the optimal query adapter in the database.
-        chunk_ann_index = session.get(ChunkANNIndex, config.ann_vector_index_id) or ChunkANNIndex(
-            id=config.ann_vector_index_id
-        )
-        chunk_ann_index.query_adapter = A_star
-        session.add(chunk_ann_index)
+        vector_search_chunk_index = session.get(
+            VectorSearchChunkIndex, config.vector_search_index_id
+        ) or VectorSearchChunkIndex(id=config.vector_search_index_id)
+        vector_search_chunk_index.query_adapter = A_star
+        session.add(vector_search_chunk_index)
         session.commit()
 
 

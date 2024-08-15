@@ -13,23 +13,29 @@ from pynndescent import NNDescent
 from sqlmodel import Session, select, text
 
 from raglite._config import RAGLiteConfig
-from raglite._database import Chunk, ChunkANNIndex, create_database_engine
+from raglite._database import Chunk, VectorSearchChunkIndex, create_database_engine
 from raglite._embed import embed_strings
 from raglite._extract import extract_with_llm
 from raglite._typing import FloatMatrix, IntVector
 
 
 @lru_cache(maxsize=1)
-def _chunk_ann_index(config: RAGLiteConfig) -> tuple[NNDescent, IntVector, FloatMatrix | None]:
+def _vector_search_chunk_index(
+    config: RAGLiteConfig,
+) -> tuple[NNDescent, IntVector, FloatMatrix | None]:
     engine = create_database_engine(config.db_url)
     with Session(engine) as session:
-        chunk_ann_index = session.get(ChunkANNIndex, config.ann_vector_index_id)
-        if chunk_ann_index is None:
-            error_message = "First run `update_vector_index()` to create an ANN vector index."
+        vector_search_chunk_index = session.get(
+            VectorSearchChunkIndex, config.vector_search_index_id
+        )
+        if vector_search_chunk_index is None:
+            error_message = "First run `update_vector_index()` to create a vector search index."
             raise ValueError(error_message)
-        index = chunk_ann_index.index
-        chunk_size_cumsum = np.cumsum(np.asarray(chunk_ann_index.chunk_sizes, dtype=np.intp))
-        query_adapter = chunk_ann_index.query_adapter
+        index = vector_search_chunk_index.index
+        chunk_size_cumsum = np.cumsum(
+            np.asarray(vector_search_chunk_index.chunk_sizes, dtype=np.intp)
+        )
+        query_adapter = vector_search_chunk_index.query_adapter
     return index, chunk_size_cumsum, query_adapter
 
 
@@ -43,7 +49,7 @@ def vector_search(
     """Search chunks using ANN vector search."""
     # Retrieve the index from the database.
     config = config or RAGLiteConfig()
-    index, chunk_size_cumsum, Q = _chunk_ann_index(config)  # noqa: N806
+    index, chunk_size_cumsum, Q = _vector_search_chunk_index(config)  # noqa: N806
     # Embed the prompt.
     prompt_embedding = (
         embed_strings([prompt], config=config)
@@ -93,7 +99,7 @@ def keyword_search(
     with Session(engine) as session:
         # Perform the full-text search query using the BM25 ranking.
         statement = text(
-            "SELECT chunk.rowid, bm25(chunk_fts) FROM chunk JOIN chunk_fts ON chunk.rowid = chunk_fts.rowid WHERE chunk_fts MATCH :match ORDER BY rank LIMIT :limit;"
+            "SELECT chunk.rowid, bm25(fts_chunk_index) FROM chunk JOIN fts_chunk_index ON chunk.rowid = fts_chunk_index.rowid WHERE fts_chunk_index MATCH :match ORDER BY rank LIMIT :limit;"
         )
         results = session.execute(
             statement, params={"match": _prompt_to_fts_query(prompt), "limit": num_results}

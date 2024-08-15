@@ -9,7 +9,7 @@ from sqlmodel import Session, select
 from tqdm.auto import tqdm
 
 from raglite._config import RAGLiteConfig
-from raglite._database import Chunk, ChunkANNIndex, Document, create_database_engine
+from raglite._database import Chunk, Document, VectorSearchChunkIndex, create_database_engine
 from raglite._embed import embed_strings
 from raglite._markdown import document_to_markdown
 from raglite._split_chunks import split_chunks
@@ -99,15 +99,15 @@ def insert_document(doc_path: Path, *, config: RAGLiteConfig | None = None) -> N
 
 
 def update_vector_index(config: RAGLiteConfig | None = None) -> None:
-    """Update the chunk ANN index with any unindexed chunks."""
+    """Update the vector search chunk index with any unindexed chunks."""
     config = config or RAGLiteConfig()
     engine = create_database_engine(config.db_url)
     with Session(engine) as session:
-        # Get the chunk ANN index from the database, or create a new one.
-        chunk_ann_index = session.get(ChunkANNIndex, config.ann_vector_index_id) or ChunkANNIndex(
-            id=config.ann_vector_index_id
-        )
-        num_chunks_indexed = len(chunk_ann_index.chunk_sizes)
+        # Get the vector search chunk index from the database, or create a new one.
+        vector_search_chunk_index = session.get(
+            VectorSearchChunkIndex, config.vector_search_index_id
+        ) or VectorSearchChunkIndex(id=config.vector_search_index_id)
+        num_chunks_indexed = len(vector_search_chunk_index.chunk_sizes)
         # Get the unindexed chunks.
         statement = select(Chunk).offset(num_chunks_indexed)
         unindexed_chunks = session.exec(statement).all()
@@ -124,17 +124,17 @@ def update_vector_index(config: RAGLiteConfig | None = None) -> None:
                 return
             X_unindexed = np.vstack([chunk.multi_vector_embedding for chunk in unindexed_chunks])  # noqa: N806
             if num_chunks_indexed == 0:
-                chunk_ann_index.index = NNDescent(
-                    X_unindexed, metric=config.ann_vector_index_metric
+                vector_search_chunk_index.index = NNDescent(
+                    X_unindexed, metric=config.vector_search_index_metric
                 )
-                chunk_ann_index.index.prepare()
+                vector_search_chunk_index.index.prepare()
             else:
-                chunk_ann_index.index.update(X_unindexed)  # type: ignore[union-attr]
-                chunk_ann_index.index.prepare()  # type: ignore[union-attr]
-            chunk_ann_index.chunk_sizes.extend(
+                vector_search_chunk_index.index.update(X_unindexed)  # type: ignore[union-attr]
+                vector_search_chunk_index.index.prepare()  # type: ignore[union-attr]
+            vector_search_chunk_index.chunk_sizes.extend(
                 [chunk.multi_vector_embedding.shape[0] for chunk in unindexed_chunks]
             )
-            pbar.update(num_chunks_unindexed)
-            # Store the updated chunk ANN index.
-            session.add(chunk_ann_index)
+            # Store the updated vector search chunk index.
+            session.add(vector_search_chunk_index)
             session.commit()
+            pbar.update(num_chunks_unindexed)

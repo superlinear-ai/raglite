@@ -165,10 +165,10 @@ class Chunk(SQLModel, table=True):
         arbitrary_types_allowed = True
 
 
-class ChunkANNIndex(SQLModel, table=True):
-    """A chunk ANN index."""
+class VectorSearchChunkIndex(SQLModel, table=True):
+    """A vector search index for chunks."""
 
-    __tablename__ = "chunk_ann_index"
+    __tablename__ = "vs_chunk_index"  # Vector search chunk index.
 
     id: str = Field(..., primary_key=True)
     chunk_sizes: list[int] = Field(default=[], sa_column=Column(JSON))
@@ -245,28 +245,28 @@ def create_database_engine(db_url: str | URL = "sqlite:///raglite.sqlite") -> En
     with Session(engine) as session:
         session.execute(
             text("""
-        CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(body, content='chunk', content_rowid='rowid');
+        CREATE VIRTUAL TABLE IF NOT EXISTS fts_chunk_index USING fts5(body, content='chunk', content_rowid='rowid');
         """)
         )
         session.execute(
             text("""
-        CREATE TRIGGER IF NOT EXISTS chunk_fts_auto_insert AFTER INSERT ON chunk BEGIN
-            INSERT INTO chunk_fts(rowid, body) VALUES (new.rowid, new.body);
+        CREATE TRIGGER IF NOT EXISTS fts_chunk_index_auto_insert AFTER INSERT ON chunk BEGIN
+            INSERT INTO fts_chunk_index(rowid, body) VALUES (new.rowid, new.body);
         END;
         """)
         )
         session.execute(
             text("""
-        CREATE TRIGGER IF NOT EXISTS chunk_fts_auto_delete AFTER DELETE ON chunk BEGIN
-            INSERT INTO chunk_fts(chunk_fts, rowid, body) VALUES('delete', old.rowid, old.body);
+        CREATE TRIGGER IF NOT EXISTS fts_chunk_index_auto_delete AFTER DELETE ON chunk BEGIN
+            INSERT INTO fts_chunk_index(fts_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
         END;
         """)
         )
         session.execute(
             text("""
-        CREATE TRIGGER IF NOT EXISTS chunk_fts_auto_update AFTER UPDATE ON chunk BEGIN
-            INSERT INTO chunk_fts(chunk_fts, rowid, body) VALUES('delete', old.rowid, old.body);
-            INSERT INTO chunk_fts(rowid, body) VALUES (new.rowid, new.body);
+        CREATE TRIGGER IF NOT EXISTS fts_chunk_index_auto_update AFTER UPDATE ON chunk BEGIN
+            INSERT INTO fts_chunk_index(fts_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
+            INSERT INTO fts_chunk_index(rowid, body) VALUES (new.rowid, new.body);
         END;
         """)
         )
