@@ -11,22 +11,20 @@ from raglite import (
 )
 
 
-def test_insert_index_search() -> None:
+def test_insert_index_search(simple_config: RAGLiteConfig) -> None:
     """Test inserting a document, updating the vector index, and searching for a query."""
-    # Run this test with an in-memory SQLite database.
-    in_memory_db = RAGLiteConfig(db_url="sqlite:///:memory:")
     # Insert a document.
     doc_path = Path(__file__).parent / "specrel.pdf"  # Einstein's special relativity paper.
-    insert_document(doc_path, config=in_memory_db)
+    insert_document(doc_path, config=simple_config)
     # Update the vector index with the new document.
-    update_vector_index(config=in_memory_db)
+    update_vector_index(config=simple_config)
     # Search for a query.
     query = "What does it mean for two events to be simultaneous?"
-    chunk_rowids, scores = hybrid_search(query, config=in_memory_db)
+    chunk_rowids, scores = hybrid_search(query, config=simple_config)
     assert len(chunk_rowids) == len(scores)
     assert all(isinstance(rowid, int) for rowid in chunk_rowids)
     assert all(isinstance(score, float) for score in scores)
     # Group the chunks into segments and retrieve them.
-    segments = retrieve_segments(chunk_rowids, neighbors=None, config=in_memory_db)
+    segments = retrieve_segments(chunk_rowids, neighbors=None, config=simple_config)
     assert all(isinstance(segment, str) for segment in segments)
     assert "Definition of Simultaneity" in segments[0]

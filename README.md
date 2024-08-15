@@ -2,9 +2,7 @@
 
 # RAGLite
 
-A Retrieval-Augmented Generation (RAG) library for SQLite.
-
-⚠️ This project is a work in progress!
+RAGLite is a Python package for Retrieval-Augmented Generation (RAG) with SQLite.
 
 ## Features
 
