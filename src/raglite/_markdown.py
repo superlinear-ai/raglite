@@ -33,17 +33,18 @@ def parsed_pdf_to_markdown(pages: list[dict[str, Any]]) -> list[str]:  # noqa: C
         font_sizes = np.round(font_sizes * 2) / 2
         unique_font_sizes, counts = np.unique(font_sizes, return_counts=True)
         # Determine the paragraph font size as the mode font size.
-        tiny = unique_font_sizes < 5  # noqa: PLR2004
+        tiny = unique_font_sizes < min(5, np.max(unique_font_sizes))
         counts[tiny] = -counts[tiny]
         mode = np.argmax(counts)
         counts[tiny] = -counts[tiny]
         mode_font_size = unique_font_sizes[mode]
         # Determine (at most) 6 heading font sizes by clustering font sizes larger than the mode.
         heading_font_sizes = unique_font_sizes[mode + 1 :]
-        heading_counts = counts[mode + 1 :]
-        kmeans = KMeans(n_clusters=min(6, len(heading_font_sizes)), random_state=42)
-        kmeans.fit(heading_font_sizes[:, np.newaxis], sample_weight=heading_counts)
-        heading_font_sizes = np.sort(np.ravel(kmeans.cluster_centers_))[::-1]
+        if len(heading_font_sizes) > 0:
+            heading_counts = counts[mode + 1 :]
+            kmeans = KMeans(n_clusters=min(6, len(heading_font_sizes)), random_state=42)
+            kmeans.fit(heading_font_sizes[:, np.newaxis], sample_weight=heading_counts)
+            heading_font_sizes = np.sort(np.ravel(kmeans.cluster_centers_))[::-1]
         # Add heading level information to the text spans and lines.
         for page in pages:
             for block in page["blocks"]:

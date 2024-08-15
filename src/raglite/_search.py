@@ -79,7 +79,7 @@ def vector_search(
     sorted_indices = np.argsort(pooled_cosine_similarity)[::-1]
     unique_chunk_rowids = unique_chunk_rowids[sorted_indices][:num_results]
     pooled_cosine_similarity = pooled_cosine_similarity[sorted_indices][:num_results]
-    return list(unique_chunk_rowids), list(pooled_cosine_similarity)
+    return unique_chunk_rowids.tolist(), pooled_cosine_similarity.tolist()
 
 
 def _prompt_to_fts_query(prompt: str) -> str:
