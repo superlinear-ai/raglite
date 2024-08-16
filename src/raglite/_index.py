@@ -54,8 +54,10 @@ def _create_chunk_records(
     return chunk_records
 
 
-def insert_document(doc_path: Path, *, config: RAGLiteConfig | None = None) -> None:
-    """Insert a document into the database."""
+def insert_document(
+    doc_path: Path, *, update_index: bool = True, config: RAGLiteConfig | None = None
+) -> None:
+    """Insert a document into the database and update the index."""
     # Use the default config if not provided.
     config = config or RAGLiteConfig()
     # Preprocess the document into chunks.
@@ -96,6 +98,9 @@ def insert_document(doc_path: Path, *, config: RAGLiteConfig | None = None) -> N
                 continue
             session.add(chunk_record)
             session.commit()
+    # Update the vector search chunk index.
+    if update_index:
+        update_vector_index(config)
 
 
 def update_vector_index(config: RAGLiteConfig | None = None) -> None:
