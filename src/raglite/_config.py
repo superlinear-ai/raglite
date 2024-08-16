@@ -5,20 +5,31 @@ from functools import lru_cache
 
 import numpy as np
 import numpy.typing as npt
-from llama_cpp import Llama, LlamaRAMCache  # type: ignore[attr-defined]
+from llama_cpp import Llama, LlamaRAMCache, llama_supports_gpu_offload  # type: ignore[attr-defined]
 from sqlalchemy.engine import URL
 
 
 @lru_cache(maxsize=1)
 def default_llm() -> Llama:
     """Get default LLM."""
+    # Select the best available LLM for the given accelerator.
+    if llama_supports_gpu_offload():
+        # Llama-3.1-8B-instruct on GPU.
+        repo_id = "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF"  # https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct
+        filename = "*Q4_K_M.gguf"
+    else:
+        # Phi-3.1-mini-128k-instruct on CPU.
+        repo_id = "bartowski/Phi-3.1-mini-128k-instruct-GGUF"  # https://huggingface.co/microsoft/Phi-3-mini-128k-instruct
+        filename = "*Q4_K_M.gguf"
+    # Load the LLM.
     llm = Llama.from_pretrained(
-        repo_id="bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",  # https://github.com/meta-llama/llama-models
-        filename="*Q4_K_M.gguf",
+        repo_id=repo_id,
+        filename=filename,
         n_ctx=8192,  # 0 = Use the model's context size (default is 512).
         n_gpu_layers=-1,  # -1 = Offload all layers to the GPU (default is 0).
         verbose=False,
     )
+    # Enable caching.
     llm.set_cache(LlamaRAMCache())
     return llm
 
@@ -26,9 +37,10 @@ def default_llm() -> Llama:
 @lru_cache(maxsize=1)
 def default_embedder() -> Llama:
     """Get default embedder."""
+    # Load the embedder.
     embedder = Llama.from_pretrained(
-        repo_id="ChristianAzinn/snowflake-arctic-embed-l-gguf",  # https://github.com/Snowflake-Labs/arctic-embed
-        filename="*f16.GGUF",
+        repo_id="yishan-wang/snowflake-arctic-embed-m-v1.5-Q8_0-GGUF",  # https://github.com/Snowflake-Labs/arctic-embed
+        filename="*q8_0.gguf",
         n_ctx=0,  # 0 = Use the model's context size (default is 512).
         n_gpu_layers=-1,  # -1 = Offload all layers to the GPU (default is 0).
         verbose=False,
