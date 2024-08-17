@@ -17,7 +17,7 @@ def split_chunks(
     sentence_window_size: int = 3,
     embed: Callable[[list[str]], FloatMatrix] = embed_strings,
 ) -> tuple[list[str], list[FloatMatrix]]:
-    """Split sentences into optimal semantic chunks."""
+    """Split sentences into optimal semantic chunks with corresponding sentence embeddings."""
     # Window the sentences.
     whisker_size = (sentence_window_size - 1) // 2
     windows = [
@@ -96,8 +96,8 @@ def split_chunks(
         "".join(sentences[i:j])
         for i, j in zip([0, *partition_indices], [*partition_indices, len(sentences)], strict=True)
     ]
-    multi_vector_embeddings = [
+    sentence_embeddings = [
         window_embeddings[i:j]
         for i, j in zip([0, *partition_indices], [*partition_indices, len(sentences)], strict=True)
     ]
-    return chunks, multi_vector_embeddings
+    return chunks, sentence_embeddings

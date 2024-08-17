@@ -1,5 +1,6 @@
 """Index documents."""
 
+from copy import deepcopy
 from functools import partial
 from pathlib import Path
 
@@ -23,7 +24,7 @@ def _create_chunk_records(
     multi_vector_embeddings: list[FloatMatrix],
     config: RAGLiteConfig,
 ) -> list[Chunk]:
-    """Process chunks into headings, body and improved multi-vector embeddings."""
+    """Process chunks into headings, body and contextualized multi-vector embeddings."""
     # Create the chunk records.
     chunk_records = []
     contextualized_chunks = []
@@ -40,13 +41,16 @@ def _create_chunk_records(
         headings = chunk_record.extract_headings()
     # Embed the contextualised chunks.
     contextualized_embeddings = embed_strings(contextualized_chunks, config=config)
-    # Update the chunk records with improved multi-vector embeddings that combine its multi-vector
-    # embedding with its contextualised chunk embedding.
+    # Update the chunk's multi-vector embeddings as a combination of its sentence embeddings (that
+    # capture local context) with an embedding of the whole contextualised chunk (that captures
+    # global context).
     for chunk_record, multi_vector_embedding, contextualized_embedding in zip(
         chunk_records, multi_vector_embeddings, contextualized_embeddings, strict=True
     ):
         chunk_embedding = (
+            # Sentence embeddings that captures local context.
             config.multi_vector_weight * multi_vector_embedding
+            # Contextualised chunk embedding that captures global context.
             + (1 - config.multi_vector_weight) * contextualized_embedding[np.newaxis, :]
         )
         chunk_embedding = chunk_embedding / np.linalg.norm(chunk_embedding, axis=1, keepdims=True)
@@ -124,21 +128,22 @@ def update_vector_index(config: RAGLiteConfig | None = None) -> None:
             unit="chunk",
             dynamic_ncols=True,
         ) as pbar:
+            # Fit or update the ANN index.
             pbar.update(num_chunks_indexed)
             if num_chunks_unindexed == 0:
                 return
             X_unindexed = np.vstack([chunk.multi_vector_embedding for chunk in unindexed_chunks])  # noqa: N806
             if num_chunks_indexed == 0:
-                vector_search_chunk_index.index = NNDescent(
-                    X_unindexed, metric=config.vector_search_index_metric
-                )
-                vector_search_chunk_index.index.prepare()
+                nndescent = NNDescent(X_unindexed, metric=config.vector_search_index_metric)
             else:
-                vector_search_chunk_index.index.update(X_unindexed)  # type: ignore[union-attr]
-                vector_search_chunk_index.index.prepare()  # type: ignore[union-attr]
-            vector_search_chunk_index.chunk_sizes.extend(
-                [chunk.multi_vector_embedding.shape[0] for chunk in unindexed_chunks]
-            )
+                nndescent = deepcopy(vector_search_chunk_index.index)
+                nndescent.update(X_unindexed)
+            nndescent.prepare()
+            # Mark the vector search chunk index as dirty.
+            vector_search_chunk_index.index = nndescent
+            vector_search_chunk_index.chunk_sizes = vector_search_chunk_index.chunk_sizes + [
+                chunk.multi_vector_embedding.shape[0] for chunk in unindexed_chunks
+            ]
             # Store the updated vector search chunk index.
             session.add(vector_search_chunk_index)
             session.commit()

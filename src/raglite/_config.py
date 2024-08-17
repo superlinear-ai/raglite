@@ -37,10 +37,17 @@ def default_llm() -> Llama:
 @lru_cache(maxsize=1)
 def default_embedder() -> Llama:
     """Get default embedder."""
+    # Select the best available embedder for the given accelerator.
+    if llama_supports_gpu_offload():
+        repo_id = "ChristianAzinn/snowflake-arctic-embed-l-gguf"  # https://github.com/Snowflake-Labs/arctic-embed
+        filename = "*f16.GGUF"
+    else:
+        repo_id = "yishan-wang/snowflake-arctic-embed-m-v1.5-Q8_0-GGUF"  # https://github.com/Snowflake-Labs/arctic-embed
+        filename = "*q8_0.gguf"
     # Load the embedder.
     embedder = Llama.from_pretrained(
-        repo_id="yishan-wang/snowflake-arctic-embed-m-v1.5-Q8_0-GGUF",  # https://github.com/Snowflake-Labs/arctic-embed
-        filename="*q8_0.gguf",
+        repo_id=repo_id,
+        filename=filename,
         n_ctx=0,  # 0 = Use the model's context size (default is 512).
         n_gpu_layers=-1,  # -1 = Offload all layers to the GPU (default is 0).
         verbose=False,
