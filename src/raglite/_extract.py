@@ -56,12 +56,13 @@ def extract_with_llm(
         )
         try:
             instance = return_type.model_validate_json(response["choices"][0]["message"]["content"])  # type: ignore[arg-type,index]
-        except (KeyError, ValueError, ValidationError):
+        except (KeyError, ValueError, ValidationError) as e:
             # Malformed response, not a JSON string, or not a valid instance of the return type.
+            last_exception = e
             continue
         else:
             break
     else:
         error_message = f"Failed to extract {return_type} from input {user_prompt}."
-        raise ValueError(error_message)
+        raise ValueError(error_message) from last_exception
     return instance
