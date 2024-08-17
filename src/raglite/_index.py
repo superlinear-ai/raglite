@@ -21,40 +21,31 @@ from raglite._typing import FloatMatrix
 def _create_chunk_records(
     document_id: str,
     chunks: list[str],
-    multi_vector_embeddings: list[FloatMatrix],
+    sentence_embeddings: list[FloatMatrix],
     config: RAGLiteConfig,
 ) -> list[Chunk]:
-    """Process chunks into headings, body and contextualized multi-vector embeddings."""
+    """Process chunks into chunk records comprising headings, body, and a multi-vector embedding."""
     # Create the chunk records.
-    chunk_records = []
-    contextualized_chunks = []
-    headings = ""
+    chunk_records, headings = [], ""
     for i, chunk in enumerate(chunks):
-        # Create and append the contextualised chunk, which includes the current Markdown headings.
-        contextualized_chunks.append(headings + "\n\n" + chunk)
         # Create and append the chunk record.
-        chunk_record = Chunk.from_body(
-            document_id=document_id, index=i, body=chunk, headings=headings
-        )
-        chunk_records.append(chunk_record)
+        record = Chunk.from_body(document_id=document_id, index=i, body=chunk, headings=headings)
+        chunk_records.append(record)
         # Update the Markdown headings with those of this chunk.
-        headings = chunk_record.extract_headings()
-    # Embed the contextualised chunks.
-    contextualized_embeddings = embed_strings(contextualized_chunks, config=config)
-    # Update the chunk's multi-vector embeddings as a combination of its sentence embeddings (that
-    # capture local context) with an embedding of the whole contextualised chunk (that captures
-    # global context).
-    for chunk_record, multi_vector_embedding, contextualized_embedding in zip(
-        chunk_records, multi_vector_embeddings, contextualized_embeddings, strict=True
+        headings = record.extract_headings()
+    # Embed the contextualised chunks, which include the current Markdown headings.
+    contextualized_embeddings = embed_strings([str(chunk) for chunk in chunks], config=config)
+    # Set the chunk's multi-vector embedding as a linear combination of its sentence embeddings
+    # (for local context) and an embedding of the contextualised chunk (for global context).
+    for record, sentence_embedding, contextualized_embedding in zip(
+        chunk_records, sentence_embeddings, contextualized_embeddings, strict=True
     ):
         chunk_embedding = (
-            # Sentence embeddings that captures local context.
-            config.multi_vector_weight * multi_vector_embedding
-            # Contextualised chunk embedding that captures global context.
-            + (1 - config.multi_vector_weight) * contextualized_embedding[np.newaxis, :]
+            config.sentence_embedding_weight * sentence_embedding
+            + (1 - config.sentence_embedding_weight) * contextualized_embedding[np.newaxis, :]
         )
         chunk_embedding = chunk_embedding / np.linalg.norm(chunk_embedding, axis=1, keepdims=True)
-        chunk_record.multi_vector_embedding = chunk_embedding
+        record.multi_vector_embedding = chunk_embedding
     return chunk_records
 
 
@@ -76,7 +67,7 @@ def insert_document(
         sentences = split_sentences(doc, max_len=config.chunk_max_size)
         pbar.update(1)
         pbar.set_description("Splitting chunks")
-        chunks, multi_vector_embeddings = split_chunks(
+        chunks, sentence_embeddings = split_chunks(
             sentences,
             max_size=config.chunk_max_size,
             sentence_window_size=config.chunk_sentence_window_size,
@@ -92,7 +83,7 @@ def insert_document(
             session.commit()
         # Create the chunk records.
         chunk_records = _create_chunk_records(
-            document_record.id, chunks, multi_vector_embeddings, config
+            document_record.id, chunks, sentence_embeddings, config
         )
         # Store the chunk records.
         for chunk_record in tqdm(

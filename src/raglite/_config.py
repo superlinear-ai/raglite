@@ -69,7 +69,7 @@ class RAGLiteConfig:
     embedder_batch_size: int = 128
     embedder_dtype: npt.DTypeLike = np.float16
     embedder_normalize: bool = True
-    multi_vector_weight: float = 0.5  # Between 0 (chunk embedding) and 1 (sentence embedding).
+    sentence_embedding_weight: float = 0.5  # Between 0 (chunk level) and 1 (sentence level).
     # Chunker config used to partition documents into chunks.
     chunk_max_size: int = 1440  # Max number of characters per chunk.
     chunk_sentence_window_size: int = 3
