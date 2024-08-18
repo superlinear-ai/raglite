@@ -9,19 +9,25 @@ from raglite._search import hybrid_search, retrieve_segments
 def rag(
     prompt: str,
     *,
-    num_contexts: int = 5,
+    max_contexts: int = 5,
     context_neighbors: tuple[int, ...] | None = (-1, 1),
     search: Callable[[str], tuple[list[int], list[float]]] = hybrid_search,
     config: RAGLiteConfig | None = None,
 ) -> Iterator[str]:
     """Retrieval-augmented generation."""
-    # Retrieve relevant chunks.
+    # Reduce the maximum number of contexts to take into account the LLM's context size.
     config = config or RAGLiteConfig()
-    chunk_rowids, _ = search(prompt, num_results=num_contexts, config=config)  # type: ignore[call-arg]
-    chunks = retrieve_segments(chunk_rowids, neighbors=context_neighbors)
+    max_tokens = config.llm.n_ctx() - 256  # Account for the system and user prompts.
+    max_tokens_per_context = round(1.2 * (config.chunk_max_size // 4))
+    max_tokens_per_context *= 1 + len(context_neighbors or [])
+    max_contexts = min(max_contexts, max_tokens // max_tokens_per_context)
+    # Retrieve relevant contexts.
+    chunk_rowids, _ = search(prompt, num_results=max_contexts, config=config)  # type: ignore[call-arg]
+    segments = retrieve_segments(chunk_rowids, neighbors=context_neighbors)
     # Respond with an LLM.
     contexts = "\n\n".join(
-        f'<context index="{i}">\n{chunk.strip()}\n</context>' for i, chunk in enumerate(chunks)
+        f'<context index="{i}">\n{segment.strip()}\n</context>'
+        for i, segment in enumerate(segments)
     )
     system_prompt = f"""
 You are a friendly and knowledgeable assistant that provides complete and insightful answers.

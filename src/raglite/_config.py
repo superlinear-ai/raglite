@@ -17,17 +17,15 @@ def default_llm() -> Llama:
         # Llama-3.1-8B-instruct on GPU.
         repo_id = "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF"  # https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct
         filename = "*Q4_K_M.gguf"
+        n_ctx = 8192
     else:
         # Phi-3.1-mini-128k-instruct on CPU.
         repo_id = "bartowski/Phi-3.1-mini-128k-instruct-GGUF"  # https://huggingface.co/microsoft/Phi-3-mini-128k-instruct
         filename = "*Q4_K_M.gguf"
+        n_ctx = 4096
     # Load the LLM.
     llm = Llama.from_pretrained(
-        repo_id=repo_id,
-        filename=filename,
-        n_ctx=8192,  # 0 = Use the model's context size (default is 512).
-        n_gpu_layers=-1,  # -1 = Offload all layers to the GPU (default is 0).
-        verbose=False,
+        repo_id=repo_id, filename=filename, n_ctx=n_ctx, n_gpu_layers=-1, verbose=False
     )
     # Enable caching.
     llm.set_cache(LlamaRAMCache())
@@ -44,14 +42,10 @@ def default_embedder() -> Llama:
     else:
         repo_id = "yishan-wang/snowflake-arctic-embed-m-v1.5-Q8_0-GGUF"  # https://github.com/Snowflake-Labs/arctic-embed
         filename = "*q8_0.gguf"
-    # Load the embedder.
+    # Load the embedder. Setting n_ctx to 0 means that we use the model's context size (the default
+    # value for n_ctx is 512, irrespective of the model).
     embedder = Llama.from_pretrained(
-        repo_id=repo_id,
-        filename=filename,
-        n_ctx=0,  # 0 = Use the model's context size (default is 512).
-        n_gpu_layers=-1,  # -1 = Offload all layers to the GPU (default is 0).
-        verbose=False,
-        embedding=True,
+        repo_id=repo_id, filename=filename, n_ctx=0, n_gpu_layers=-1, verbose=False, embedding=True
     )
     return embedder
 
