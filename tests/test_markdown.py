@@ -7,7 +7,7 @@ from raglite._markdown import document_to_markdown
 
 def test_pdf_with_missing_font_sizes() -> None:
     """Test conversion of a PDF with missing font sizes."""
-    # Convert a PDF who's parsed font sizes are all equal to 1.
+    # Convert a PDF whose parsed font sizes are all equal to 1.
     doc_path = Path(__file__).parent / "specrel.pdf"  # Einstein's special relativity paper.
     doc = document_to_markdown(doc_path)
     # Verify that we can reconstruct the font sizes and heading levels regardless of the missing
