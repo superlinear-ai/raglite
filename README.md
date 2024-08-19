@@ -47,7 +47,7 @@ from raglite import RAGLiteConfig
 
 my_config = RAGLiteConfig(db_url="sqlite:///raglite.sqlite")
 
-# Index documents:
+# Insert documents:
 from pathlib import Path
 from raglite import insert_document
 

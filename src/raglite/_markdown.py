@@ -16,19 +16,35 @@ from sklearn.exceptions import InconsistentVersionWarning
 def parsed_pdf_to_markdown(pages: list[dict[str, Any]]) -> list[str]:  # noqa: C901, PLR0915
     """Convert a PDF parsed with pdftext to Markdown."""
 
-    def add_heading_level_metadata(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def add_heading_level_metadata(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:  # noqa: C901
         """Add heading level metadata to a PDF parsed with pdftext."""
+
+        def extract_font_size(span: dict[str, Any]) -> float:
+            """Extract the font size from a text span."""
+            font_size: float = 1.0
+            if span["font"]["size"] > 1:  # A value of 1 appears to mean "unknown" in pdftext.
+                font_size = span["font"]["size"]
+            elif digit_sequences := re.findall(r"\d+", span["font"]["name"] or ""):
+                font_size = float(digit_sequences[-1])
+            elif "\n" not in span["text"]:  # Occasionally a span can contain a newline character.
+                if round(span["rotation"]) in (0.0, 180.0, -180.0):
+                    font_size = span["bbox"][3] - span["bbox"][1]
+                elif round(span["rotation"]) in (90.0, -90.0, 270.0, -270.0):
+                    font_size = span["bbox"][2] - span["bbox"][0]
+            return font_size
+
         # Copy the pages.
         pages = deepcopy(pages)
         # Extract an array of all font sizes used by the text spans.
-        font_sizes = [
-            span["font"]["size"]
-            for page in pages
-            for block in page["blocks"]
-            for line in block["lines"]
-            for span in line["spans"]
-        ]
-        font_sizes = np.asarray(font_sizes)  # type: ignore[assignment]
+        font_sizes = np.asarray(
+            [
+                extract_font_size(span)
+                for page in pages
+                for block in page["blocks"]
+                for line in block["lines"]
+                for span in line["spans"]
+            ]
+        )
         font_sizes = np.round(font_sizes * 2) / 2
         unique_font_sizes, counts = np.unique(font_sizes, return_counts=True)
         # Determine the paragraph font size as the mode font size.
@@ -54,7 +70,7 @@ def parsed_pdf_to_markdown(pages: list[dict[str, Any]]) -> list[str]:  # noqa: C
                     for span in line["spans"]:
                         if "md" not in span:
                             span["md"] = {}
-                        span_font_size = round(span["font"]["size"] * 2) / 2
+                        span_font_size = extract_font_size(span)
                         if span_font_size < mode_font_size:
                             idx = 7
                         elif span_font_size == mode_font_size:
