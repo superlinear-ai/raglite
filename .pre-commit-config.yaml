@@ -54,7 +54,7 @@ repos:
       - id: ruff-check
         name: ruff check
         entry: ruff check
-        args: ["--force-exclude", "--extend-fixable=ERA001,F401,F841,T201,T203"]
+        args: ["--force-exclude", "--extend-fixable=ERA001,F401,F841,T201,T203", "--verbose"]
         require_serial: true
         language: system
         types_or: [python, pyi]
