@@ -1,8 +1,9 @@
 """RAGLite."""
 
 from raglite._config import RAGLiteConfig
+from raglite._eval import insert_evals
 from raglite._index import insert_document, update_vector_index
-from raglite._query_adapter import insert_evals, update_query_adapter
+from raglite._query_adapter import update_query_adapter
 from raglite._rag import rag
 from raglite._search import (
     fusion_search,
