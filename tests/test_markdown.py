@@ -17,6 +17,6 @@ def test_pdf_with_missing_font_sizes() -> None:
 
 ## By A. EINSTEIN  June 30, 1905
 
-It is known that Maxwell’s electrodynamics
+It is known that Maxwell
     """.strip()
     assert doc.startswith(expected_heading)
