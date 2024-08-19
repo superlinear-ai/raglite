@@ -38,16 +38,6 @@ jobs:
       - name: Lint package
         run: devcontainer exec --workspace-folder . poe lint
 
-      - name: Check for modified files
-        if: always()  # Always run this step
-        run: |
-          devcontainer exec --workspace-folder . git status --short
-
-      - name: Show file changes
-        if: always()  # Always run this step
-        run: |
-          devcontainer exec --workspace-folder . git diff
-
       - name: Test package
         run: devcontainer exec --workspace-folder . poe test
 

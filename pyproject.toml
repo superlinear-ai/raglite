@@ -168,7 +168,6 @@ cmd = """
       pre-commit run
         --all-files
         --color always
-        --verbose
       """
 
 [[tool.poe.tasks.lint.sequence]]
