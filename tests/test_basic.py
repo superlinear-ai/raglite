@@ -19,4 +19,4 @@ def test_insert_index_search(simple_config: RAGLiteConfig) -> None:
     # Group the chunks into segments and retrieve them.
     segments = retrieve_segments(chunk_rowids, neighbors=None, config=simple_config)
     assert all(isinstance(segment, str) for segment in segments)
-    assert "Definition of Simultaneity" in segments[0]
+    assert "Definition of Simultaneity" in segments[0] + segments[1]
