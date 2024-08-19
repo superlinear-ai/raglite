@@ -6,7 +6,7 @@ from llama_cpp import Llama
 from raglite import RAGLiteConfig
 
 
-@pytest.fixture()
+@pytest.fixture
 def simple_config() -> RAGLiteConfig:
     """Create a lightweight in-memory config for testing."""
     # Use a lightweight embedder.

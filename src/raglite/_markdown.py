@@ -8,7 +8,6 @@ from typing import Any
 
 import mdformat
 import numpy as np
-import pypandoc
 from pdftext.extraction import dictionary_output
 from sklearn.cluster import KMeans
 from sklearn.exceptions import InconsistentVersionWarning
@@ -193,6 +192,8 @@ def document_to_markdown(doc_path: Path) -> str:
         doc = "\n\n".join(parsed_pdf_to_markdown(pages))
     else:
         # Use pandoc for everything else.
+        import pypandoc
+
         doc = pypandoc.convert_file(doc_path, to="gfm")
     # Improve Markdown quality.
     doc = mdformat.text(doc)
