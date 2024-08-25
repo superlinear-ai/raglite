@@ -5,6 +5,7 @@ from random import randint
 from typing import ClassVar
 
 import numpy as np
+import pandas as pd
 from pydantic import BaseModel, Field, field_validator
 from sqlmodel import Session, func, select
 from tqdm.auto import tqdm, trange
@@ -145,7 +146,6 @@ The answer MUST satisfy ALL of the following criteria:
 - The answer MUST be entirely self-contained and able to be understood in full WITHOUT access to the provided context.
 - The answer MUST NOT reference the existence of the context, directly or indirectly.
 - The answer MUST treat the context as if its contents are entirely part of your working memory.
-
                     """.strip()
 
             try:
@@ -169,27 +169,80 @@ The answer MUST satisfy ALL of the following criteria:
 
 
 def answer_evals(
+    max_evals: int = 100,
     search: Callable[[str], tuple[list[int], list[float]]] = hybrid_search,
     *,
     config: RAGLiteConfig | None = None,
-) -> dict[str, list[str | list[str]]]:
-    """Read evals from the database and convert them to a Ragas test set."""
-    # Read all evals from the database.
+) -> pd.DataFrame:
+    """Read evals from the database and answer them with RAG."""
+    # Read evals from the database.
     config = config or RAGLiteConfig()
     engine = create_database_engine(config.db_url)
     with Session(engine) as session:
-        evals = session.exec(select(Eval)).all()
+        evals = session.exec(select(Eval).limit(max_evals)).all()
     # Answer evals with RAG.
     answers: list[str] = []
+    contexts: list[list[str]] = []
     for eval_ in tqdm(evals, desc="Answering evals", unit="eval", dynamic_ncols=True):
         response = rag(eval_.question, search=search, config=config)
         answer = "".join(response)
         answers.append(answer)
-    # Evaluate the answers.
-    test_set: dict[str, list[str | list[str]]] = {
+        chunk_rowids, _ = search(eval_.question, config=config)  # type: ignore[call-arg]
+        contexts.append(retrieve_segments(chunk_rowids))
+    # Collect the answered evals.
+    answered_evals: dict[str, list[str] | list[list[str]]] = {
         "question": [eval_.question for eval_ in evals],
-        "answer": answers,  # type: ignore[dict-item]
-        "contexts": [eval_.contexts for eval_ in evals],
+        "answer": answers,
+        "contexts": contexts,
         "ground_truth": [eval_.ground_truth for eval_ in evals],
+        "ground_truth_contexts": [eval_.contexts for eval_ in evals],
     }
-    return test_set
+    answered_evals_df = pd.DataFrame.from_dict(answered_evals)
+    return answered_evals_df
+
+
+def evaluate(
+    answered_evals: pd.DataFrame | int = 100,
+    config: RAGLiteConfig | None = None,
+) -> pd.DataFrame:
+    """Evaluate the performance of a set of answered evals with Ragas."""
+    try:
+        from datasets import Dataset
+        from langchain_community.embeddings.llamacpp import LlamaCppEmbeddings
+        from langchain_community.llms import LlamaCpp
+        from ragas import RunConfig
+        from ragas import evaluate as ragas_evaluate
+    except ImportError as import_error:
+        error_message = "To use the `evaluate` function, please install the `ragas` extra."
+        raise ImportError(error_message) from import_error
+
+    # Create a set of answered evals if not provided.
+    config = config or RAGLiteConfig()
+    answered_evals_df = (
+        answered_evals
+        if isinstance(answered_evals, pd.DataFrame)
+        else answer_evals(max_evals=answered_evals, config=config)
+    )
+    # Evaluate the answered evals with Ragas.
+    lc_llm = LlamaCpp(
+        model_path=config.llm.model_path,
+        temperature=config.llm_temperature,
+        n_batch=config.llm.n_batch,
+        n_ctx=config.llm.n_ctx(),
+        n_gpu_layers=-1,
+        verbose=config.llm.verbose,
+    )
+    lc_embedder = LlamaCppEmbeddings(  # type: ignore[call-arg]
+        model_path=config.embedder.model_path,
+        n_batch=config.embedder.n_batch,
+        n_ctx=config.embedder.n_ctx(),
+        n_gpu_layers=-1,
+        verbose=config.embedder.verbose,
+    )
+    evaluation_df = ragas_evaluate(
+        dataset=Dataset.from_pandas(answered_evals_df),
+        llm=lc_llm,
+        embeddings=lc_embedder,
+        run_config=RunConfig(max_workers=1),
+    ).to_pandas()
+    return evaluation_df

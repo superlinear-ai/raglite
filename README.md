@@ -16,6 +16,7 @@ RAGLite is a Python package for Retrieval-Augmented Generation (RAG) with SQLite
 8. 🌀 Optimal [closed-form linear query adapter](src/raglite/_query_adapter.py) by solving an [orthogonal Procrustes problem](https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem)
 9. 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) that combines [SQLite's BM25 full-text search](https://sqlite.org/fts5.html) with [PyNNDescent's ANN vector search](https://github.com/lmcinnes/pynndescent)
 10. ✍️ Optional support for conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
+11. ✅ Optional support for evaluation of retrieval and generation with [Ragas](https://github.com/explodinggradients/ragas)
 
 ## Installing
 
@@ -35,6 +36,12 @@ To add support for filetypes other than PDF, use the `pandoc` extra:
 
 ```sh
 pip install raglite[pandoc]
+```
+
+To add support for evaluation, use the `ragas` extra:
+
+```sh
+pip install raglite[ragas]
 ```
 
 ## Using
@@ -75,6 +82,12 @@ from raglite import insert_evals, update_query_adapter
 
 insert_evals(num_evals=100, config=my_config)
 update_query_adapter(config=my_config)
+
+# Evaluate retrieval and generation:
+from raglite import answer_evals, evaluate
+
+answered_evals_df = answer_evals(max_evals=10, config=my_config)
+evaluation_df = evaluate(answered_evals_df, config=my_config)
 ```
 
 ## Contributing

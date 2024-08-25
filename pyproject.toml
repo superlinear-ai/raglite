@@ -55,6 +55,7 @@ sqlmodel-slim = ">=0.0.18"
 # Progress:
 tqdm = ">=4.66.0"
 # Evaluation:
+pandas = ">=2.1.0"
 ragas = { version = ">=0.1.12", optional = true }
 
 [tool.poetry.extras] # https://python-poetry.org/docs/pyproject/#extras
