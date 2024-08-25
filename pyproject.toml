@@ -60,8 +60,8 @@ ragas = { version = ">=0.1.12", optional = true }
 
 [tool.poetry.extras] # https://python-poetry.org/docs/pyproject/#extras
 cuda124 = []
-eval = ["ragas"]
 pandoc = ["pypandoc-binary"]
+ragas = ["ragas"]
 
 [tool.poetry.group.test.dependencies] # https://python-poetry.org/docs/master/managing-dependencies/
 commitizen = ">=3.21.3"
