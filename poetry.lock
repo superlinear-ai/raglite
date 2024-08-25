@@ -5912,4 +5912,4 @@ pandoc = ["pypandoc-binary"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<4.0"
-content-hash = "f4f60e4d3cc1e50be8ed21505184addfb0d2bcd75a01deeb3e4d94b06964fc62"
+content-hash = "831f1ca5fd741e165fc401d2dbbcc4c912909266260aac1a872fd1d1dfb1df93"
