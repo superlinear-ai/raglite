@@ -86,7 +86,7 @@ update_query_adapter(config=my_config)
 # Evaluate retrieval and generation:
 from raglite import answer_evals, evaluate
 
-answered_evals_df = answer_evals(max_evals=10, config=my_config)
+answered_evals_df = answer_evals(num_evals=10, config=my_config)
 evaluation_df = evaluate(answered_evals_df, config=my_config)
 ```
 

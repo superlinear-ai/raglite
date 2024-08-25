@@ -169,7 +169,7 @@ The answer MUST satisfy ALL of the following criteria:
 
 
 def answer_evals(
-    max_evals: int = 100,
+    num_evals: int = 100,
     search: Callable[[str], tuple[list[int], list[float]]] = hybrid_search,
     *,
     config: RAGLiteConfig | None = None,
@@ -179,7 +179,7 @@ def answer_evals(
     config = config or RAGLiteConfig()
     engine = create_database_engine(config.db_url)
     with Session(engine) as session:
-        evals = session.exec(select(Eval).limit(max_evals)).all()
+        evals = session.exec(select(Eval).limit(num_evals)).all()
     # Answer evals with RAG.
     answers: list[str] = []
     contexts: list[list[str]] = []
@@ -221,7 +221,7 @@ def evaluate(
     answered_evals_df = (
         answered_evals
         if isinstance(answered_evals, pd.DataFrame)
-        else answer_evals(max_evals=answered_evals, config=config)
+        else answer_evals(num_evals=answered_evals, config=config)
     )
     # Evaluate the answered evals with Ragas.
     lc_llm = LlamaCpp(
