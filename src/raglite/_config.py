@@ -20,7 +20,7 @@ def default_llm() -> Llama:
         n_ctx = 8192
     else:
         # Phi-3.1-mini-128k-instruct on CPU.
-        repo_id = "bartowski/Phi-3.1-mini-128k-instruct-GGUF"  # https://huggingface.co/microsoft/Phi-3-mini-128k-instruct
+        repo_id = "bartowski/Phi-3.5-mini-instruct-GGUF"  # https://huggingface.co/microsoft/Phi-3.5-mini-instruct
         filename = "*Q4_K_M.gguf"
         n_ctx = 4096
     # Load the LLM.
