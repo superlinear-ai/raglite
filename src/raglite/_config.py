@@ -72,3 +72,5 @@ class RAGLiteConfig:
     # Vector search config.
     vector_search_index_id: str = "default"
     vector_search_index_metric: str = "cosine"  # The query adapter supports "dot" and "cosine".
+    # Query adapter config.
+    enable_query_adapter: bool = True

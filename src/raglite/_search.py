@@ -43,7 +43,6 @@ def vector_search(
     prompt: str | FloatMatrix,
     *,
     num_results: int = 3,
-    query_adapter: bool = True,
     config: RAGLiteConfig | None = None,
 ) -> tuple[list[int], list[float]]:
     """Search chunks using ANN vector search."""
@@ -57,7 +56,7 @@ def vector_search(
         else np.reshape(prompt, (1, -1))
     )
     # Apply the query adapter.
-    if query_adapter and Q is not None:
+    if config.enable_query_adapter and Q is not None:
         prompt_embedding = (Q @ prompt_embedding[0, :])[np.newaxis, :].astype(config.embedder_dtype)
     # Find the neighbouring multi-vector indices.
     multi_vector_indices, cosine_distance = index.query(prompt_embedding, k=8 * num_results)
