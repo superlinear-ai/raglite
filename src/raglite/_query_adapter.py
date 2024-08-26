@@ -63,6 +63,7 @@ def update_query_adapter(  # noqa: C901, PLR0915
     C := 5% * A, the optimal α is then given by αA + (1 - α)B = C => α = (B - C) / (B - A).
     """
     config = config or RAGLiteConfig()
+    config_no_query_adapter = RAGLiteConfig(**{**config.__dict__, "enable_query_adapter": False})
     engine = create_database_engine(config.db_url)
     with Session(engine) as session:
         # Get random evals from the database.
@@ -83,7 +84,7 @@ def update_query_adapter(  # noqa: C901, PLR0915
             question_embedding = embed_strings([eval_.question], config=config)
             # Retrieve chunks that would be used to answer the question.
             chunk_rowids, _ = vector_search(
-                question_embedding, num_results=optimize_top_k, query_adapter=False, config=config
+                question_embedding, num_results=optimize_top_k, config=config_no_query_adapter
             )
             retrieved_chunks = [
                 session.exec(select(Chunk).offset(chunk_rowid - 1)).first()
