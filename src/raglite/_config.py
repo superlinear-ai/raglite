@@ -3,8 +3,6 @@
 from dataclasses import dataclass, field
 from functools import lru_cache
 
-import numpy as np
-import numpy.typing as npt
 from llama_cpp import Llama, LlamaRAMCache, llama_supports_gpu_offload  # type: ignore[attr-defined]
 from sqlalchemy.engine import URL
 
@@ -12,14 +10,14 @@ from sqlalchemy.engine import URL
 @lru_cache(maxsize=1)
 def default_llm() -> Llama:
     """Get default LLM."""
-    # Select the best available LLM for the given accelerator.
+    # Select the best available LLM for the given accelerator:
+    # - Llama-3.1-8B-instruct on GPU.
+    # - Phi-3.5-mini-instruct on CPU.
     if llama_supports_gpu_offload():
-        # Llama-3.1-8B-instruct on GPU.
         repo_id = "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF"  # https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct
         filename = "*Q4_K_M.gguf"
         n_ctx = 8192
     else:
-        # Phi-3.1-mini-128k-instruct on CPU.
         repo_id = "bartowski/Phi-3.5-mini-instruct-GGUF"  # https://huggingface.co/microsoft/Phi-3.5-mini-instruct
         filename = "*Q4_K_M.gguf"
         n_ctx = 4096
@@ -61,7 +59,6 @@ class RAGLiteConfig:
     # Embedder config used for indexing.
     embedder: Llama = field(default_factory=default_embedder)
     embedder_batch_size: int = 128
-    embedder_dtype: npt.DTypeLike = np.float16
     embedder_normalize: bool = True
     sentence_embedding_weight: float = 0.5  # Between 0 (chunk level) and 1 (sentence level).
     # Chunker config used to partition documents into chunks.
@@ -70,7 +67,5 @@ class RAGLiteConfig:
     # Database config.
     db_url: str | URL = "sqlite:///raglite.sqlite"
     # Vector search config.
-    vector_search_index_id: str = "default"
     vector_search_index_metric: str = "cosine"  # The query adapter supports "dot" and "cosine".
-    # Query adapter config.
-    enable_query_adapter: bool = True
+    vector_search_query_adapter: bool = True

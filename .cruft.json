@@ -1,15 +1,15 @@
 {
-  "template": "https://github.com/radix-ai/poetry-cookiecutter",
+  "template": "https://github.com/superlinear-ai/poetry-cookiecutter",
   "commit": "a969f1d182ec39d7d27ccb1116cf60ba736adcfa",
   "checkout": null,
   "context": {
     "cookiecutter": {
       "project_type": "package",
       "project_name": "RAGLite",
-      "project_description": "A RAG extension for SQLite.",
-      "project_url": "https://github.com/radix-ai/raglite",
+      "project_description": "A Python package for Retrieval-Augmented Generation (RAG) with SQLite or PostgreSQL.",
+      "project_url": "https://github.com/superlinear-ai/raglite",
       "author_name": "Laurent Sorber",
-      "author_email": "laurent@radix.ai",
+      "author_email": "laurent@superlinear.eu",
       "python_version": "3.10",
       "development_environment": "strict",
       "with_conventional_commits": "1",
@@ -22,7 +22,7 @@
       "__docstring_style": "NumPy",
       "__project_name_kebab_case": "raglite",
       "__project_name_snake_case": "raglite",
-      "_template": "https://github.com/radix-ai/poetry-cookiecutter"
+      "_template": "https://github.com/superlinear-ai/poetry-cookiecutter"
     }
   },
   "directory": null

@@ -11,7 +11,7 @@ def rag(
     *,
     max_contexts: int = 5,
     context_neighbors: tuple[int, ...] | None = (-1, 1),
-    search: Callable[[str], tuple[list[int], list[float]]] = hybrid_search,
+    search: Callable[[str], tuple[list[str], list[float]]] = hybrid_search,
     config: RAGLiteConfig | None = None,
 ) -> Iterator[str]:
     """Retrieval-augmented generation."""
@@ -22,8 +22,8 @@ def rag(
     max_tokens_per_context *= 1 + len(context_neighbors or [])
     max_contexts = min(max_contexts, max_tokens // max_tokens_per_context)
     # Retrieve relevant contexts.
-    chunk_rowids, _ = search(prompt, num_results=max_contexts, config=config)  # type: ignore[call-arg]
-    segments = retrieve_segments(chunk_rowids, neighbors=context_neighbors)
+    chunk_ids, _ = search(prompt, num_results=max_contexts, config=config)  # type: ignore[call-arg]
+    segments = retrieve_segments(chunk_ids, neighbors=context_neighbors)
     # Respond with an LLM.
     contexts = "\n\n".join(
         f'<context index="{i}">\n{segment.strip()}\n</context>'

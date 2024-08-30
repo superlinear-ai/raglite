@@ -55,7 +55,7 @@ The question MUST satisfy ALL of the following criteria:
             return value
 
     config = config or RAGLiteConfig()
-    engine = create_database_engine(config.db_url)
+    engine = create_database_engine(config)
     with Session(engine) as session:
         for _ in trange(num_evals, desc="Generating evals", unit="eval", dynamic_ncols=True):
             # Sample a random document from the database.
@@ -73,12 +73,12 @@ The question MUST satisfy ALL of the following criteria:
             if seed_chunk is None:
                 continue
             # Expand the seed chunk into a set of related chunks.
-            related_chunk_rowids, _ = vector_search(
-                np.mean(seed_chunk.multi_vector_embedding, axis=0, keepdims=True),
+            related_chunk_ids, _ = vector_search(
+                np.mean(seed_chunk.embedding_matrix, axis=0, keepdims=True),
                 num_results=randint(2, max_contexts_per_eval // 2),  # noqa: S311
                 config=config,
             )
-            related_chunks = retrieve_segments(related_chunk_rowids, config=config)
+            related_chunks = retrieve_segments(related_chunk_ids, config=config)
             # Extract a question from the seed chunk's related chunks.
             try:
                 question_response = extract_with_llm(
@@ -89,13 +89,10 @@ The question MUST satisfy ALL of the following criteria:
             else:
                 question = question_response.question
             # Search for candidate chunks to answer the generated question.
-            candidate_chunk_rowids, _ = hybrid_search(
+            candidate_chunk_ids, _ = hybrid_search(
                 question, num_results=max_contexts_per_eval, config=config
             )
-            candidate_chunks = [
-                session.exec(select(Chunk).offset(chunk_rowid - 1)).first()
-                for chunk_rowid in candidate_chunk_rowids
-            ]
+            candidate_chunks = [session.get(Chunk, chunk_id) for chunk_id in candidate_chunk_ids]
 
             # Determine which candidate chunks are relevant to answer the generated question.
             class ContextEvalResponse(BaseModel):
@@ -170,14 +167,14 @@ The answer MUST satisfy ALL of the following criteria:
 
 def answer_evals(
     num_evals: int = 100,
-    search: Callable[[str], tuple[list[int], list[float]]] = hybrid_search,
+    search: Callable[[str], tuple[list[str], list[float]]] = hybrid_search,
     *,
     config: RAGLiteConfig | None = None,
 ) -> pd.DataFrame:
     """Read evals from the database and answer them with RAG."""
     # Read evals from the database.
     config = config or RAGLiteConfig()
-    engine = create_database_engine(config.db_url)
+    engine = create_database_engine(config)
     with Session(engine) as session:
         evals = session.exec(select(Eval).limit(num_evals)).all()
     # Answer evals with RAG.
@@ -187,8 +184,8 @@ def answer_evals(
         response = rag(eval_.question, search=search, config=config)
         answer = "".join(response)
         answers.append(answer)
-        chunk_rowids, _ = search(eval_.question, config=config)  # type: ignore[call-arg]
-        contexts.append(retrieve_segments(chunk_rowids))
+        chunk_ids, _ = search(eval_.question, config=config)  # type: ignore[call-arg]
+        contexts.append(retrieve_segments(chunk_ids))
     # Collect the answered evals.
     answered_evals: dict[str, list[str] | list[list[str]]] = {
         "question": [eval_.question for eval_ in evals],

@@ -22,8 +22,8 @@ def _embed_string_batch(
     # Normalise embeddings to unit norm.
     if config.embedder_normalize:
         embeddings /= np.linalg.norm(embeddings, axis=1, keepdims=True)
-    # Cast to the configured dtype after normalisation.
-    embeddings = embeddings.astype(config.embedder_dtype)
+    # Cast to half precision after normalisation.
+    embeddings = embeddings.astype(np.float16)
     return embeddings
 
 

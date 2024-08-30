@@ -5,10 +5,10 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry] # https://python-poetry.org/docs/pyproject/
 name = "raglite"
 version = "0.0.0"
-description = "A Python package for Retrieval-Augmented Generation (RAG) with SQLite."
-authors = ["Laurent Sorber <laurent@radix.ai>"]
+description = "A Python package for Retrieval-Augmented Generation (RAG) with SQLite or PostgreSQL."
+authors = ["Laurent Sorber <laurent@superlinear.eu>"]
 readme = "README.md"
-repository = "https://github.com/radix-ai/raglite"
+repository = "https://github.com/superlinear-ai/raglite"
 
 [tool.commitizen] # https://commitizen-tools.github.io/commitizen/config/
 bump_message = "bump(release): v$current_version → v$new_version"
@@ -51,6 +51,7 @@ pydantic = ">=2.7.0"
 # Approximate Nearest Neighbors:
 pynndescent = ">=0.5.12"
 # Storage:
+pg8000 = ">=1.31.2"
 sqlmodel-slim = ">=0.0.18"
 # Progress:
 tqdm = ">=4.66.0"
@@ -114,7 +115,7 @@ warn_unreachable = true
 
 [tool.pytest.ini_options] # https://docs.pytest.org/en/latest/reference/reference.html#ini-options-ref
 addopts = "--color=yes --doctest-modules --exitfirst --failed-first --strict-config --strict-markers --verbosity=2 --junitxml=reports/pytest.xml"
-filterwarnings = ["error", "ignore::DeprecationWarning"]
+filterwarnings = ["error", "ignore::DeprecationWarning", "ignore::pytest.PytestUnraisableExceptionWarning"]
 testpaths = ["src", "tests"]
 xfail_strict = true
 

@@ -1,7 +1,6 @@
-"""SQLite tables for RAGLite."""
+"""PostgreSQL or SQLite database tables for RAGLite."""
 
-import io
-import pickle
+import datetime
 from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
@@ -9,12 +8,22 @@ from typing import Any
 
 import numpy as np
 from markdown_it import MarkdownIt
-from pynndescent import NNDescent
-from sqlalchemy.engine import URL, Dialect, Engine, make_url
-from sqlalchemy.types import LargeBinary, TypeDecorator
-from sqlmodel import JSON, Column, Field, Relationship, Session, SQLModel, create_engine, text
+from pydantic import ConfigDict
+from sqlalchemy.engine import Engine, make_url
+from sqlmodel import (
+    JSON,
+    Column,
+    Field,
+    Relationship,
+    Session,
+    SQLModel,
+    create_engine,
+    select,
+    text,
+)
 
-from raglite._typing import FloatMatrix
+from raglite._config import RAGLiteConfig
+from raglite._typing import Embedding, FloatMatrix, FloatVector, PickledObject
 
 
 def hash_bytes(data: bytes, max_len: int = 16) -> str:
@@ -22,55 +31,17 @@ def hash_bytes(data: bytes, max_len: int = 16) -> str:
     return sha256(data, usedforsecurity=False).hexdigest()[:max_len]
 
 
-class NumpyArray(TypeDecorator[np.ndarray[Any, np.dtype[np.floating[Any]]]]):
-    """A NumPy array column type for SQLAlchemy."""
-
-    impl = LargeBinary
-
-    def process_bind_param(
-        self, value: np.ndarray[Any, np.dtype[np.floating[Any]]] | None, dialect: Dialect
-    ) -> bytes | None:
-        """Convert a NumPy array to bytes."""
-        if value is None:
-            return None
-        buffer = io.BytesIO()
-        np.save(buffer, value, allow_pickle=False, fix_imports=False)
-        return buffer.getvalue()
-
-    def process_result_value(
-        self, value: bytes | None, dialect: Dialect
-    ) -> np.ndarray[Any, np.dtype[np.floating[Any]]] | None:
-        """Convert bytes to a NumPy array."""
-        if value is None:
-            return None
-        return np.load(io.BytesIO(value), allow_pickle=False, fix_imports=False)  # type: ignore[no-any-return]
-
-
-class PickledObject(TypeDecorator[object]):
-    """A pickled object column type for SQLAlchemy."""
-
-    impl = LargeBinary
-
-    def process_bind_param(self, value: object | None, dialect: Dialect) -> bytes | None:
-        """Convert a Python object to bytes."""
-        if value is None:
-            return None
-        return pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL, fix_imports=False)
-
-    def process_result_value(self, value: bytes | None, dialect: Dialect) -> object | None:
-        """Convert bytes to a Python object."""
-        if value is None:
-            return None
-        return pickle.loads(value, fix_imports=False)  # type: ignore[no-any-return]  # noqa: S301
-
-
 class Document(SQLModel, table=True):
     """A document."""
 
+    # Enable JSON columns.
+    model_config = ConfigDict(arbitrary_types_allowed=True)  # type: ignore[assignment]
+
+    # Table columns.
     id: str = Field(..., primary_key=True)
     filename: str
     url: str | None = Field(default=None)
-    metadata_: dict[str, Any] = Field(default={}, sa_column=Column("metadata", JSON))
+    metadata_: dict[str, Any] = Field(default_factory=dict, sa_column=Column("metadata", JSON))
 
     # Add relationships so we can access document.chunks and document.evals.
     chunks: list["Chunk"] = Relationship(back_populates="document")
@@ -90,26 +61,24 @@ class Document(SQLModel, table=True):
             },
         )
 
-    # Enable support for JSON columns.
-    class Config:
-        """Table configuration."""
-
-        arbitrary_types_allowed = True
-
 
 class Chunk(SQLModel, table=True):
     """A document chunk."""
 
+    # Enable JSON columns.
+    model_config = ConfigDict(arbitrary_types_allowed=True)  # type: ignore[assignment]
+
+    # Table columns.
     id: str = Field(..., primary_key=True)
     document_id: str = Field(..., foreign_key="document.id", index=True)
     index: int = Field(..., index=True)
     headings: str
     body: str
-    multi_vector_embedding: FloatMatrix = Field(..., sa_column=Column(NumpyArray))
-    metadata_: dict[str, Any] = Field(default={}, sa_column=Column("metadata", JSON))
+    metadata_: dict[str, Any] = Field(default_factory=dict, sa_column=Column("metadata", JSON))
 
-    # Add relationship so we can access chunk.document.
+    # Add relationships so we can access chunk.document and chunk.embeddings.
     document: Document = Relationship(back_populates="chunks")
+    embeddings: list["ChunkEmbedding"] = Relationship(back_populates="chunk")
 
     @staticmethod
     def from_body(
@@ -117,7 +86,6 @@ class Chunk(SQLModel, table=True):
         index: int,
         body: str,
         headings: str = "",
-        multi_vector_embedding: FloatMatrix | None = None,
         **kwargs: Any,
     ) -> "Chunk":
         """Create a chunk from Markdown."""
@@ -127,9 +95,6 @@ class Chunk(SQLModel, table=True):
             index=index,
             headings=headings,
             body=body,
-            multi_vector_embedding=multi_vector_embedding
-            if multi_vector_embedding is not None
-            else np.empty(0),
             metadata_=kwargs,
         )
 
@@ -151,6 +116,12 @@ class Chunk(SQLModel, table=True):
         headings = "\n".join([heading for heading in heading_lines if heading])
         return headings
 
+    @property
+    def embedding_matrix(self) -> FloatMatrix:
+        """Return this chunk's multi-vector embedding matrix."""
+        # Uses the relationship chunk.embeddings to access the chunk_embedding table.
+        return np.vstack([embedding.embedding[np.newaxis, :] for embedding in self.embeddings])
+
     def __str__(self) -> str:
         """Context representation of this chunk."""
         return f"{self.headings.strip()}\n\n{self.body.strip()}".strip()
@@ -158,29 +129,75 @@ class Chunk(SQLModel, table=True):
     def __hash__(self) -> int:
         return hash(self.id)
 
-    # Enable support for JSON and NumpyArray columns.
-    class Config:
-        """Table configuration."""
 
-        arbitrary_types_allowed = True
+class ChunkEmbedding(SQLModel, table=True):
+    """A (sub-)chunk embedding."""
+
+    __tablename__ = "chunk_embedding"
+
+    # Enable Embedding columns.
+    model_config = ConfigDict(arbitrary_types_allowed=True)  # type: ignore[assignment]
+
+    # Table columns.
+    id: int = Field(..., primary_key=True)
+    chunk_id: str = Field(..., foreign_key="chunk.id", index=True)
+    embedding: FloatVector = Field(..., sa_column=Column(Embedding(dim=-1)))
+
+    # Add relationship so we can access embedding.chunk.
+    chunk: Chunk = Relationship(back_populates="embeddings")
+
+    @classmethod
+    def set_embedding_dim(cls, dim: int) -> None:
+        """Modify the embedding column's dimension after class definition."""
+        cls.__table__.c["embedding"].type.dim = dim  # type: ignore[attr-defined]
 
 
-class VectorSearchChunkIndex(SQLModel, table=True):
-    """A vector search index for chunks."""
+class IndexMetadata(SQLModel, table=True):
+    """Vector and keyword search index metadata."""
 
-    __tablename__ = "vs_chunk_index"  # Vector search chunk index.
+    __tablename__ = "index_metadata"
 
+    # Enable PickledObject columns.
+    model_config = ConfigDict(arbitrary_types_allowed=True)  # type: ignore[assignment]
+
+    # Table columns.
     id: str = Field(..., primary_key=True)
-    chunk_sizes: list[int] = Field(default=[], sa_column=Column(JSON))
-    index: NNDescent | None = Field(default=None, sa_column=Column(PickledObject))
-    query_adapter: FloatMatrix | None = Field(default=None, sa_column=Column(NumpyArray))
-    metadata_: dict[str, Any] = Field(default={}, sa_column=Column("metadata", JSON))
+    version: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )
+    metadata_: dict[str, Any] = Field(
+        default_factory=dict, sa_column=Column("metadata", PickledObject)
+    )
 
-    # Enable support for JSON, PickledObject, and NumpyArray columns.
-    class Config:
-        """Table configuration."""
+    @staticmethod
+    def _get_version(id_: str, *, config: RAGLiteConfig | None = None) -> datetime.datetime | None:
+        """Get the version of the index metadata with a given id."""
+        engine = create_database_engine(config)
+        with Session(engine) as session:
+            version = session.exec(
+                select(IndexMetadata.version).where(IndexMetadata.id == id_)
+            ).first()
+        return version
 
-        arbitrary_types_allowed = True
+    @staticmethod
+    @lru_cache(maxsize=4)
+    def _get(
+        id_: str, version: datetime.datetime | None, *, config: RAGLiteConfig | None = None
+    ) -> dict[str, Any] | None:
+        if version is None:
+            return None
+        engine = create_database_engine(config)
+        with Session(engine) as session:
+            index_metadata_record = session.get(IndexMetadata, id_)
+            if index_metadata_record is None:
+                return None
+        return index_metadata_record.metadata_
+
+    @staticmethod
+    def get(id_: str = "default", *, config: RAGLiteConfig | None = None) -> dict[str, Any]:
+        version = IndexMetadata._get_version(id_, config=config)
+        metadata = IndexMetadata._get(id_, version, config=config) or {}
+        return metadata
 
 
 class Eval(SQLModel, table=True):
@@ -188,13 +205,17 @@ class Eval(SQLModel, table=True):
 
     __tablename__ = "eval"
 
+    # Enable JSON columns.
+    model_config = ConfigDict(arbitrary_types_allowed=True)  # type: ignore[assignment]
+
+    # Table columns.
     id: str = Field(..., primary_key=True)
     document_id: str = Field(..., foreign_key="document.id", index=True)
-    chunk_ids: list[str] = Field(default=[], sa_column=Column(JSON))
+    chunk_ids: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     question: str
-    contexts: list[str] = Field(default=[], sa_column=Column(JSON))
+    contexts: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     ground_truth: str
-    metadata_: dict[str, Any] = Field(default={}, sa_column=Column("metadata", JSON))
+    metadata_: dict[str, Any] = Field(default_factory=dict, sa_column=Column("metadata", JSON))
 
     # Add relationship so we can access eval.document.
     document: Document = Relationship(back_populates="evals")
@@ -219,56 +240,94 @@ class Eval(SQLModel, table=True):
             metadata_=kwargs,
         )
 
-    # Enable support for JSON columns.
-    class Config:
-        """Table configuration."""
-
-        arbitrary_types_allowed = True
-
 
 @lru_cache(maxsize=1)
-def create_database_engine(db_url: str | URL = "sqlite:///raglite.sqlite") -> Engine:
+def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
     """Create a database engine and initialize it."""
-    # Parse the database URL.
-    db_url = make_url(db_url)
-    assert db_url.get_backend_name() == "sqlite", "RAGLite currently only supports SQLite."
-    # Optimize SQLite performance.
-    pragmas = {"journal_mode": "WAL", "synchronous": "NORMAL"}
-    db_url = db_url.update_query_dict(pragmas, append=True)
+    # Parse the database URL and validate that the database backend is supported.
+    config = config or RAGLiteConfig()
+    db_url = make_url(config.db_url)
+    db_backend = db_url.get_backend_name()
+    # Update database configuration.
+    connect_args = {}
+    if db_backend == "postgresql":
+        # Select the pg8000 driver if not set (psycopg2 is the default), and prefer SSL.
+        if "+" not in db_url.drivername:
+            db_url = db_url.set(drivername="postgresql+pg8000")
+        # Support setting the sslmode for pg8000.
+        if "pg8000" in db_url.drivername and "sslmode" in db_url.query:
+            query = dict(db_url.query)
+            if query.pop("sslmode") != "disable":
+                connect_args["ssl_context"] = True
+            db_url = db_url.set(query=query)
+    elif db_backend == "sqlite":
+        # Optimize SQLite performance.
+        pragmas = {"journal_mode": "WAL", "synchronous": "NORMAL"}
+        db_url = db_url.update_query_dict(pragmas, append=True)
+    else:
+        error_message = "RAGLite only supports PostgreSQL and SQLite."
+        raise ValueError(error_message)
     # Create the engine.
-    engine = create_engine(db_url)
+    engine = create_engine(db_url, pool_pre_ping=True, connect_args=connect_args)
+    # Install database extensions.
+    if db_backend == "postgresql":
+        with Session(engine) as session:
+            session.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+            session.commit()
     # Create all SQLModel tables.
+    ChunkEmbedding.set_embedding_dim(config.embedder.n_embd())
     SQLModel.metadata.create_all(engine)
-    # Create a virtual table for full-text search on the chunk table.
-    # We use the chunk table as an external content table [1] to avoid duplicating the data.
-    # [1] https://www.sqlite.org/fts5.html#external_content_tables
-    with Session(engine) as session:
-        session.execute(
-            text("""
-        CREATE VIRTUAL TABLE IF NOT EXISTS fts_chunk_index USING fts5(body, content='chunk', content_rowid='rowid');
-        """)
-        )
-        session.execute(
-            text("""
-        CREATE TRIGGER IF NOT EXISTS fts_chunk_index_auto_insert AFTER INSERT ON chunk BEGIN
-            INSERT INTO fts_chunk_index(rowid, body) VALUES (new.rowid, new.body);
-        END;
-        """)
-        )
-        session.execute(
-            text("""
-        CREATE TRIGGER IF NOT EXISTS fts_chunk_index_auto_delete AFTER DELETE ON chunk BEGIN
-            INSERT INTO fts_chunk_index(fts_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
-        END;
-        """)
-        )
-        session.execute(
-            text("""
-        CREATE TRIGGER IF NOT EXISTS fts_chunk_index_auto_update AFTER UPDATE ON chunk BEGIN
-            INSERT INTO fts_chunk_index(fts_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
-            INSERT INTO fts_chunk_index(rowid, body) VALUES (new.rowid, new.body);
-        END;
-        """)
-        )
-        session.commit()
+    # Create backend-specific indexes.
+    if db_backend == "postgresql":
+        # Create a full-text search index with `tsvector` and a vector search index with `pgvector`.
+        with Session(engine) as session:
+            metrics = {"cosine": "cosine", "dot": "ip", "euclidean": "l2", "l1": "l1", "l2": "l2"}
+            session.execute(
+                text("""
+                CREATE INDEX IF NOT EXISTS fts_chunk_index ON chunk USING GIN (to_tsvector('simple', body));
+                """)
+            )
+            session.execute(
+                text(f"""
+                CREATE INDEX IF NOT EXISTS vs_chunk_index ON chunk_embedding
+                USING hnsw (
+                     (embedding::halfvec({config.embedder.n_embd()}))
+                     halfvec_{metrics[config.vector_search_index_metric]}_ops
+                );
+                """)
+            )
+            session.commit()
+    elif db_backend == "sqlite":
+        # Create a virtual table for full-text search on the chunk table.
+        # We use the chunk table as an external content table [1] to avoid duplicating the data.
+        # [1] https://www.sqlite.org/fts5.html#external_content_tables
+        with Session(engine) as session:
+            session.execute(
+                text("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS fts_chunk_index USING fts5(body, content='chunk', content_rowid='rowid');
+                """)
+            )
+            session.execute(
+                text("""
+                CREATE TRIGGER IF NOT EXISTS fts_chunk_index_auto_insert AFTER INSERT ON chunk BEGIN
+                    INSERT INTO fts_chunk_index(rowid, body) VALUES (new.rowid, new.body);
+                END;
+                """)
+            )
+            session.execute(
+                text("""
+                CREATE TRIGGER IF NOT EXISTS fts_chunk_index_auto_delete AFTER DELETE ON chunk BEGIN
+                    INSERT INTO fts_chunk_index(fts_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
+                END;
+                """)
+            )
+            session.execute(
+                text("""
+                CREATE TRIGGER IF NOT EXISTS fts_chunk_index_auto_update AFTER UPDATE ON chunk BEGIN
+                    INSERT INTO fts_chunk_index(fts_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
+                    INSERT INTO fts_chunk_index(rowid, body) VALUES (new.rowid, new.body);
+                END;
+                """)
+            )
+            session.commit()
     return engine
