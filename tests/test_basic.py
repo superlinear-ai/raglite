@@ -12,11 +12,11 @@ def test_insert_index_search(simple_config: RAGLiteConfig) -> None:
     insert_document(doc_path, config=simple_config)
     # Search for a query.
     query = "What does it mean for two events to be simultaneous?"
-    chunk_rowids, scores = hybrid_search(query, config=simple_config)
-    assert len(chunk_rowids) == len(scores)
-    assert all(isinstance(rowid, int) for rowid in chunk_rowids)
+    chunk_ids, scores = hybrid_search(query, config=simple_config)
+    assert len(chunk_ids) == len(scores)
+    assert all(isinstance(chunk_id, str) for chunk_id in chunk_ids)
     assert all(isinstance(score, float) for score in scores)
     # Group the chunks into segments and retrieve them.
-    segments = retrieve_segments(chunk_rowids, neighbors=None, config=simple_config)
+    segments = retrieve_segments(chunk_ids, neighbors=None, config=simple_config)
     assert all(isinstance(segment, str) for segment in segments)
-    assert "Definition of Simultaneity" in segments[0] + segments[1]
+    assert "Definition of Simultaneity" in "".join(segments[:2])

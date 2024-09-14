@@ -1,16 +1,16 @@
 """Compute and update an optimal query adapter."""
 
 import numpy as np
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 from tqdm.auto import tqdm
 
 from raglite._config import RAGLiteConfig
-from raglite._database import Chunk, Eval, VectorSearchChunkIndex, create_database_engine
+from raglite._database import Chunk, Eval, IndexMetadata, create_database_engine
 from raglite._embed import embed_strings
 from raglite._search import vector_search
 
 
-def update_query_adapter(  # noqa: C901, PLR0915
+def update_query_adapter(  # noqa: PLR0915
     *,
     max_triplets: int = 4096,
     max_triplets_per_eval: int = 64,
@@ -63,8 +63,10 @@ def update_query_adapter(  # noqa: C901, PLR0915
     C := 5% * A, the optimal α is then given by αA + (1 - α)B = C => α = (B - C) / (B - A).
     """
     config = config or RAGLiteConfig()
-    config_no_query_adapter = RAGLiteConfig(**{**config.__dict__, "enable_query_adapter": False})
-    engine = create_database_engine(config.db_url)
+    config_no_query_adapter = RAGLiteConfig(
+        **{**config.__dict__, "vector_search_query_adapter": False}
+    )
+    engine = create_database_engine(config)
     with Session(engine) as session:
         # Get random evals from the database.
         evals = session.exec(
@@ -83,34 +85,25 @@ def update_query_adapter(  # noqa: C901, PLR0915
             # Embed the question.
             question_embedding = embed_strings([eval_.question], config=config)
             # Retrieve chunks that would be used to answer the question.
-            chunk_rowids, _ = vector_search(
+            chunk_ids, _ = vector_search(
                 question_embedding, num_results=optimize_top_k, config=config_no_query_adapter
             )
-            retrieved_chunks = [
-                session.exec(select(Chunk).offset(chunk_rowid - 1)).first()
-                for chunk_rowid in chunk_rowids
-            ]
+            retrieved_chunks = session.exec(select(Chunk).where(col(Chunk.id).in_(chunk_ids))).all()
             # Extract (q, p, n) triplets by comparing the retrieved chunks with the eval.
             num_triplets = 0
             for i, retrieved_chunk in enumerate(retrieved_chunks):
-                # Raise an error if the retrieved chunk is None.
-                if retrieved_chunk is None:
-                    error_message = (
-                        f"The chunk with rowid {chunk_rowids[i]} is missing from the database."
-                    )
-                    raise ValueError(error_message)
                 # Select irrelevant chunks.
                 if retrieved_chunk.id not in eval_.chunk_ids:
                     # Look up all positive chunks (each represented by the mean of its multi-vector
                     # embedding) that are ranked lower than this negative one (represented by the
                     # embedding in the multi-vector embedding that best matches the query).
                     p_mean = [
-                        np.mean(chunk.multi_vector_embedding, axis=0, keepdims=True)
+                        np.mean(chunk.embedding_matrix, axis=0, keepdims=True)
                         for chunk in retrieved_chunks[i + 1 :]
                         if chunk is not None and chunk.id in eval_.chunk_ids
                     ]
-                    n_top = retrieved_chunk.multi_vector_embedding[
-                        np.argmax(retrieved_chunk.multi_vector_embedding @ question_embedding.T),
+                    n_top = retrieved_chunk.embedding_matrix[
+                        np.argmax(retrieved_chunk.embedding_matrix @ question_embedding.T),
                         np.newaxis,
                         :,
                     ]
@@ -159,9 +152,7 @@ def update_query_adapter(  # noqa: C901, PLR0915
             error_message = f"Unsupported ANN metric: {config.vector_search_index_metric}"
             raise ValueError(error_message)
         # Store the optimal query adapter in the database.
-        vector_search_chunk_index = session.get(
-            VectorSearchChunkIndex, config.vector_search_index_id
-        ) or VectorSearchChunkIndex(id=config.vector_search_index_id)
-        vector_search_chunk_index.query_adapter = A_star
-        session.add(vector_search_chunk_index)
+        index_metadata = session.get(IndexMetadata, "default") or IndexMetadata(id="default")
+        index_metadata.metadata_ = {**index_metadata.metadata_, "query_adapter": A_star}
+        session.add(index_metadata)
         session.commit()

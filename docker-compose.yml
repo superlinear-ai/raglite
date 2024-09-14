@@ -12,6 +12,10 @@ services:
         GID: ${GID:-1000}
     environment:
       - POETRY_PYPI_TOKEN_PYPI
+    depends_on:
+      - postgres
+    networks:
+      - raglite-network
     volumes:
       - ..:/workspaces
       - command-history-volume:/home/user/.history/
@@ -21,21 +25,34 @@ services:
     stdin_open: true
     tty: true
     entrypoint: []
-    command:
-      [
-        "sh",
-        "-c",
-        "sudo chown user $$SSH_AUTH_SOCK && cp --update /opt/build/poetry/poetry.lock /workspaces/raglite/ && mkdir -p /workspaces/raglite/.git/hooks/ && cp --update /opt/build/git/* /workspaces/raglite/.git/hooks/ && zsh"
-      ]
+    command: [ "sh", "-c", "sudo chown user $$SSH_AUTH_SOCK && cp --update /opt/build/poetry/poetry.lock /workspaces/raglite/ && mkdir -p /workspaces/raglite/.git/hooks/ && cp --update /opt/build/git/* /workspaces/raglite/.git/hooks/ && zsh" ]
     environment:
       - POETRY_PYPI_TOKEN_PYPI
       - SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
+    depends_on:
+      - postgres
+    networks:
+      - raglite-network
     volumes:
       - ~/.gitconfig:/etc/gitconfig
       - ~/.ssh/known_hosts:/home/user/.ssh/known_hosts
       - ${SSH_AGENT_AUTH_SOCK:-/run/host-services/ssh-auth.sock}:/run/host-services/ssh-auth.sock
     profiles:
       - dev
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: raglite_user
+      POSTGRES_PASSWORD: raglite_password
+    networks:
+      - raglite-network
+    tmpfs:
+      - /var/lib/postgresql/data
+
+networks:
+  raglite-network:
+    driver: bridge
 
 volumes:
   command-history-volume:
