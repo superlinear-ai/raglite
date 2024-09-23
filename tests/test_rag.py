@@ -11,7 +11,7 @@ from raglite import RAGLiteConfig, hybrid_search, insert_document, rag, retrieve
 
 def is_accelerator_available() -> bool:
     """Check if an accelerator is available."""
-    return llama_supports_gpu_offload() or os.cpu_count() >= 8  # noqa: PLR2004
+    return llama_supports_gpu_offload() or (os.cpu_count() or 1) >= 8  # noqa: PLR2004
 
 
 def test_insert_index_search(raglite_test_config: RAGLiteConfig) -> None:
