@@ -100,7 +100,7 @@ insert_document(Path("Special Relativity.pdf"), config=my_config)
 
 ### 3. Searching and Retrieval-Augmented Generation (RAG)
 
-Now, you can search for chunks with keyword search, vector search, or a hybrid of the two. You can also answer questions using RAG and the search method of your choice (`hybrid` is the default):
+Now, you can search for chunks with keyword search, vector search, or a hybrid of the two. You can also answer questions with RAG and the search method of your choice (`hybrid` is the default):
 
 ```python
 # Search for chunks:
@@ -125,7 +125,7 @@ for update in stream:
 RAGLite can compute and apply an [optimal closed-form query adapter](src/raglite/_query_adapter.py) to the prompt embedding to improve the output quality of RAG. To benefit from this, first generate a set of evals with `insert_evals` and then compute and store the optimal query adapter with `update_query_adapter`:
 
 ```python
-# Improve RAG with an optimal query adapter (optional):
+# Improve RAG with an optimal query adapter:
 from raglite import insert_evals, update_query_adapter
 
 insert_evals(num_evals=100, config=my_config)
@@ -138,8 +138,9 @@ If you installed the `ragas` extra, you can use RAGLite to answer the evals and 
 
 ```python
 # Evaluate retrieval and generation:
-from raglite import answer_evals, evaluate
+from raglite import answer_evals, evaluate, insert_evals
 
+insert_evals(num_evals=100, config=my_config)
 answered_evals_df = answer_evals(num_evals=10, config=my_config)
 evaluation_df = evaluate(answered_evals_df, config=my_config)
 ```
