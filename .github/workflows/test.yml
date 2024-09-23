@@ -33,7 +33,7 @@ jobs:
       - name: Start Dev Container
         run: |
           git config --global init.defaultBranch main
-          PYTHON_VERSION=${{ matrix.python-version }} devcontainer up --workspace-folder .
+          PYTHON_VERSION=${{ matrix.python-version }} OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} devcontainer up --workspace-folder .
 
       - name: Lint package
         run: devcontainer exec --workspace-folder . poe lint
