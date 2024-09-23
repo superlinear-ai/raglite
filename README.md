@@ -59,6 +59,9 @@ pip install raglite[ragas]
 > [!TIP]
 > 🧠 RAGLite extends [LiteLLM](https://github.com/BerriAI/litellm) with support for [llama.cpp](https://github.com/ggerganov/llama.cpp) models using [llama-cpp-python](https://github.com/abetlen/llama-cpp-python). To select a llama.cpp model (e.g., from [bartowski's collection](https://huggingface.co/collections/bartowski/recent-highlights-65cf8e08f8ab7fc669d7b5bd)), use a model identifier of the form `"llama-cpp-python/<hugging_face_repo_id>/<filename>@<n_ctx>"`, where `n_ctx` is an optional parameter that specifies the context size of the model.
 
+> [!TIP]
+> 💾 You can create a PostgreSQL database for free in a few clicks at [neon.tech](https://neon.tech) (not sponsored).
+
 First, configure RAGLite with your preferred PostgreSQL or SQLite database and [any LLM supported by LiteLLM](https://docs.litellm.ai/docs/providers/openai):
 
 ```python
@@ -82,10 +85,7 @@ my_config = RAGLiteConfig(
 ### 2. Inserting documents
 
 > [!TIP]
-> ✍️ To insert documents other than PDF, make sure to install the `pandoc` extra with `pip install raglite[pandoc]`.
-
-> [!TIP]
-> 💾 You can create a PostgreSQL database for free in a few clicks at [neon.tech](https://neon.tech) (not sponsored).
+> ✍️ To insert documents other than PDF, install the `pandoc` extra with `pip install raglite[pandoc]`.
 
 Next, insert some documents into the database. RAGLite will take care of the [conversion to Markdown](src/raglite/_markdown.py), [optimal level 4 semantic chunking](src/raglite/_split_chunks.py), and [multi-vector embedding with late chunking](src/raglite/_embed.py):
 
