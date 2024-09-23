@@ -30,8 +30,9 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     if is_postgres_running():
         engine = create_engine(POSTGRES_URL, isolation_level="AUTOCOMMIT")
         with engine.connect() as conn:
-            conn.execute(text("DROP DATABASE IF EXISTS raglite_test"))
-            conn.execute(text("CREATE DATABASE raglite_test"))
+            for variant in ["local", "remote"]:
+                conn.execute(text(f"DROP DATABASE IF EXISTS raglite_test_{variant}"))
+                conn.execute(text(f"CREATE DATABASE raglite_test_{variant}"))
 
 
 @pytest.fixture(
@@ -39,7 +40,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     params=[
         pytest.param("sqlite:///:memory:", id="sqlite"),
         pytest.param(
-            POSTGRES_URL.replace("/postgres", "/raglite_test"),
+            POSTGRES_URL,
             id="postgres",
             marks=pytest.mark.skipif(not is_postgres_running(), reason="PostgreSQL is not running"),
         ),
@@ -74,5 +75,10 @@ def embedder(request: pytest.FixtureRequest) -> str:
 @pytest.fixture(scope="module")
 def raglite_test_config(database: str, embedder: str) -> RAGLiteConfig:
     """Create a lightweight in-memory config for testing SQLite and PostgreSQL."""
+    # Select the PostgreSQL database based on the embedder.
+    if "postgres" in database:
+        variant = "local" if embedder.startswith("llama-cpp-python") else "remote"
+        database = database.replace("/postgres", f"/raglite_test_{variant}")
+    # Create a RAGLite config for the given database and embedder.
     db_config = RAGLiteConfig(db_url=database, embedder=embedder)
     return db_config
