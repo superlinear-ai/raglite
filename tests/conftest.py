@@ -28,7 +28,7 @@ def is_openai_available() -> bool:
 def pytest_sessionstart(session: pytest.Session) -> None:
     """Reset the PostgreSQL database."""
     if is_postgres_running():
-        engine = create_engine(database, isolation_level="AUTOCOMMIT")
+        engine = create_engine(POSTGRES_URL, isolation_level="AUTOCOMMIT")
         with engine.connect() as conn:
             conn.execute(text("DROP DATABASE IF EXISTS raglite_test"))
             conn.execute(text("CREATE DATABASE raglite_test"))
