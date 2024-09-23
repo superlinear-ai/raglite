@@ -1,4 +1,4 @@
-"""Test RAGLite's basic functionality."""
+"""Test RAGLite's RAG functionality."""
 
 import os
 from pathlib import Path

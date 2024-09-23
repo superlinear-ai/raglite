@@ -5,7 +5,7 @@ from typing import Literal
 
 import numpy as np
 from litellm import embedding
-from llama_cpp import LLAMA_POOLING_TYPE_NONE
+from llama_cpp import LLAMA_POOLING_TYPE_NONE, Llama
 from tqdm.auto import tqdm, trange
 
 from raglite._config import RAGLiteConfig
@@ -13,10 +13,26 @@ from raglite._litellm import LlamaCppPythonLLM
 from raglite._typing import FloatMatrix, IntVector
 
 
-def _embed_sentences_with_late_chunking(
+def _embed_sentences_with_late_chunking(  # noqa: PLR0915
     sentences: list[str], *, config: RAGLiteConfig | None = None
 ) -> FloatMatrix:
     """Embed a document's sentences with late chunking."""
+
+    def _count_tokens(
+        sentences: list[str], embedder: Llama, sentinel_char: str, sentinel_tokens: list[int]
+    ) -> IntVector:
+        # Join the sentences with the sentinel token and tokenise the result.
+        sentences_tokens = np.asarray(
+            embedder.tokenize(sentinel_char.join(sentences).encode(), add_bos=False), dtype=np.intp
+        )
+        # Map all sentinel token variants to the first one.
+        for sentinel_token in sentinel_tokens[1:]:
+            sentences_tokens[sentences_tokens == sentinel_token] = sentinel_tokens[0]
+        # Count how many tokens there are in between sentinel tokens to recover the token counts.
+        sentinel_indices = np.where(sentences_tokens == sentinel_tokens[0])[0]
+        num_tokens = np.diff(sentinel_indices, prepend=0, append=len(sentences_tokens))
+        assert len(num_tokens) == len(sentences), f"Sentinel `{sentinel_char}` appears in document"
+        return num_tokens
 
     def _create_segment(
         content_start_index: int,
@@ -44,15 +60,36 @@ def _embed_sentences_with_late_chunking(
     # support outputting token-level embeddings.
     config = config or RAGLiteConfig()
     assert config.embedder.startswith("llama-cpp-python")
-    # Compute the number of tokens per sentence.
     embedder = LlamaCppPythonLLM.llm(
         config.embedder, embedding=True, pooling_type=LLAMA_POOLING_TYPE_NONE
     )
-    num_tokens = np.asarray(
-        [len(embedder.tokenize(sentence.encode(), add_bos=False)) for sentence in sentences]
-    )
+    n_ctx = embedder.n_ctx()
+    n_batch = embedder.n_batch
+    # Identify the tokens corresponding to a sentinel character.
+    sentinel_char = "⊕"
+    sentinel_test = f"A{sentinel_char}B {sentinel_char} C.\n{sentinel_char}D"
+    sentinel_tokens = [
+        token
+        for token in embedder.tokenize(sentinel_test.encode(), add_bos=False)
+        if sentinel_char in embedder.detokenize([token]).decode()
+    ]
+    assert len(sentinel_tokens), f"Sentinel `{sentinel_char}` not supported by embedder"
+    # Compute the number of tokens per sentence.
+    num_tokens_list = []
+    sentence_batch, sentence_batch_len = [], 0
+    for i, sentence in enumerate(sentences):
+        sentence_batch.append(sentence)
+        sentence_batch_len += len(sentence)
+        if i == len(sentences) - 1 or sentence_batch_len > (n_ctx // 2):
+            num_tokens_list.extend(
+                _count_tokens(sentence_batch, embedder, sentinel_char, sentinel_tokens)
+            )
+            sentence_batch, sentence_batch_len = [], 0
+    num_tokens = np.asarray(num_tokens_list, dtype=np.intp)
     # Compute the maximum number of tokens for each segment's preamble and content.
-    max_tokens = embedder.n_ctx() - 16
+    # TODO: Unfortunately, llama-cpp-python truncates the input to n_batch tokens and crashes if you
+    # try to increase it. Until this is fixed, we have to limit max_tokens to min(n_ctx, n_batch).
+    max_tokens = min(n_ctx, n_batch) - 16
     max_tokens_preamble = round(0.382 * max_tokens)  # Golden ratio.
     max_tokens_content = max_tokens - max_tokens_preamble
     # Compute a list of segments, each consisting of a preamble and content.
@@ -76,10 +113,8 @@ def _embed_sentences_with_late_chunking(
         # Split the segment embeddings into embedding matrices per sentence.
         segment_tokens = num_tokens[segment_start_index:segment_end_index]
         sentence_size = np.round(
-            (len(segment_embedding) - 2) * (segment_tokens / np.sum(segment_tokens))
+            len(segment_embedding) * (segment_tokens / np.sum(segment_tokens))
         ).astype(np.intp)
-        sentence_size[0] += 1
-        sentence_size[-1] += 1
         sentence_matrices = np.split(segment_embedding, np.cumsum(sentence_size)[:-1])
         # Compute the segment sentence embeddings by averaging the token embeddings.
         content_sentence_embeddings = [

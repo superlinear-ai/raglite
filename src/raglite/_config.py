@@ -1,5 +1,6 @@
 """RAGLite config."""
 
+import os
 from dataclasses import dataclass
 
 from llama_cpp import llama_supports_gpu_offload
@@ -12,8 +13,8 @@ DEFAULT_LLM = (
 )
 
 DEFAULT_EMBEDDER = (
-    "llama-cpp-python/ChristianAzinn/snowflake-arctic-embed-l-gguf/*f16.GGUF"
-    if llama_supports_gpu_offload()
+    "llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf"
+    if llama_supports_gpu_offload() or (os.cpu_count() or 1) >= 4  # noqa: PLR2004
     else "llama-cpp-python/yishan-wang/snowflake-arctic-embed-m-v1.5-Q8_0-GGUF/*q8_0.gguf"
 )
 
