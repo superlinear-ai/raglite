@@ -205,10 +205,12 @@ def evaluate(
     """Evaluate the performance of a set of answered evals with Ragas."""
     try:
         from datasets import Dataset
-        from langchain_community.embeddings.llamacpp import LlamaCppEmbeddings
-        from langchain_community.llms import LlamaCpp
+        from langchain_community.chat_models import ChatLiteLLM
+        from langchain_community.embeddings import LlamaCppEmbeddings
         from ragas import RunConfig
         from ragas import evaluate as ragas_evaluate
+
+        from raglite._litellm import LlamaCppPythonLLM
     except ImportError as import_error:
         error_message = "To use the `evaluate` function, please install the `ragas` extra."
         raise ImportError(error_message) from import_error
@@ -221,20 +223,14 @@ def evaluate(
         else answer_evals(num_evals=answered_evals, config=config)
     )
     # Evaluate the answered evals with Ragas.
-    lc_llm = LlamaCpp(
-        model_path=config.llm.model_path,
-        temperature=config.llm_temperature,
-        n_batch=config.llm.n_batch,
-        n_ctx=config.llm.n_ctx(),
-        n_gpu_layers=-1,
-        verbose=config.llm.verbose,
-    )
+    lc_llm = ChatLiteLLM(model=config.llm)  # type: ignore[call-arg]
+    embedder = LlamaCppPythonLLM().llm(model=config.embedder, embedding=True)
     lc_embedder = LlamaCppEmbeddings(  # type: ignore[call-arg]
-        model_path=config.embedder.model_path,
-        n_batch=config.embedder.n_batch,
-        n_ctx=config.embedder.n_ctx(),
+        model_path=embedder.model_path,
+        n_batch=embedder.n_batch,
+        n_ctx=embedder.n_ctx(),
         n_gpu_layers=-1,
-        verbose=config.embedder.verbose,
+        verbose=embedder.verbose,
     )
     evaluation_df = ragas_evaluate(
         dataset=Dataset.from_pandas(answered_evals_df),

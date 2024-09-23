@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from litellm import get_model_info  # type: ignore[attr-defined]
 from markdown_it import MarkdownIt
 from pydantic import ConfigDict
 from sqlalchemy.engine import Engine, make_url
@@ -23,6 +24,7 @@ from sqlmodel import (
 )
 
 from raglite._config import RAGLiteConfig
+from raglite._litellm import LlamaCppPythonLLM
 from raglite._typing import Embedding, FloatMatrix, FloatVector, PickledObject
 
 
@@ -274,58 +276,66 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
         with Session(engine) as session:
             session.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
             session.commit()
+    # If the user has configured a llama-cpp-python model, we ensure that LiteLLM's model info is up
+    # to date by loading that LLM.
+    if config.embedder.startswith("llama-cpp-python"):
+        _ = LlamaCppPythonLLM.llm(config.embedder, embedding=True)
+    llm_provider = "llama-cpp-python" if config.embedder.startswith("llama-cpp") else None
+    model_info = get_model_info(config.embedder, custom_llm_provider=llm_provider)
+    embedding_dim = model_info.get("output_vector_size") or -1
+    assert embedding_dim > 0
     # Create all SQLModel tables.
-    ChunkEmbedding.set_embedding_dim(config.embedder.n_embd())
+    ChunkEmbedding.set_embedding_dim(embedding_dim)
     SQLModel.metadata.create_all(engine)
     # Create backend-specific indexes.
     if db_backend == "postgresql":
-        # Create a full-text search index with `tsvector` and a vector search index with `pgvector`.
+        # Create a keyword search index with `tsvector` and a vector search index with `pgvector`.
         with Session(engine) as session:
             metrics = {"cosine": "cosine", "dot": "ip", "euclidean": "l2", "l1": "l1", "l2": "l2"}
             session.execute(
                 text("""
-                CREATE INDEX IF NOT EXISTS fts_chunk_index ON chunk USING GIN (to_tsvector('simple', body));
+                CREATE INDEX IF NOT EXISTS keyword_search_chunk_index ON chunk USING GIN (to_tsvector('simple', body));
                 """)
             )
             session.execute(
                 text(f"""
-                CREATE INDEX IF NOT EXISTS vs_chunk_index ON chunk_embedding
+                CREATE INDEX IF NOT EXISTS vector_search_chunk_index ON chunk_embedding
                 USING hnsw (
-                     (embedding::halfvec({config.embedder.n_embd()}))
+                     (embedding::halfvec({embedding_dim}))
                      halfvec_{metrics[config.vector_search_index_metric]}_ops
                 );
                 """)
             )
             session.commit()
     elif db_backend == "sqlite":
-        # Create a virtual table for full-text search on the chunk table.
+        # Create a virtual table for keyword search on the chunk table.
         # We use the chunk table as an external content table [1] to avoid duplicating the data.
         # [1] https://www.sqlite.org/fts5.html#external_content_tables
         with Session(engine) as session:
             session.execute(
                 text("""
-                CREATE VIRTUAL TABLE IF NOT EXISTS fts_chunk_index USING fts5(body, content='chunk', content_rowid='rowid');
+                CREATE VIRTUAL TABLE IF NOT EXISTS keyword_search_chunk_index USING fts5(body, content='chunk', content_rowid='rowid');
                 """)
             )
             session.execute(
                 text("""
-                CREATE TRIGGER IF NOT EXISTS fts_chunk_index_auto_insert AFTER INSERT ON chunk BEGIN
-                    INSERT INTO fts_chunk_index(rowid, body) VALUES (new.rowid, new.body);
+                CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_insert AFTER INSERT ON chunk BEGIN
+                    INSERT INTO keyword_search_chunk_index(rowid, body) VALUES (new.rowid, new.body);
                 END;
                 """)
             )
             session.execute(
                 text("""
-                CREATE TRIGGER IF NOT EXISTS fts_chunk_index_auto_delete AFTER DELETE ON chunk BEGIN
-                    INSERT INTO fts_chunk_index(fts_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
+                CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_delete AFTER DELETE ON chunk BEGIN
+                    INSERT INTO keyword_search_chunk_index(keyword_search_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
                 END;
                 """)
             )
             session.execute(
                 text("""
-                CREATE TRIGGER IF NOT EXISTS fts_chunk_index_auto_update AFTER UPDATE ON chunk BEGIN
-                    INSERT INTO fts_chunk_index(fts_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
-                    INSERT INTO fts_chunk_index(rowid, body) VALUES (new.rowid, new.body);
+                CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_update AFTER UPDATE ON chunk BEGIN
+                    INSERT INTO keyword_search_chunk_index(keyword_search_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
+                    INSERT INTO keyword_search_chunk_index(rowid, body) VALUES (new.rowid, new.body);
                 END;
                 """)
             )

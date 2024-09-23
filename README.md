@@ -7,17 +7,16 @@ RAGLite is a Python package for Retrieval-Augmented Generation (RAG) with Postgr
 ## Features
 
 1. ❤️ Only lightweight and permissive open source dependencies (e.g., no [PyTorch](https://github.com/pytorch/pytorch), [LangChain](https://github.com/langchain-ai/langchain), or [PyMuPDF](https://github.com/pymupdf/PyMuPDF))
-2. 🧠 Your choice of local LLM with [llama-cpp-python](https://github.com/abetlen/llama-cpp-python)
-3. 💾 Your choice of [PostgreSQL](https://github.com/postgres/postgres) or [SQLite](https://github.com/sqlite/sqlite) as a full-text & vector search database
-4. 🚀 Acceleration with Metal on macOS and with CUDA on Linux and Windows
+2. 🧠 Choose any LLM provider with [LiteLLM](https://github.com/BerriAI/litellm), including local [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) models
+3. 💾 [PostgreSQL](https://github.com/postgres/postgres) or [SQLite](https://github.com/sqlite/sqlite) as keyword & vector search database
+4. 🚀 Acceleration with Metal on macOS, and CUDA on Linux and Windows
 5. 📖 PDF to Markdown conversion on top of [pdftext](https://github.com/VikParuchuri/pdftext) and [pypdfium2](https://github.com/pypdfium2-team/pypdfium2)
 6. ✂️ Optimal [level 4 semantic chunking](https://medium.com/@anuragmishra_27746/five-levels-of-chunking-strategies-in-rag-notes-from-gregs-video-7b735895694d) by solving a [binary integer programming problem](https://en.wikipedia.org/wiki/Integer_programming)
-7. 📌 Markdown-based [contextual chunk headings](https://d-star.ai/solving-the-out-of-context-chunk-problem-for-rag)
-8. 🌈 Combined sentence-level and chunk-level matching with [multi-vector chunk retrieval](https://python.langchain.com/v0.2/docs/how_to/multi_vector/)
-9. 🌀 Optimal [closed-form linear query adapter](src/raglite/_query_adapter.py) by solving an [orthogonal Procrustes problem](https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem)
-10. 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) that combines the database's built-in full-text search ([tsvector](https://www.postgresql.org/docs/current/datatype-textsearch.html) in PostgreSQL, [FTS5](https://www.sqlite.org/fts5.html) in SQLite) with their native vector search extensions ([pgvector](https://github.com/pgvector/pgvector) in PostgreSQL, [sqlite-vec](https://github.com/asg017/sqlite-vec) in SQLite)
-11. ✍️ Optional support for conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
-12. ✅ Optional support for evaluation of retrieval and generation performance with [Ragas](https://github.com/explodinggradients/ragas)
+7. 🧬 Multi-vector chunk embedding with [late chunking](https://weaviate.io/blog/late-chunking) and [contextual chunk headings](https://d-star.ai/solving-the-out-of-context-chunk-problem-for-rag)
+8.  🌀 Optimal [closed-form linear query adapter](src/raglite/_query_adapter.py) by solving an [orthogonal Procrustes problem](https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem)
+9.  🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) that combines the database's built-in keyword search ([tsvector](https://www.postgresql.org/docs/current/datatype-textsearch.html) in PostgreSQL, [FTS5](https://www.sqlite.org/fts5.html) in SQLite) with their native vector search extensions ([pgvector](https://github.com/pgvector/pgvector) in PostgreSQL, [sqlite-vec](https://github.com/asg017/sqlite-vec) in SQLite)
+10. ✍️ Optional: conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
+11. ✅ Optional: evaluation of retrieval and generation performance with [Ragas](https://github.com/explodinggradients/ragas)
 
 ## Installing
 
@@ -47,21 +46,60 @@ pip install raglite[ragas]
 
 ## Using
 
-Example usage:
+### Overview
+
+1. [Configuring RAGLite](#1-configuring-raglite)
+2. [Inserting documents](#2-inserting-documents)
+3. [Searching and Retrieval-Augmented Generation (RAG)](#3-searching-and-retrieval-augmented-generation-rag)
+4. [Computing and using an optimal query adapter](#4-computing-and-using-an-optimal-query-adapter)
+5. [Evaluation of retrieval and generation](#5-evaluation-of-retrieval-and-generation)
+
+### 1. Configuring RAGLite
+
+> [!TIP]
+> RAGLite extends [LiteLLM](https://github.com/BerriAI/litellm) with support for [llama.cpp](https://github.com/ggerganov/llama.cpp) models using [llama-cpp-python](https://github.com/abetlen/llama-cpp-python). To select a llama.cpp model (e.g., from [bartowski's collection](https://huggingface.co/collections/bartowski/recent-highlights-65cf8e08f8ab7fc669d7b5bd)), use a model identifier of the form `"llama-cpp-python/<hugging_face_repo_id>/<filename>@<n_ctx>"`, where `n_ctx` is an optional parameter that specifies the context size of the model.
+
+First, configure RAGLite with your preferred PostgreSQL or SQLite database and [any LLM supported by LiteLLM](https://docs.litellm.ai/docs/providers/openai):
 
 ```python
-# Configure the database and LLM:
 from raglite import RAGLiteConfig
 
-my_config = RAGLiteConfig(db_url="sqlite:///raglite.sqlite")
+# Example 'remote' config with a PostgreSQL database and an OpenAI LLM:
+my_config = RAGLiteConfig(
+    db_url="postgresql://my_username:my_password@my_host:5432/my_database"
+    llm="gpt-4o-mini",  # Or any LLM supported by LiteLLM.
+    embedder="text-embedding-3-large",  # Or any embedder supported by LiteLLM.
+)
 
+# Example 'local' config with a SQLite database and a llama.cpp LLM:
+my_config = RAGLiteConfig(
+    db_url="sqlite:///raglite.sqlite",
+    llm="llama-cpp-python/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/*Q4_K_M.gguf@8192",
+    embedder="llama-cpp-python/ChristianAzinn/snowflake-arctic-embed-l-gguf/*f16.GGUF",
+)
+```
+
+### 2. Inserting documents
+
+> [!TIP]
+> To insert documents other than PDF, make sure to install the `pandoc` extra with `pip install raglite[pandoc]`.
+
+Next, insert some documents into the database. RAGLite will take care of the [conversion to Markdown](src/raglite/_markdown.py), [optimal level 4 semantic chunking](src/raglite/_split_chunks.py), and [multi-vector embedding with late chunking](src/raglite/_embed.py):
+
+```python
 # Insert documents:
 from pathlib import Path
 from raglite import insert_document
 
 insert_document(Path("On the Measure of Intelligence.pdf"), config=my_config)
 insert_document(Path("Special Relativity.pdf"), config=my_config)
+```
 
+### 3. Searching and Retrieval-Augmented Generation (RAG)
+
+Now, you can search for chunks with keyword search, vector search, or a hybrid of the two. You can also answer questions using RAG and the search method of your choice (`hybrid` is the default):
+
+```python
 # Search for chunks:
 from raglite import hybrid_search, keyword_search, vector_search
 
@@ -77,13 +115,25 @@ prompt = "What does it mean for two events to be simultaneous?"
 stream = rag(prompt, search=hybrid_search, config=my_config)
 for update in stream:
     print(update, end="")
+```
 
+### 4. Computing and using an optimal query adapter
+
+RAGLite can compute and apply an [optimal closed-form query adapter](src/raglite/_query_adapter.py) to the prompt embedding to improve the output quality of RAG. To benefit from this, first generate a set of evals with `insert_evals` and then compute and store the optimal query adapter with `update_query_adapter`:
+
+```python
 # Improve RAG with an optimal query adapter (optional):
 from raglite import insert_evals, update_query_adapter
 
 insert_evals(num_evals=100, config=my_config)
 update_query_adapter(config=my_config)
+```
 
+### 5. Evaluation of retrieval and generation
+
+If you installed the `ragas` extra, you can use RAGLite to answer the evals and then evaluate the quality of both the retrieval and generation steps of RAG using [Ragas](https://github.com/explodinggradients/ragas):
+
+```python
 # Evaluate retrieval and generation:
 from raglite import answer_evals, evaluate
 
