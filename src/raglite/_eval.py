@@ -207,6 +207,7 @@ def evaluate(
         from datasets import Dataset
         from langchain_community.chat_models import ChatLiteLLM
         from langchain_community.embeddings import LlamaCppEmbeddings
+        from langchain_community.llms import LlamaCpp
         from ragas import RunConfig
         from ragas import evaluate as ragas_evaluate
 
@@ -222,8 +223,22 @@ def evaluate(
         if isinstance(answered_evals, pd.DataFrame)
         else answer_evals(num_evals=answered_evals, config=config)
     )
-    # Evaluate the answered evals with Ragas.
-    lc_llm = ChatLiteLLM(model=config.llm)  # type: ignore[call-arg]
+    # Load the LLM.
+    if config.llm.startswith("llama-cpp-python"):
+        llm = LlamaCppPythonLLM().llm(model=config.llm)
+        lc_llm = LlamaCpp(
+            model_path=llm.model_path,
+            n_batch=llm.n_batch,
+            n_ctx=llm.n_ctx(),
+            n_gpu_layers=-1,
+            verbose=llm.verbose,
+        )
+    else:
+        lc_llm = ChatLiteLLM(model=config.llm)  # type: ignore[call-arg]
+    # Load the embedder.
+    if not config.embedder.startswith("llama-cpp-python"):
+        error_message = "Currently, only `llama-cpp-python` embedders are supported."
+        raise NotImplementedError(error_message)
     embedder = LlamaCppPythonLLM().llm(model=config.embedder, embedding=True)
     lc_embedder = LlamaCppEmbeddings(  # type: ignore[call-arg]
         model_path=embedder.model_path,
@@ -232,6 +247,7 @@ def evaluate(
         n_gpu_layers=-1,
         verbose=embedder.verbose,
     )
+    # Evaluate the answered evals with Ragas.
     evaluation_df = ragas_evaluate(
         dataset=Dataset.from_pandas(answered_evals_df),
         llm=lc_llm,
