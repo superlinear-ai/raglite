@@ -5,12 +5,12 @@ from sqlmodel import Session, col, select
 from tqdm.auto import tqdm
 
 from raglite._config import RAGLiteConfig
-from raglite._database import Chunk, Eval, IndexMetadata, create_database_engine
-from raglite._embed import embed_strings
+from raglite._database import Chunk, ChunkEmbedding, Eval, IndexMetadata, create_database_engine
+from raglite._embed import embed_sentences
 from raglite._search import vector_search
 
 
-def update_query_adapter(  # noqa: PLR0915
+def update_query_adapter(  # noqa: PLR0915, C901
     *,
     max_triplets: int = 4096,
     max_triplets_per_eval: int = 64,
@@ -69,21 +69,25 @@ def update_query_adapter(  # noqa: PLR0915
     engine = create_database_engine(config)
     with Session(engine) as session:
         # Get random evals from the database.
+        chunk_embedding = session.exec(select(ChunkEmbedding).limit(1)).first()
+        if chunk_embedding is None:
+            error_message = "First run `insert_document()` to insert documents."
+            raise ValueError(error_message)
         evals = session.exec(
             select(Eval).order_by(Eval.id).limit(max(8, max_triplets // max_triplets_per_eval))
         ).all()
-        if len(evals) * max_triplets_per_eval < config.embedder.n_embd():
+        if len(evals) * max_triplets_per_eval < len(chunk_embedding.embedding):
             error_message = "First run `insert_evals()` to generate sufficient evals."
             raise ValueError(error_message)
         # Loop over the evals to generate (q, p, n) triplets.
-        Q = np.zeros((0, config.embedder.n_embd()))  # We want double precision here.  # noqa: N806
+        Q = np.zeros((0, len(chunk_embedding.embedding)))  # noqa: N806
         P = np.zeros_like(Q)  # noqa: N806
         N = np.zeros_like(Q)  # noqa: N806
         for eval_ in tqdm(
             evals, desc="Extracting triplets from evals", unit="eval", dynamic_ncols=True
         ):
             # Embed the question.
-            question_embedding = embed_strings([eval_.question], config=config)
+            question_embedding = embed_sentences([eval_.question], config=config)
             # Retrieve chunks that would be used to answer the question.
             chunk_ids, _ = vector_search(
                 question_embedding, num_results=optimize_top_k, config=config_no_query_adapter

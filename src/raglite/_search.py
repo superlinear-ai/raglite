@@ -13,7 +13,7 @@ from sqlmodel import Session, select, text
 
 from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, ChunkEmbedding, IndexMetadata, create_database_engine
-from raglite._embed import embed_strings
+from raglite._embed import embed_sentences
 from raglite._extract import extract_with_llm
 from raglite._typing import FloatMatrix
 
@@ -32,7 +32,7 @@ def vector_search(
     index_metadata = IndexMetadata.get("default", config=config)
     # Embed the prompt.
     prompt_embedding = (
-        embed_strings([prompt], config=config)[0, :]
+        embed_sentences([prompt], config=config)[0, :]
         if isinstance(prompt, str)
         else np.ravel(prompt)
     )
@@ -105,7 +105,7 @@ def keyword_search(
             # [1] https://www.postgresql.org/docs/current/textsearch-controls.html
             prompt_escaped = re.sub(r"[&|!():<>\"]", " ", prompt)
             tsv_query = " | ".join(prompt_escaped.split())
-            # Perform full-text search with tsvector.
+            # Perform keyword search with tsvector.
             statement = text("""
                 SELECT id as chunk_id, ts_rank(to_tsvector('simple', body), to_tsquery('simple', :query)) AS score
                 FROM chunk
@@ -119,13 +119,13 @@ def keyword_search(
             # [1] https://www.sqlite.org/fts5.html#full_text_query_syntax
             prompt_escaped = re.sub(f"[{re.escape(string.punctuation)}]", "", prompt)
             fts5_query = " OR ".join(prompt_escaped.split())
-            # Perform full-text search with FTS5. In FTS5, BM25 scores are negative [1], so we
+            # Perform keyword search with FTS5. In FTS5, BM25 scores are negative [1], so we
             # negate them to make them positive.
             # [1] https://www.sqlite.org/fts5.html#the_bm25_function
             statement = text("""
-                SELECT chunk.id as chunk_id, -bm25(fts_chunk_index) as score
-                FROM chunk JOIN fts_chunk_index ON chunk.rowid = fts_chunk_index.rowid
-                WHERE fts_chunk_index MATCH :match
+                SELECT chunk.id as chunk_id, -bm25(keyword_search_chunk_index) as score
+                FROM chunk JOIN keyword_search_chunk_index ON chunk.rowid = keyword_search_chunk_index.rowid
+                WHERE keyword_search_chunk_index MATCH :match
                 ORDER BY score DESC
                 LIMIT :limit;
             """)
@@ -159,10 +159,12 @@ def hybrid_search(
 ) -> tuple[list[str], list[float]]:
     """Search chunks by combining ANN vector search with BM25 keyword search."""
     # Run both searches.
-    chunks_vector, _ = vector_search(prompt, num_results=num_rerank, config=config)
-    chunks_keyword, _ = keyword_search(prompt, num_results=num_rerank, config=config)
+    chunkeyword_search_vector, _ = vector_search(prompt, num_results=num_rerank, config=config)
+    chunkeyword_search_keyword, _ = keyword_search(prompt, num_results=num_rerank, config=config)
     # Combine the results with Reciprocal Rank Fusion (RRF).
-    chunk_ids, hybrid_score = reciprocal_rank_fusion([chunks_vector, chunks_keyword])
+    chunk_ids, hybrid_score = reciprocal_rank_fusion(
+        [chunkeyword_search_vector, chunkeyword_search_keyword]
+    )
     chunk_ids, hybrid_score = chunk_ids[:num_results], hybrid_score[:num_results]
     return chunk_ids, hybrid_score
 
@@ -197,11 +199,11 @@ Your task is to generate a minimal set of search queries for a search engine tha
     rankings = []
     for query in queries:
         # Run both searches.
-        chunks_vector, _ = vector_search(query, num_results=num_rerank, config=config)
-        chunks_keyword, _ = keyword_search(query, num_results=num_rerank, config=config)
+        chunkeyword_search_vector, _ = vector_search(query, num_results=num_rerank, config=config)
+        chunkeyword_search_keyword, _ = keyword_search(query, num_results=num_rerank, config=config)
         # Add results to the rankings.
-        rankings.append(chunks_vector)
-        rankings.append(chunks_keyword)
+        rankings.append(chunkeyword_search_vector)
+        rankings.append(chunkeyword_search_keyword)
     # Combine all the search results with Reciprocal Rank Fusion (RRF).
     chunk_ids, fusion_score = reciprocal_rank_fusion(rankings)
     chunk_ids, fusion_score = chunk_ids[:num_results], fusion_score[:num_results]

@@ -33,6 +33,7 @@ spacy = ">=3.7.4"
 xx_sent_ud_sm = { url = "https://github.com/explosion/spacy-models/releases/download/xx_sent_ud_sm-3.7.0/xx_sent_ud_sm-3.7.0-py3-none-any.whl" }
 # Large Language Models:
 huggingface-hub = ">=0.22.0"
+litellm = ">=1.47.1"
 llama-cpp-python = [
   { version = ">=0.2.88", markers = "(sys_platform != 'darwin' or platform_machine != 'arm64') and (extra != 'cuda121' and extra != 'cuda122' and extra != 'cuda123' and extra != 'cuda124')" },
   # Metal
@@ -72,7 +73,6 @@ poethepoet = ">=0.25.0"
 pre-commit = ">=3.7.0"
 pytest = ">=8.1.1"
 pytest-mock = ">=3.14.0"
-pytest-xdist = ">=3.5.0"
 ruff = ">=0.3.5"
 safety = ">=3.1.0"
 shellcheck-py = ">=0.10.0.1"

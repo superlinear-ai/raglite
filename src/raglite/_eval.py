@@ -205,10 +205,13 @@ def evaluate(
     """Evaluate the performance of a set of answered evals with Ragas."""
     try:
         from datasets import Dataset
-        from langchain_community.embeddings.llamacpp import LlamaCppEmbeddings
+        from langchain_community.chat_models import ChatLiteLLM
+        from langchain_community.embeddings import LlamaCppEmbeddings
         from langchain_community.llms import LlamaCpp
         from ragas import RunConfig
         from ragas import evaluate as ragas_evaluate
+
+        from raglite._litellm import LlamaCppPythonLLM
     except ImportError as import_error:
         error_message = "To use the `evaluate` function, please install the `ragas` extra."
         raise ImportError(error_message) from import_error
@@ -220,22 +223,31 @@ def evaluate(
         if isinstance(answered_evals, pd.DataFrame)
         else answer_evals(num_evals=answered_evals, config=config)
     )
-    # Evaluate the answered evals with Ragas.
-    lc_llm = LlamaCpp(
-        model_path=config.llm.model_path,
-        temperature=config.llm_temperature,
-        n_batch=config.llm.n_batch,
-        n_ctx=config.llm.n_ctx(),
-        n_gpu_layers=-1,
-        verbose=config.llm.verbose,
-    )
+    # Load the LLM.
+    if config.llm.startswith("llama-cpp-python"):
+        llm = LlamaCppPythonLLM().llm(model=config.llm)
+        lc_llm = LlamaCpp(
+            model_path=llm.model_path,
+            n_batch=llm.n_batch,
+            n_ctx=llm.n_ctx(),
+            n_gpu_layers=-1,
+            verbose=llm.verbose,
+        )
+    else:
+        lc_llm = ChatLiteLLM(model=config.llm)  # type: ignore[call-arg]
+    # Load the embedder.
+    if not config.embedder.startswith("llama-cpp-python"):
+        error_message = "Currently, only `llama-cpp-python` embedders are supported."
+        raise NotImplementedError(error_message)
+    embedder = LlamaCppPythonLLM().llm(model=config.embedder, embedding=True)
     lc_embedder = LlamaCppEmbeddings(  # type: ignore[call-arg]
-        model_path=config.embedder.model_path,
-        n_batch=config.embedder.n_batch,
-        n_ctx=config.embedder.n_ctx(),
+        model_path=embedder.model_path,
+        n_batch=embedder.n_batch,
+        n_ctx=embedder.n_ctx(),
         n_gpu_layers=-1,
-        verbose=config.embedder.verbose,
+        verbose=embedder.verbose,
     )
+    # Evaluate the answered evals with Ragas.
     evaluation_df = ragas_evaluate(
         dataset=Dataset.from_pandas(answered_evals_df),
         llm=lc_llm,

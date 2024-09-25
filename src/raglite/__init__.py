@@ -2,7 +2,7 @@
 
 from raglite._config import RAGLiteConfig
 from raglite._eval import answer_evals, evaluate, insert_evals
-from raglite._index import insert_document
+from raglite._insert import insert_document
 from raglite._query_adapter import update_query_adapter
 from raglite._rag import rag
 from raglite._search import (
@@ -16,7 +16,7 @@ from raglite._search import (
 __all__ = [
     # Config
     "RAGLiteConfig",
-    # Index
+    # Insert
     "insert_document",
     # Search
     "fusion_search",

@@ -1,6 +1,5 @@
 """Index documents."""
 
-from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -10,7 +9,7 @@ from tqdm.auto import tqdm
 
 from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, ChunkEmbedding, Document, IndexMetadata, create_database_engine
-from raglite._embed import embed_strings
+from raglite._embed import embed_sentences, sentence_embedding_type
 from raglite._markdown import document_to_markdown
 from raglite._split_chunks import split_chunks
 from raglite._split_sentences import split_sentences
@@ -20,7 +19,7 @@ from raglite._typing import FloatMatrix
 def _create_chunk_records(
     document_id: str,
     chunks: list[str],
-    sentence_embeddings: list[FloatMatrix],
+    chunk_embeddings: list[FloatMatrix],
     config: RAGLiteConfig,
 ) -> tuple[list[Chunk], list[list[ChunkEmbedding]]]:
     """Process chunks into chunk and chunk embedding records."""
@@ -32,30 +31,47 @@ def _create_chunk_records(
         chunk_records.append(record)
         # Update the Markdown headings with those of this chunk.
         headings = record.extract_headings()
-    # Embed the contextualised chunks, which include the current Markdown headings.
-    contextualized_embeddings = embed_strings([str(chunk) for chunk in chunks], config=config)
-    # Set the chunk's multi-vector embedding as a linear combination of its sentence embeddings
-    # (for local context) and an embedding of the contextualised chunk (for global context).
-    α = config.sentence_embedding_weight  # noqa: PLC2401
+    # Create the chunk embedding records.
     chunk_embedding_records = []
-    for chunk_record, sentence_embedding, contextualized_embedding in zip(
-        chunk_records, sentence_embeddings, contextualized_embeddings, strict=True
-    ):
-        chunk_embedding = α * sentence_embedding + (1 - α) * contextualized_embedding[np.newaxis, :]
-        chunk_embedding = chunk_embedding / np.linalg.norm(chunk_embedding, axis=1, keepdims=True)
-        chunk_embedding_records.append(
-            [ChunkEmbedding(chunk_id=chunk_record.id, embedding=row) for row in chunk_embedding]
-        )
+    if sentence_embedding_type(config=config) == "late_chunking":
+        # Every chunk record is associated with a list of chunk embedding records, one for each of
+        # the sentences in the chunk.
+        for chunk_record, chunk_embedding in zip(chunk_records, chunk_embeddings, strict=True):
+            chunk_embedding_records.append(
+                [
+                    ChunkEmbedding(chunk_id=chunk_record.id, embedding=sentence_embedding)
+                    for sentence_embedding in chunk_embedding
+                ]
+            )
+    else:
+        # Embed the full chunks, including the current Markdown headings.
+        full_chunk_embeddings = embed_sentences([str(chunk) for chunk in chunks], config=config)
+        # Every chunk record is associated with a list of chunk embedding records. The chunk
+        # embedding records each correspond to a linear combination of a sentence embedding and an
+        # embedding of the full chunk with Markdown headings.
+        α = 0.382  # Golden ratio.  # noqa: PLC2401
+        for chunk_record, chunk_embedding, full_chunk_embedding in zip(
+            chunk_records, chunk_embeddings, full_chunk_embeddings, strict=True
+        ):
+            chunk_embedding_records.append(
+                [
+                    ChunkEmbedding(
+                        chunk_id=chunk_record.id,
+                        embedding=α * sentence_embedding + (1 - α) * full_chunk_embedding,
+                    )
+                    for sentence_embedding in chunk_embedding
+                ]
+            )
     return chunk_records, chunk_embedding_records
 
 
-def insert_document(doc_path: Path, *, config: RAGLiteConfig | None = None) -> None:
+def insert_document(doc_path: Path, *, config: RAGLiteConfig | None = None) -> None:  # noqa: PLR0915
     """Insert a document into the database and update the index."""
     # Use the default config if not provided.
     config = config or RAGLiteConfig()
     db_backend = make_url(config.db_url).get_backend_name()
-    # Preprocess the document into chunks.
-    with tqdm(total=4, unit="step", dynamic_ncols=True) as pbar:
+    # Preprocess the document into chunks and chunk embeddings.
+    with tqdm(total=5, unit="step", dynamic_ncols=True) as pbar:
         pbar.set_description("Initializing database")
         engine = create_database_engine(config)
         pbar.update(1)
@@ -65,12 +81,15 @@ def insert_document(doc_path: Path, *, config: RAGLiteConfig | None = None) -> N
         pbar.set_description("Splitting sentences")
         sentences = split_sentences(doc, max_len=config.chunk_max_size)
         pbar.update(1)
+        pbar.set_description("Embedding sentences")
+        sentence_embeddings = embed_sentences(sentences, config=config)
+        pbar.update(1)
         pbar.set_description("Splitting chunks")
-        chunks, sentence_embeddings = split_chunks(
-            sentences,
+        chunks, chunk_embeddings = split_chunks(
+            sentences=sentences,
+            sentence_embeddings=sentence_embeddings,
+            sentence_window_size=config.embedder_sentence_window_size,
             max_size=config.chunk_max_size,
-            sentence_window_size=config.chunk_sentence_window_size,
-            embed=partial(embed_strings, config=config),
         )
         pbar.update(1)
     # Create and store the chunk records.
@@ -82,12 +101,12 @@ def insert_document(doc_path: Path, *, config: RAGLiteConfig | None = None) -> N
             session.commit()
         # Create the chunk records to insert into the chunk table.
         chunk_records, chunk_embedding_records = _create_chunk_records(
-            document_record.id, chunks, sentence_embeddings, config
+            document_record.id, chunks, chunk_embeddings, config
         )
         # Store the chunk and chunk embedding records.
-        for chunk_record, chunk_embedding_record in tqdm(
+        for chunk_record, chunk_embedding_record_list in tqdm(
             zip(chunk_records, chunk_embedding_records, strict=True),
-            desc="Storing chunks" if db_backend == "sqlite" else "Storing and indexing chunks",
+            desc="Inserting chunks",
             total=len(chunk_records),
             unit="chunk",
             dynamic_ncols=True,
@@ -95,7 +114,7 @@ def insert_document(doc_path: Path, *, config: RAGLiteConfig | None = None) -> N
             if session.get(Chunk, chunk_record.id) is not None:
                 continue
             session.add(chunk_record)
-            session.add_all(chunk_embedding_record)
+            session.add_all(chunk_embedding_record_list)
             session.commit()
     # Manually update the vector search chunk index for SQLite.
     if db_backend == "sqlite":

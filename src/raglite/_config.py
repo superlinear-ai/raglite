@@ -1,71 +1,44 @@
 """RAGLite config."""
 
-from dataclasses import dataclass, field
-from functools import lru_cache
+import os
+from dataclasses import dataclass
 
-from llama_cpp import Llama, LlamaRAMCache, llama_supports_gpu_offload  # type: ignore[attr-defined]
+from llama_cpp import llama_supports_gpu_offload
 from sqlalchemy.engine import URL
 
+DEFAULT_LLM = (
+    "llama-cpp-python/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/*Q4_K_M.gguf@8192"
+    if llama_supports_gpu_offload()
+    else "llama-cpp-python/bartowski/Phi-3.5-mini-instruct-GGUF/*Q4_K_M.gguf@4096"
+)
 
-@lru_cache(maxsize=1)
-def default_llm() -> Llama:
-    """Get default LLM."""
-    # Select the best available LLM for the given accelerator:
-    # - Llama-3.1-8B-instruct on GPU.
-    # - Phi-3.5-mini-instruct on CPU.
-    if llama_supports_gpu_offload():
-        repo_id = "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF"  # https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct
-        filename = "*Q4_K_M.gguf"
-        n_ctx = 8192
-    else:
-        repo_id = "bartowski/Phi-3.5-mini-instruct-GGUF"  # https://huggingface.co/microsoft/Phi-3.5-mini-instruct
-        filename = "*Q4_K_M.gguf"
-        n_ctx = 4096
-    # Load the LLM.
-    llm = Llama.from_pretrained(
-        repo_id=repo_id, filename=filename, n_ctx=n_ctx, n_gpu_layers=-1, verbose=False
-    )
-    # Enable caching.
-    llm.set_cache(LlamaRAMCache())
-    return llm
-
-
-@lru_cache(maxsize=1)
-def default_embedder() -> Llama:
-    """Get default embedder."""
-    # Select the best available embedder for the given accelerator.
-    if llama_supports_gpu_offload():
-        repo_id = "ChristianAzinn/snowflake-arctic-embed-l-gguf"  # https://github.com/Snowflake-Labs/arctic-embed
-        filename = "*f16.GGUF"
-    else:
-        repo_id = "yishan-wang/snowflake-arctic-embed-m-v1.5-Q8_0-GGUF"  # https://github.com/Snowflake-Labs/arctic-embed
-        filename = "*q8_0.gguf"
-    # Load the embedder. Setting n_ctx to 0 means that we use the model's context size (the default
-    # value for n_ctx is 512, irrespective of the model).
-    embedder = Llama.from_pretrained(
-        repo_id=repo_id, filename=filename, n_ctx=0, n_gpu_layers=-1, verbose=False, embedding=True
-    )
-    return embedder
+DEFAULT_EMBEDDER = (
+    "llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf"
+    if llama_supports_gpu_offload() or (os.cpu_count() or 1) >= 4  # noqa: PLR2004
+    else "llama-cpp-python/yishan-wang/snowflake-arctic-embed-m-v1.5-Q8_0-GGUF/*q8_0.gguf"
+)
 
 
 @dataclass(frozen=True)
 class RAGLiteConfig:
     """Configuration for RAGLite."""
 
-    # LLM config used for generation.
-    llm: Llama = field(default_factory=default_llm)
-    llm_max_tries: int = 4
-    llm_temperature: float = 1.0
-    # Embedder config used for indexing.
-    embedder: Llama = field(default_factory=default_embedder)
-    embedder_batch_size: int = 128
-    embedder_normalize: bool = True
-    sentence_embedding_weight: float = 0.5  # Between 0 (chunk level) and 1 (sentence level).
-    # Chunker config used to partition documents into chunks.
-    chunk_max_size: int = 1440  # Max number of characters per chunk.
-    chunk_sentence_window_size: int = 3
     # Database config.
     db_url: str | URL = "sqlite:///raglite.sqlite"
+    # LLM config used for generation.
+    llm: str = DEFAULT_LLM
+    llm_max_tries: int = 4
+    # Embedder config used for indexing.
+    embedder: str = DEFAULT_EMBEDDER
+    embedder_normalize: bool = True
+    embedder_sentence_window_size: int = 3
+    # Chunk config used to partition documents into chunks.
+    chunk_max_size: int = 1440  # Max number of characters per chunk.
     # Vector search config.
     vector_search_index_metric: str = "cosine"  # The query adapter supports "dot" and "cosine".
     vector_search_query_adapter: bool = True
+
+    def __post_init__(self) -> None:
+        # Late chunking with llama-cpp-python does not apply sentence windowing.
+        if self.embedder.startswith("llama-cpp-python"):
+            object.__setattr__(self, "embedder_sentence_window_size", 1)

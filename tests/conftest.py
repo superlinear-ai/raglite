@@ -1,12 +1,14 @@
 """Fixtures for the tests."""
 
+import os
 import socket
 
 import pytest
-from llama_cpp import Llama
 from sqlalchemy import create_engine, text
 
 from raglite import RAGLiteConfig
+
+POSTGRES_URL = "postgresql+pg8000://raglite_user:raglite_password@postgres:5432/postgres"
 
 
 def is_postgres_running() -> bool:
@@ -18,40 +20,63 @@ def is_postgres_running() -> bool:
         return False
 
 
+def is_openai_available() -> bool:
+    """Check if an OpenAI API key is set."""
+    return bool(os.environ.get("OPENAI_API_KEY"))
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Reset the PostgreSQL database."""
+    if is_postgres_running():
+        engine = create_engine(POSTGRES_URL, isolation_level="AUTOCOMMIT")
+        with engine.connect() as conn:
+            for variant in ["local", "remote"]:
+                conn.execute(text(f"DROP DATABASE IF EXISTS raglite_test_{variant}"))
+                conn.execute(text(f"CREATE DATABASE raglite_test_{variant}"))
+
+
 @pytest.fixture(
-    scope="module",
     params=[
-        pytest.param("sqlite:///:memory:", id="SQLite"),
+        pytest.param("sqlite:///:memory:", id="sqlite"),
         pytest.param(
-            "postgresql+pg8000://raglite_user:raglite_password@postgres:5432/postgres",
-            id="PostgreSQL",
+            POSTGRES_URL,
+            id="postgres",
             marks=pytest.mark.skipif(not is_postgres_running(), reason="PostgreSQL is not running"),
         ),
     ],
 )
-def simple_config(request: pytest.FixtureRequest) -> RAGLiteConfig:
+def database(request: pytest.FixtureRequest) -> str:
+    """Get a database URL to test RAGLite with."""
+    db_url: str = request.param
+    return db_url
+
+
+@pytest.fixture(
+    params=[
+        pytest.param(
+            "llama-cpp-python/ChristianAzinn/snowflake-arctic-embed-xs-gguf/*f16.GGUF",
+            id="snowflake_arctic_embed_xs",
+        ),
+        pytest.param(
+            "text-embedding-3-small",
+            id="openai_text_embedding_3_small",
+            marks=pytest.mark.skipif(not is_openai_available(), reason="OpenAI API key is not set"),
+        ),
+    ],
+)
+def embedder(request: pytest.FixtureRequest) -> str:
+    """Get an embedder model URL to test RAGLite with."""
+    embedder: str = request.param
+    return embedder
+
+
+@pytest.fixture
+def raglite_test_config(database: str, embedder: str) -> RAGLiteConfig:
     """Create a lightweight in-memory config for testing SQLite and PostgreSQL."""
-    # Use a lightweight embedder.
-    embedder = Llama.from_pretrained(
-        repo_id="ChristianAzinn/snowflake-arctic-embed-xs-gguf",  # https://github.com/Snowflake-Labs/arctic-embed
-        filename="*f16.GGUF",
-        n_ctx=0,  # 0 = Use the model's context size (default is 512).
-        n_gpu_layers=-1,  # -1 = Offload all layers to the GPU (default is 0).
-        verbose=False,
-        embedding=True,
-    )
-    # Yield a SQLite config.
-    if "sqlite" in request.param:
-        sqlite_config = RAGLiteConfig(embedder=embedder, db_url=request.param)
-        return sqlite_config
-    # Yield a PostgreSQL config.
-    if "postgresql" in request.param:
-        engine = create_engine(request.param, isolation_level="AUTOCOMMIT")
-        with engine.connect() as conn:
-            conn.execute(text("DROP DATABASE IF EXISTS raglite_test"))
-            conn.execute(text("CREATE DATABASE raglite_test"))
-        postgresql_config = RAGLiteConfig(
-            embedder=embedder, db_url=request.param.replace("/postgres", "/raglite_test")
-        )
-        return postgresql_config
-    raise ValueError
+    # Select the PostgreSQL database based on the embedder.
+    if "postgres" in database:
+        variant = "local" if embedder.startswith("llama-cpp-python") else "remote"
+        database = database.replace("/postgres", f"/raglite_test_{variant}")
+    # Create a RAGLite config for the given database and embedder.
+    db_config = RAGLiteConfig(db_url=database, embedder=embedder)
+    return db_config

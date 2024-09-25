@@ -2,6 +2,7 @@
 
 from typing import Any, TypeVar
 
+from litellm import completion
 from pydantic import BaseModel, ValidationError
 
 from raglite._config import RAGLiteConfig
@@ -45,17 +46,17 @@ def extract_with_llm(
         )
     # Extract structured data from the unstructured input.
     for _ in range(config.llm_max_tries):
-        response = config.llm.create_chat_completion(
+        response = completion(
+            model=config.llm,
             messages=[
-                {"role": "system", "content": system_prompt},  # type: ignore[list-item,misc]
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             response_format={"type": "json_object", "schema": return_type.model_json_schema()},
-            temperature=config.llm_temperature,
             **kwargs,
         )
         try:
-            instance = return_type.model_validate_json(response["choices"][0]["message"]["content"])  # type: ignore[arg-type,index]
+            instance = return_type.model_validate_json(response["choices"][0]["message"]["content"])
         except (KeyError, ValueError, ValidationError) as e:
             # Malformed response, not a JSON string, or not a valid instance of the return type.
             last_exception = e
