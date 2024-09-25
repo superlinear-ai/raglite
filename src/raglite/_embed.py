@@ -20,7 +20,7 @@ def _embed_sentences_with_late_chunking(  # noqa: PLR0915
 
     def _count_tokens(
         sentences: list[str], embedder: Llama, sentinel_char: str, sentinel_tokens: list[int]
-    ) -> IntVector:
+    ) -> list[int]:
         # Join the sentences with the sentinel token and tokenise the result.
         sentences_tokens = np.asarray(
             embedder.tokenize(sentinel_char.join(sentences).encode(), add_bos=False), dtype=np.intp
@@ -32,7 +32,8 @@ def _embed_sentences_with_late_chunking(  # noqa: PLR0915
         sentinel_indices = np.where(sentences_tokens == sentinel_tokens[0])[0]
         num_tokens = np.diff(sentinel_indices, prepend=0, append=len(sentences_tokens))
         assert len(num_tokens) == len(sentences), f"Sentinel `{sentinel_char}` appears in document"
-        return num_tokens
+        num_tokens_list: list[int] = num_tokens.tolist()
+        return num_tokens_list
 
     def _create_segment(
         content_start_index: int,
@@ -74,8 +75,10 @@ def _embed_sentences_with_late_chunking(  # noqa: PLR0915
         if sentinel_char in embedder.detokenize([token]).decode()
     ]
     assert len(sentinel_tokens), f"Sentinel `{sentinel_char}` not supported by embedder"
-    # Compute the number of tokens per sentence.
-    num_tokens_list = []
+    # Compute the number of tokens per sentence. We use a method based on a sentinel token to
+    # minimise the number of calls to embedder.tokenize, which incurs a significant overhead
+    # (presumably to load the tokenizer).
+    num_tokens_list: list[int] = []
     sentence_batch, sentence_batch_len = [], 0
     for i, sentence in enumerate(sentences):
         sentence_batch.append(sentence)
@@ -88,7 +91,8 @@ def _embed_sentences_with_late_chunking(  # noqa: PLR0915
     num_tokens = np.asarray(num_tokens_list, dtype=np.intp)
     # Compute the maximum number of tokens for each segment's preamble and content.
     # TODO: Unfortunately, llama-cpp-python truncates the input to n_batch tokens and crashes if you
-    # try to increase it. Until this is fixed, we have to limit max_tokens to min(n_ctx, n_batch).
+    # try to increase it [1]. Until this is fixed, we have to limit max_tokens to n_batch.
+    # [1] https://github.com/abetlen/llama-cpp-python/issues/1762
     max_tokens = min(n_ctx, n_batch) - 16
     max_tokens_preamble = round(0.382 * max_tokens)  # Golden ratio.
     max_tokens_content = max_tokens - max_tokens_preamble

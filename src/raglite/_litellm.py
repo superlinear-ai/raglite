@@ -1,5 +1,6 @@
 """Add support for llama-cpp-python models to LiteLLM."""
 
+import warnings
 from collections.abc import Callable, Iterator
 from functools import cache
 from typing import Any, ClassVar, cast
@@ -83,14 +84,16 @@ class LlamaCppPythonLLM(CustomLLM):
             filename, n_ctx_str = filename_n_ctx
             n_ctx = int(n_ctx_str)
         # Load the LLM.
-        llm = Llama.from_pretrained(
-            repo_id=repo_id,
-            filename=filename,
-            n_ctx=n_ctx,
-            n_gpu_layers=-1,
-            verbose=False,
-            **kwargs,
-        )
+        with warnings.catch_warnings():  # Filter huggingface_hub warning about HF_TOKEN.
+            warnings.filterwarnings("ignore", category=UserWarning)
+            llm = Llama.from_pretrained(
+                repo_id=repo_id,
+                filename=filename,
+                n_ctx=n_ctx,
+                n_gpu_layers=-1,
+                verbose=False,
+                **kwargs,
+            )
         # Enable caching.
         llm.set_cache(LlamaRAMCache())
         # Register the model info with LiteLLM.
