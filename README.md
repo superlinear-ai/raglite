@@ -17,7 +17,7 @@ RAGLite is a Python package for Retrieval-Augmented Generation (RAG) with Postgr
 - ❤️ Only lightweight and permissive open source dependencies (e.g., no [PyTorch](https://github.com/pytorch/pytorch) or [LangChain](https://github.com/langchain-ai/langchain))
 - 🚀 Acceleration with Metal on macOS, and CUDA on Linux and Windows
 
-##### Optimized
+##### Unhobbled
 
 - 📖 PDF to Markdown conversion on top of [pdftext](https://github.com/VikParuchuri/pdftext) and [pypdfium2](https://github.com/pypdfium2-team/pypdfium2)
 - 🧬 Multi-vector chunk embedding with [late chunking](https://weaviate.io/blog/late-chunking) and [contextual chunk headings](https://d-star.ai/solving-the-out-of-context-chunk-problem-for-rag)
@@ -96,6 +96,27 @@ my_config = RAGLiteConfig(
 )
 ```
 
+You can also configure [any reranker supported by rerankers](https://github.com/AnswerDotAI/rerankers):
+
+```python
+from rerankers import Reranker
+
+# Example remote API-based reranker:
+my_config = RAGLiteConfig(
+    db_url="postgresql://my_username:my_password@my_host:5432/my_database"
+    reranker=Reranker("cohere", lang="en", api_key=COHERE_API_KEY)
+)
+
+# Example local cross-encoder reranker per language (this is the default):
+my_config = RAGLiteConfig(
+    db_url="sqlite:///raglite.sqlite",
+    reranker=(
+        ("en", Reranker("ms-marco-MiniLM-L-12-v2", model_type="flashrank")),  # English
+        ("other", Reranker("ms-marco-MultiBERT-L-12", model_type="flashrank")),  # Other languages
+    )
+)
+```
+
 ### 2. Inserting documents
 
 > [!TIP]
@@ -125,18 +146,27 @@ chunk_ids_vector, _ = vector_search(prompt, num_results=20, config=my_config)
 chunk_ids_keyword, _ = keyword_search(prompt, num_results=20, config=my_config)
 chunk_ids_hybrid, _ = hybrid_search(prompt, num_results=20, config=my_config)
 
+# Retrieve chunks:
+from raglite import retrieve_chunks
+
+chunks_hybrid = retrieve_chunks(chunk_ids_hybrid, config=my_config)
+
 # Rerank chunks:
 from raglite import rerank
 
-chunk_ids_reranked = rerank(prompt, chunk_ids_hybrid, config=my_config)
+chunks_reranked = rerank(prompt, chunks_hybrid, config=my_config)
 
 # Answer questions with RAG:
 from raglite import rag
 
 prompt = "What does it mean for two events to be simultaneous?"
-stream = rag(prompt, search=hybrid_search, config=my_config)
+stream = rag(prompt, config=my_config)
 for update in stream:
     print(update, end="")
+
+# You can also pass a search method or search results directly:
+stream = rag(prompt, search=hybrid_search, config=my_config)
+stream = rag(prompt, search=chunks_reranked, config=my_config)
 ```
 
 ### 4. Computing and using an optimal query adapter
@@ -148,7 +178,7 @@ RAGLite can compute and apply an [optimal closed-form query adapter](src/raglite
 from raglite import insert_evals, update_query_adapter
 
 insert_evals(num_evals=100, config=my_config)
-update_query_adapter(config=my_config)
+update_query_adapter(config=my_config)  # From here, simply call vector_search to use the query adapter.
 ```
 
 ### 5. Evaluation of retrieval and generation

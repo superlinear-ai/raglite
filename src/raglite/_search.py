@@ -179,7 +179,7 @@ def retrieve_chunks(
 
 
 def retrieve_segments(
-    chunk_ids: list[str],
+    chunk_ids: list[str] | list[Chunk],
     *,
     neighbors: tuple[int, ...] | None = (-1, 1),
     config: RAGLiteConfig | None = None,
@@ -187,7 +187,11 @@ def retrieve_segments(
     """Group chunks into contiguous segments and retrieve them."""
     # Retrieve the chunks.
     config = config or RAGLiteConfig()
-    chunks = retrieve_chunks(chunk_ids, config=config)
+    chunks: list[Chunk] = (
+        retrieve_chunks(chunk_ids, config=config)  # type: ignore[arg-type,assignment]
+        if all(isinstance(chunk_id, str) for chunk_id in chunk_ids)
+        else chunk_ids
+    )
     # Extend the chunks with their neighbouring chunks.
     if neighbors:
         engine = create_database_engine(config)
@@ -223,36 +227,37 @@ def retrieve_segments(
 
 def rerank(
     query: str,
-    chunk_ids: list[str],
+    chunk_ids: list[str] | list[Chunk],
     *,
     config: RAGLiteConfig | None = None,
-) -> list[str]:
+) -> list[Chunk]:
     """Rerank chunks according to their relevance to a given query."""
-    # Early exit if no reranker is configured.
-    config = config or RAGLiteConfig()
-    if not config.reranker:
-        return chunk_ids
     # Retrieve the chunks.
-    chunks = retrieve_chunks(chunk_ids, config=config)
+    config = config or RAGLiteConfig()
+    chunks: list[Chunk] = (
+        retrieve_chunks(chunk_ids, config=config)  # type: ignore[arg-type,assignment]
+        if all(isinstance(chunk_id, str) for chunk_id in chunk_ids)
+        else chunk_ids
+    )
+    # Early exit if no reranker is configured.
+    if not config.reranker:
+        return chunks
     # Select the reranker.
     if isinstance(config.reranker, Sequence):
         # Detect the languages of the chunks and queries.
         langs = {detect(str(chunk)) for chunk in chunks}
         langs.add(detect(query))
-        # If all chunks and the query are in the same language, use the language-specific reranker.
+        # If all chunks and the query are in the same language, use a language-specific reranker.
         rerankers = dict(config.reranker)
         if len(langs) == 1 and (lang := next(iter(langs))) in rerankers:
             reranker = rerankers[lang]
         else:
             reranker = rerankers.get("other")
     else:
+        # A specific reranker was configured.
         reranker = config.reranker
     # Rerank the chunks.
     if reranker:
-        results = reranker.rank(
-            query=query,
-            docs=[str(chunk) for chunk in chunks],
-            doc_ids=[chunk.id for chunk in chunks],
-        )
-        chunk_ids = [result.doc_id for result in results.results]
-    return chunk_ids
+        results = reranker.rank(query=query, docs=[str(chunk) for chunk in chunks])
+        chunks = [chunks[result.doc_id] for result in results.results]
+    return chunks

@@ -3,16 +3,24 @@
 import io
 import pickle
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 from sqlalchemy.engine import Dialect
 from sqlalchemy.sql.operators import Operators
 from sqlalchemy.types import Float, LargeBinary, TypeDecorator, TypeEngine, UserDefinedType
 
+from raglite._config import RAGLiteConfig
+
 FloatMatrix = np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]
 FloatVector = np.ndarray[tuple[int], np.dtype[np.floating[Any]]]
 IntVector = np.ndarray[tuple[int], np.dtype[np.intp]]
+
+
+class SearchMethod(Protocol):
+    def __call__(
+        self, query: str, *, num_results: int = 3, config: RAGLiteConfig | None = None
+    ) -> tuple[list[str], list[float]]: ...
 
 
 class NumpyArray(TypeDecorator[np.ndarray[Any, np.dtype[np.floating[Any]]]]):
