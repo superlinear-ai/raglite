@@ -46,7 +46,7 @@ class RAGLiteConfig:
     vector_search_index_metric: str = "cosine"  # The query adapter supports "dot" and "cosine".
     vector_search_query_adapter: bool = True
     # Reranking config.
-    rerankers: tuple[tuple[str, BaseRanker], ...] | None = field(
+    reranker: BaseRanker | tuple[tuple[str, BaseRanker], ...] | None = field(
         default_factory=lambda: (
             ("en", FlashRankRanker("ms-marco-MiniLM-L-12-v2", verbose=0)),
             ("other", FlashRankRanker("ms-marco-MultiBERT-L-12", verbose=0)),

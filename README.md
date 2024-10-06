@@ -9,8 +9,8 @@ RAGLite is a Python package for Retrieval-Augmented Generation (RAG) with Postgr
 ##### Configurable
 
 - 🧠 Choose any LLM provider with [LiteLLM](https://github.com/BerriAI/litellm), including local [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) models
-- 💾 Either [PostgreSQL](https://github.com/postgres/postgres) or [SQLite](https://github.com/sqlite/sqlite) as a keyword & vector search database
-- 🥇 Choose any reranker with [Rerankers](https://github.com/AnswerDotAI/rerankers), and fast multi-lingual [FlashRank](https://github.com/PrithivirajDamodaran/FlashRank) as the default
+- 💾 Choose either [PostgreSQL](https://github.com/postgres/postgres) or [SQLite](https://github.com/sqlite/sqlite) as a keyword & vector search database
+- 🥇 Choose any reranker with [Rerankers](https://github.com/AnswerDotAI/rerankers), including multi-lingual [FlashRank](https://github.com/PrithivirajDamodaran/FlashRank) as the default
 
 ##### Fast and permissive
 
@@ -22,15 +22,15 @@ RAGLite is a Python package for Retrieval-Augmented Generation (RAG) with Postgr
 - 📖 PDF to Markdown conversion on top of [pdftext](https://github.com/VikParuchuri/pdftext) and [pypdfium2](https://github.com/pypdfium2-team/pypdfium2)
 - 🧬 Multi-vector chunk embedding with [late chunking](https://weaviate.io/blog/late-chunking) and [contextual chunk headings](https://d-star.ai/solving-the-out-of-context-chunk-problem-for-rag)
 - ✂️ Optimal [level 4 semantic chunking](https://medium.com/@anuragmishra_27746/five-levels-of-chunking-strategies-in-rag-notes-from-gregs-video-7b735895694d) by solving a [binary integer programming problem](https://en.wikipedia.org/wiki/Integer_programming)
-- 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) that combines the database's built-in keyword search ([tsvector](https://www.postgresql.org/docs/current/datatype-textsearch.html), [FTS5](https://www.sqlite.org/fts5.html)) with their native vector search extensions ([pgvector](https://github.com/pgvector/pgvector), [sqlite-vec](https://github.com/asg017/sqlite-vec)[^1])
+- 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) with the database's native keyword & vector search ([tsvector](https://www.postgresql.org/docs/current/datatype-textsearch.html) + [pgvector](https://github.com/pgvector/pgvector), [FTS5](https://www.sqlite.org/fts5.html) + [sqlite-vec](https://github.com/asg017/sqlite-vec)[^1])
 - 🌀 Optimal [closed-form linear query adapter](src/raglite/_query_adapter.py) by solving an [orthogonal Procrustes problem](https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem)
 
 ##### Extensible
 
-- ✍️ Optional: conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
-- ✅ Optional: evaluation of retrieval and generation performance with [Ragas](https://github.com/explodinggradients/ragas)
+- ✍️ Optional conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
+- ✅ Optional evaluation of retrieval and generation performance with [Ragas](https://github.com/explodinggradients/ragas)
 
-[^1]: We use [PyNNDescent](https://github.com/lmcinnes/pynndescent) while [sqlite-vec](https://github.com/asg017/sqlite-vec) is still in development.
+[^1]: We use [PyNNDescent](https://github.com/lmcinnes/pynndescent) until [sqlite-vec](https://github.com/asg017/sqlite-vec) is more mature.
 
 ## Installing
 
@@ -71,10 +71,10 @@ pip install raglite[ragas]
 ### 1. Configuring RAGLite
 
 > [!TIP]
-> 🧠 RAGLite extends [LiteLLM](https://github.com/BerriAI/litellm) with support for [llama.cpp](https://github.com/ggerganov/llama.cpp) models using [llama-cpp-python](https://github.com/abetlen/llama-cpp-python). To select a llama.cpp model (e.g., from [bartowski's collection](https://huggingface.co/collections/bartowski/recent-highlights-65cf8e08f8ab7fc669d7b5bd)), use a model identifier of the form `"llama-cpp-python/<hugging_face_repo_id>/<filename>@<n_ctx>"`, where `n_ctx` is an optional parameter that specifies the context size of the model.
+> 🧠 RAGLite extends [LiteLLM](https://github.com/BerriAI/litellm) with support for [llama.cpp](https://github.com/ggerganov/llama.cpp) models using [llama-cpp-python](https://github.com/abetlen/llama-cpp-python). To select a llama.cpp model (e.g., from [bartowski's collection](https://huggingface.co/bartowski)), use a model identifier of the form `"llama-cpp-python/<hugging_face_repo_id>/<filename>@<n_ctx>"`, where `n_ctx` is an optional parameter that specifies the context size of the model.
 
 > [!TIP]
-> 💾 You can create a PostgreSQL database for free in a few clicks at [neon.tech](https://neon.tech) (not sponsored).
+> 💾 You can create a PostgreSQL database in a few clicks at [neon.tech](https://neon.tech).
 
 First, configure RAGLite with your preferred PostgreSQL or SQLite database and [any LLM supported by LiteLLM](https://docs.litellm.ai/docs/providers/openai):
 
@@ -114,16 +114,21 @@ insert_document(Path("Special Relativity.pdf"), config=my_config)
 
 ### 3. Searching and Retrieval-Augmented Generation (RAG)
 
-Now, you can search for chunks with keyword search, vector search, or a hybrid of the two. You can also answer questions with RAG and the search method of your choice (`hybrid` is the default):
+Now, you can search for chunks with vector search, keyword search, or a hybrid of the two. You can also rerank the search results with the configured reranker. And you can use any search method of your choice (`hybrid_search` is the default) together with reranking to answer questions with RAG:
 
 ```python
 # Search for chunks:
 from raglite import hybrid_search, keyword_search, vector_search
 
 prompt = "How is intelligence measured?"
-results_vector = vector_search(prompt, num_results=5, config=my_config)
-results_keyword = keyword_search(prompt, num_results=5, config=my_config)
-results_hybrid = hybrid_search(prompt, num_results=5, config=my_config)
+chunk_ids_vector, _ = vector_search(prompt, num_results=20, config=my_config)
+chunk_ids_keyword, _ = keyword_search(prompt, num_results=20, config=my_config)
+chunk_ids_hybrid, _ = hybrid_search(prompt, num_results=20, config=my_config)
+
+# Rerank chunks:
+from raglite import rerank
+
+chunk_ids_reranked = rerank(prompt, chunk_ids_hybrid, config=my_config)
 
 # Answer questions with RAG:
 from raglite import rag

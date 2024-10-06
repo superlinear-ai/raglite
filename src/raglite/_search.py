@@ -3,6 +3,7 @@
 import re
 import string
 from collections import defaultdict
+from collections.abc import Sequence
 from itertools import groupby
 from typing import cast
 
@@ -229,19 +230,23 @@ def rerank(
     """Rerank chunks according to their relevance to a given query."""
     # Early exit if no reranker is configured.
     config = config or RAGLiteConfig()
-    if not config.rerankers:
+    if not config.reranker:
         return chunk_ids
     # Retrieve the chunks.
     chunks = retrieve_chunks(chunk_ids, config=config)
-    # Detect the languages of the chunks and queries.
-    langs = {detect(str(chunk)) for chunk in chunks}
-    langs.add(detect(query))
-    # If all chunks and the query are in the same language, use the language-specific reranker.
-    rerankers = dict(config.rerankers)
-    if len(langs) == 1 and (lang := next(iter(langs))) in rerankers:
-        reranker = rerankers[lang]
+    # Select the reranker.
+    if isinstance(config.reranker, Sequence):
+        # Detect the languages of the chunks and queries.
+        langs = {detect(str(chunk)) for chunk in chunks}
+        langs.add(detect(query))
+        # If all chunks and the query are in the same language, use the language-specific reranker.
+        rerankers = dict(config.reranker)
+        if len(langs) == 1 and (lang := next(iter(langs))) in rerankers:
+            reranker = rerankers[lang]
+        else:
+            reranker = rerankers.get("other")
     else:
-        reranker = rerankers.get("other")
+        reranker = config.reranker
     # Rerank the chunks.
     if reranker:
         results = reranker.rank(
