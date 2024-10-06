@@ -10,7 +10,7 @@ RAGLite is a Python package for Retrieval-Augmented Generation (RAG) with Postgr
 
 - 🧠 Choose any LLM provider with [LiteLLM](https://github.com/BerriAI/litellm), including local [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) models
 - 💾 Choose either [PostgreSQL](https://github.com/postgres/postgres) or [SQLite](https://github.com/sqlite/sqlite) as a keyword & vector search database
-- 🥇 Choose any reranker with [Rerankers](https://github.com/AnswerDotAI/rerankers), including multi-lingual [FlashRank](https://github.com/PrithivirajDamodaran/FlashRank) as the default
+- 🥇 Choose any reranker with [rerankers](https://github.com/AnswerDotAI/rerankers), including multi-lingual [FlashRank](https://github.com/PrithivirajDamodaran/FlashRank) as the default
 
 ##### Fast and permissive
 
