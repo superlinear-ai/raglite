@@ -6,9 +6,10 @@ from raglite._insert import insert_document
 from raglite._query_adapter import update_query_adapter
 from raglite._rag import rag
 from raglite._search import (
-    fusion_search,
     hybrid_search,
     keyword_search,
+    rerank,
+    retrieve_chunks,
     retrieve_segments,
     vector_search,
 )
@@ -19,11 +20,12 @@ __all__ = [
     # Insert
     "insert_document",
     # Search
-    "fusion_search",
     "hybrid_search",
     "keyword_search",
     "vector_search",
+    "retrieve_chunks",
     "retrieve_segments",
+    "rerank",
     # RAG
     "rag",
     # Query adapter

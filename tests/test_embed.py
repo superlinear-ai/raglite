@@ -23,4 +23,4 @@ def test_embed(embedder: str) -> None:
     assert sentence_embeddings.shape[1] >= 128  # noqa: PLR2004
     assert sentence_embeddings.dtype == np.float16
     assert np.all(np.isfinite(sentence_embeddings))
-    assert np.allclose(np.linalg.norm(sentence_embeddings, axis=1), 1.0)
+    assert np.allclose(np.linalg.norm(sentence_embeddings, axis=1), 1.0, rtol=1e-3)

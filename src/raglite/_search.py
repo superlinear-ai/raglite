@@ -4,22 +4,21 @@ import re
 import string
 from collections import defaultdict
 from itertools import groupby
-from typing import Annotated, ClassVar, cast
+from typing import cast
 
 import numpy as np
-from pydantic import BaseModel, Field
+from langdetect import detect
 from sqlalchemy.engine import make_url
-from sqlmodel import Session, select, text
+from sqlmodel import Session, and_, col, or_, select, text
 
 from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, ChunkEmbedding, IndexMetadata, create_database_engine
 from raglite._embed import embed_sentences
-from raglite._extract import extract_with_llm
 from raglite._typing import FloatMatrix
 
 
 def vector_search(
-    prompt: str | FloatMatrix,
+    query: str | FloatMatrix,
     *,
     num_results: int = 3,
     config: RAGLiteConfig | None = None,
@@ -30,17 +29,15 @@ def vector_search(
     db_backend = make_url(config.db_url).get_backend_name()
     # Get the index metadata (including the query adapter, and in the case of SQLite, the index).
     index_metadata = IndexMetadata.get("default", config=config)
-    # Embed the prompt.
-    prompt_embedding = (
-        embed_sentences([prompt], config=config)[0, :]
-        if isinstance(prompt, str)
-        else np.ravel(prompt)
+    # Embed the query.
+    query_embedding = (
+        embed_sentences([query], config=config)[0, :] if isinstance(query, str) else np.ravel(query)
     )
-    # Apply the query adapter to the prompt embedding.
+    # Apply the query adapter to the query embedding.
     Q = index_metadata.get("query_adapter")  # noqa: N806
     if config.vector_search_query_adapter and Q is not None:
-        prompt_embedding = (Q @ prompt_embedding).astype(prompt_embedding.dtype)
-    # Search for the multi-vector chunk embeddings that are most similar to the prompt embedding.
+        query_embedding = (Q @ query_embedding).astype(query_embedding.dtype)
+    # Search for the multi-vector chunk embeddings that are most similar to the query embedding.
     if db_backend == "postgresql":
         # Check that the selected metric is supported by pgvector.
         metrics = {"cosine": "<=>", "dot": "<#>", "euclidean": "<->", "l1": "<+>", "l2": "<->"}
@@ -53,7 +50,7 @@ def vector_search(
             distance_func = getattr(
                 ChunkEmbedding.embedding, f"{config.vector_search_index_metric}_distance"
             )
-            distance = distance_func(prompt_embedding).label("distance")
+            distance = distance_func(query_embedding).label("distance")
             results = session.exec(
                 select(ChunkEmbedding.chunk_id, distance).order_by(distance).limit(8 * num_results)
             )
@@ -68,7 +65,7 @@ def vector_search(
         from pynndescent import NNDescent
 
         multi_vector_indices, distance = cast(NNDescent, index).query(
-            prompt_embedding[np.newaxis, :], k=8 * num_results
+            query_embedding[np.newaxis, :], k=8 * num_results
         )
         similarity = 1 - distance[0, :]
         # Transform the multi-vector indices into chunk indices, and then to chunk ids.
@@ -91,7 +88,7 @@ def vector_search(
 
 
 def keyword_search(
-    prompt: str, *, num_results: int = 3, config: RAGLiteConfig | None = None
+    query: str, *, num_results: int = 3, config: RAGLiteConfig | None = None
 ) -> tuple[list[str], list[float]]:
     """Search chunks using BM25 keyword search."""
     # Read the config.
@@ -101,10 +98,10 @@ def keyword_search(
     engine = create_database_engine(config)
     with Session(engine) as session:
         if db_backend == "postgresql":
-            # Convert the prompt to a tsquery [1].
+            # Convert the query to a tsquery [1].
             # [1] https://www.postgresql.org/docs/current/textsearch-controls.html
-            prompt_escaped = re.sub(r"[&|!():<>\"]", " ", prompt)
-            tsv_query = " | ".join(prompt_escaped.split())
+            query_escaped = re.sub(r"[&|!():<>\"]", " ", query)
+            tsv_query = " | ".join(query_escaped.split())
             # Perform keyword search with tsvector.
             statement = text("""
                 SELECT id as chunk_id, ts_rank(to_tsvector('simple', body), to_tsquery('simple', :query)) AS score
@@ -115,10 +112,10 @@ def keyword_search(
             """)
             results = session.execute(statement, params={"query": tsv_query, "limit": num_results})
         elif db_backend == "sqlite":
-            # Convert the prompt to an FTS5 query [1].
+            # Convert the query to an FTS5 query [1].
             # [1] https://www.sqlite.org/fts5.html#full_text_query_syntax
-            prompt_escaped = re.sub(f"[{re.escape(string.punctuation)}]", "", prompt)
-            fts5_query = " OR ".join(prompt_escaped.split())
+            query_escaped = re.sub(f"[{re.escape(string.punctuation)}]", "", query)
+            fts5_query = " OR ".join(query_escaped.split())
             # Perform keyword search with FTS5. In FTS5, BM25 scores are negative [1], so we
             # negate them to make them positive.
             # [1] https://www.sqlite.org/fts5.html#the_bm25_function
@@ -155,59 +152,29 @@ def reciprocal_rank_fusion(
 
 
 def hybrid_search(
-    prompt: str, *, num_results: int = 3, num_rerank: int = 100, config: RAGLiteConfig | None = None
+    query: str, *, num_results: int = 3, num_rerank: int = 100, config: RAGLiteConfig | None = None
 ) -> tuple[list[str], list[float]]:
     """Search chunks by combining ANN vector search with BM25 keyword search."""
     # Run both searches.
-    chunkeyword_search_vector, _ = vector_search(prompt, num_results=num_rerank, config=config)
-    chunkeyword_search_keyword, _ = keyword_search(prompt, num_results=num_rerank, config=config)
+    vs_chunk_ids, _ = vector_search(query, num_results=num_rerank, config=config)
+    ks_chunk_ids, _ = keyword_search(query, num_results=num_rerank, config=config)
     # Combine the results with Reciprocal Rank Fusion (RRF).
-    chunk_ids, hybrid_score = reciprocal_rank_fusion(
-        [chunkeyword_search_vector, chunkeyword_search_keyword]
-    )
+    chunk_ids, hybrid_score = reciprocal_rank_fusion([vs_chunk_ids, ks_chunk_ids])
     chunk_ids, hybrid_score = chunk_ids[:num_results], hybrid_score[:num_results]
     return chunk_ids, hybrid_score
 
 
-def fusion_search(
-    prompt: str,
+def retrieve_chunks(
+    chunk_ids: list[str],
     *,
-    num_results: int = 5,
-    num_rerank: int = 100,
     config: RAGLiteConfig | None = None,
-) -> tuple[list[str], list[float]]:
-    """Search for chunks with the RAG-Fusion method."""
-
-    class QueriesResponse(BaseModel):
-        """An array of queries that help answer the user prompt."""
-
-        queries: list[Annotated[str, Field(min_length=1)]] = Field(
-            ..., description="A single query that helps answer the user prompt."
-        )
-        system_prompt: ClassVar[str] = """
-The user will give you a prompt in search of an answer.
-Your task is to generate a minimal set of search queries for a search engine that together provide a complete answer to the user prompt.
-            """.strip()
-
-    try:
-        queries_response = extract_with_llm(QueriesResponse, prompt, config=config)
-    except ValueError:
-        queries = [prompt]
-    else:
-        queries = [*queries_response.queries, prompt]
-    # Collect the search results for all the queries.
-    rankings = []
-    for query in queries:
-        # Run both searches.
-        chunkeyword_search_vector, _ = vector_search(query, num_results=num_rerank, config=config)
-        chunkeyword_search_keyword, _ = keyword_search(query, num_results=num_rerank, config=config)
-        # Add results to the rankings.
-        rankings.append(chunkeyword_search_vector)
-        rankings.append(chunkeyword_search_keyword)
-    # Combine all the search results with Reciprocal Rank Fusion (RRF).
-    chunk_ids, fusion_score = reciprocal_rank_fusion(rankings)
-    chunk_ids, fusion_score = chunk_ids[:num_results], fusion_score[:num_results]
-    return chunk_ids, fusion_score
+) -> list[Chunk]:
+    """Retrieve chunks by their ids."""
+    config = config or RAGLiteConfig()
+    engine = create_database_engine(config)
+    with Session(engine) as session:
+        chunks = list(session.exec(select(Chunk).where(col(Chunk.id).in_(chunk_ids))).all())
+    return chunks
 
 
 def retrieve_segments(
@@ -217,28 +184,23 @@ def retrieve_segments(
     config: RAGLiteConfig | None = None,
 ) -> list[str]:
     """Group chunks into contiguous segments and retrieve them."""
-    # Get the chunks and extend them with their neighbours.
+    # Retrieve the chunks.
     config = config or RAGLiteConfig()
-    chunks = set()
-    engine = create_database_engine(config)
-    with Session(engine) as session:
-        for chunk_id in chunk_ids:
-            # Get the chunk by id.
-            chunk = session.get(Chunk, chunk_id)
-            if chunk is not None:
-                chunks.add(chunk)
-            # Extend the chunk with its neighbouring chunks.
-            if chunk is not None and neighbors is not None and len(neighbors) > 0:
-                for offset in sorted(neighbors, key=abs):
-                    where = (
-                        Chunk.document_id == chunk.document_id,
-                        Chunk.index == chunk.index + offset,
-                    )
-                    neighbor = session.exec(select(Chunk).where(*where)).first()
-                    if neighbor is not None:
-                        chunks.add(neighbor)
+    chunks = retrieve_chunks(chunk_ids, config=config)
+    # Extend the chunks with their neighbouring chunks.
+    if neighbors:
+        engine = create_database_engine(config)
+        with Session(engine) as session:
+            neighbor_conditions = [
+                and_(Chunk.document_id == chunk.document_id, Chunk.index == chunk.index + offset)
+                for chunk in chunks
+                for offset in neighbors
+            ]
+            chunks += list(session.exec(select(Chunk).where(or_(*neighbor_conditions))).all())
+    # Keep only the unique chunks.
+    chunks = list(set(chunks))
     # Sort the chunks by document_id and index (needed for groupby).
-    chunks = sorted(chunks, key=lambda chunk: (chunk.document_id, chunk.index))  # type: ignore[assignment]
+    chunks = sorted(chunks, key=lambda chunk: (chunk.document_id, chunk.index))
     # Group the chunks into contiguous segments.
     segments: list[list[Chunk]] = []
     for _, group in groupby(chunks, key=lambda chunk: chunk.document_id):
@@ -256,3 +218,36 @@ def retrieve_segments(
         for segment in segments
     ]
     return segments  # type: ignore[return-value]
+
+
+def rerank(
+    query: str,
+    chunk_ids: list[str],
+    *,
+    config: RAGLiteConfig | None = None,
+) -> list[str]:
+    """Rerank chunks according to their relevance to a given query."""
+    # Early exit if no reranker is configured.
+    config = config or RAGLiteConfig()
+    if not config.rerankers:
+        return chunk_ids
+    # Retrieve the chunks.
+    chunks = retrieve_chunks(chunk_ids, config=config)
+    # Detect the languages of the chunks and queries.
+    langs = {detect(str(chunk)) for chunk in chunks}
+    langs.add(detect(query))
+    # If all chunks and the query are in the same language, use the language-specific reranker.
+    rerankers = dict(config.rerankers)
+    if len(langs) == 1 and (lang := next(iter(langs))) in rerankers:
+        reranker = rerankers[lang]
+    else:
+        reranker = rerankers.get("other")
+    # Rerank the chunks.
+    if reranker:
+        results = reranker.rank(
+            query=query,
+            docs=[str(chunk) for chunk in chunks],
+            doc_ids=[chunk.id for chunk in chunks],
+        )
+        chunk_ids = [result.doc_id for result in results.results]
+    return chunk_ids

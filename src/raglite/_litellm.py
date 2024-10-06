@@ -1,5 +1,6 @@
 """Add support for llama-cpp-python models to LiteLLM."""
 
+import logging
 import warnings
 from collections.abc import Callable, Iterator
 from functools import cache
@@ -21,6 +22,10 @@ from llama_cpp import (  # type: ignore[attr-defined]
     Llama,
     LlamaRAMCache,
 )
+
+# Reduce the logging level for LiteLLM and flashrank.
+logging.getLogger("litellm").setLevel(logging.WARNING)
+logging.getLogger("flashrank").setLevel(logging.WARNING)
 
 
 class LlamaCppPythonLLM(CustomLLM):

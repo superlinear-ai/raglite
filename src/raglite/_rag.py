@@ -6,7 +6,7 @@ from litellm import completion, get_model_info  # type: ignore[attr-defined]
 
 from raglite._config import RAGLiteConfig
 from raglite._litellm import LlamaCppPythonLLM
-from raglite._search import hybrid_search, retrieve_segments
+from raglite._search import hybrid_search, rerank, retrieve_segments
 
 
 def rag(
@@ -30,9 +30,15 @@ def rag(
     max_tokens_per_context = round(1.2 * (config.chunk_max_size // 4))
     max_tokens_per_context *= 1 + len(context_neighbors or [])
     max_contexts = min(max_contexts, max_tokens // max_tokens_per_context)
+    # If the user has configured a reranker, we retrieve extra contexts to rerank.
+    extra_contexts = 4 * max_contexts if config.rerankers else 0
     # Retrieve relevant contexts.
-    chunk_ids, _ = search(prompt, num_results=max_contexts, config=config)  # type: ignore[call-arg]
-    segments = retrieve_segments(chunk_ids, neighbors=context_neighbors)
+    chunk_ids, _ = search(prompt, num_results=max_contexts + extra_contexts, config=config)  # type: ignore[call-arg]
+    # Rerank the relevant contexts and select the top contexts.
+    if config.rerankers:
+        chunk_ids = rerank(query=prompt, chunk_ids=chunk_ids, config=config)[:max_contexts]
+    # Extend the top contexts with their neighbors and group chunks into contiguous segments.
+    segments = retrieve_segments(chunk_ids, neighbors=context_neighbors, config=config)
     # Respond with an LLM.
     contexts = "\n\n".join(
         f'<context index="{i}">\n{segment.strip()}\n</context>'

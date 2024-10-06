@@ -54,8 +54,8 @@ def database(request: pytest.FixtureRequest) -> str:
 @pytest.fixture(
     params=[
         pytest.param(
-            "llama-cpp-python/ChristianAzinn/snowflake-arctic-embed-xs-gguf/*f16.GGUF",
-            id="snowflake_arctic_embed_xs",
+            "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf",
+            id="bge_m3",
         ),
         pytest.param(
             "text-embedding-3-small",

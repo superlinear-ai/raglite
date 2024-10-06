@@ -6,17 +6,31 @@ RAGLite is a Python package for Retrieval-Augmented Generation (RAG) with Postgr
 
 ## Features
 
-1. ❤️ Only lightweight and permissive open source dependencies (e.g., no [PyTorch](https://github.com/pytorch/pytorch), [LangChain](https://github.com/langchain-ai/langchain), or [PyMuPDF](https://github.com/pymupdf/PyMuPDF))
-2. 🧠 Choose any LLM provider with [LiteLLM](https://github.com/BerriAI/litellm), including local [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) models
-3. 💾 Either [PostgreSQL](https://github.com/postgres/postgres) or [SQLite](https://github.com/sqlite/sqlite) as a keyword & vector search database
-4. 🚀 Acceleration with Metal on macOS, and CUDA on Linux and Windows
-5. 📖 PDF to Markdown conversion on top of [pdftext](https://github.com/VikParuchuri/pdftext) and [pypdfium2](https://github.com/pypdfium2-team/pypdfium2)
-6. 🧬 Multi-vector chunk embedding with [late chunking](https://weaviate.io/blog/late-chunking) and [contextual chunk headings](https://d-star.ai/solving-the-out-of-context-chunk-problem-for-rag)
-7. ✂️ Optimal [level 4 semantic chunking](https://medium.com/@anuragmishra_27746/five-levels-of-chunking-strategies-in-rag-notes-from-gregs-video-7b735895694d) by solving a [binary integer programming problem](https://en.wikipedia.org/wiki/Integer_programming)
-8. 🌀 Optimal [closed-form linear query adapter](src/raglite/_query_adapter.py) by solving an [orthogonal Procrustes problem](https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem)
-9. 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) that combines the database's built-in keyword search ([tsvector](https://www.postgresql.org/docs/current/datatype-textsearch.html) in PostgreSQL, [FTS5](https://www.sqlite.org/fts5.html) in SQLite) with their native vector search extensions ([pgvector](https://github.com/pgvector/pgvector) in PostgreSQL, [sqlite-vec](https://github.com/asg017/sqlite-vec) in SQLite)
-10. ✍️ Optional: conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
-11. ✅ Optional: evaluation of retrieval and generation performance with [Ragas](https://github.com/explodinggradients/ragas)
+##### Configurable
+
+- 🧠 Choose any LLM provider with [LiteLLM](https://github.com/BerriAI/litellm), including local [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) models
+- 💾 Either [PostgreSQL](https://github.com/postgres/postgres) or [SQLite](https://github.com/sqlite/sqlite) as a keyword & vector search database
+- 🥇 Choose any reranker with [Rerankers](https://github.com/AnswerDotAI/rerankers), and fast multi-lingual [FlashRank](https://github.com/PrithivirajDamodaran/FlashRank) as the default
+
+##### Fast and permissive
+
+- ❤️ Only lightweight and permissive open source dependencies (e.g., no [PyTorch](https://github.com/pytorch/pytorch) or [LangChain](https://github.com/langchain-ai/langchain))
+- 🚀 Acceleration with Metal on macOS, and CUDA on Linux and Windows
+
+##### Optimized
+
+- 📖 PDF to Markdown conversion on top of [pdftext](https://github.com/VikParuchuri/pdftext) and [pypdfium2](https://github.com/pypdfium2-team/pypdfium2)
+- 🧬 Multi-vector chunk embedding with [late chunking](https://weaviate.io/blog/late-chunking) and [contextual chunk headings](https://d-star.ai/solving-the-out-of-context-chunk-problem-for-rag)
+- ✂️ Optimal [level 4 semantic chunking](https://medium.com/@anuragmishra_27746/five-levels-of-chunking-strategies-in-rag-notes-from-gregs-video-7b735895694d) by solving a [binary integer programming problem](https://en.wikipedia.org/wiki/Integer_programming)
+- 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) that combines the database's built-in keyword search ([tsvector](https://www.postgresql.org/docs/current/datatype-textsearch.html), [FTS5](https://www.sqlite.org/fts5.html)) with their native vector search extensions ([pgvector](https://github.com/pgvector/pgvector), [sqlite-vec](https://github.com/asg017/sqlite-vec)[^1])
+- 🌀 Optimal [closed-form linear query adapter](src/raglite/_query_adapter.py) by solving an [orthogonal Procrustes problem](https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem)
+
+##### Extensible
+
+- ✍️ Optional: conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
+- ✅ Optional: evaluation of retrieval and generation performance with [Ragas](https://github.com/explodinggradients/ragas)
+
+[^1]: We use [PyNNDescent](https://github.com/lmcinnes/pynndescent) while [sqlite-vec](https://github.com/asg017/sqlite-vec) is still in development.
 
 ## Installing
 

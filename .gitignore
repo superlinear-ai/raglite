@@ -19,6 +19,9 @@ data/
 # dotenv
 .env
 
+# Rerankers
+.*_cache/
+
 # Hypothesis
 .hypothesis/
 
