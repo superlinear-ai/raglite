@@ -38,7 +38,9 @@
                     100
                 ],
                 "files.autoSave": "onFocusChange",
-                "jupyter.kernels.excludePythonEnvironments": ["/usr/local/bin/python"],
+                "jupyter.kernels.excludePythonEnvironments": [
+                    "/usr/local/bin/python"
+                ],
                 "mypy-type-checker.importStrategy": "fromEnvironment",
                 "mypy-type-checker.preferDaemon": true,
                 "notebook.codeActionsOnSave": {
@@ -50,7 +52,7 @@
                 "python.terminal.activateEnvironment": false,
                 "python.testing.pytestEnabled": true,
                 "ruff.importStrategy": "fromEnvironment",
-                "ruff.logLevel": "warn",
+                "ruff.logLevel": "warning",
                 "terminal.integrated.defaultProfile.linux": "zsh",
                 "terminal.integrated.profiles.linux": {
                     "zsh": {
