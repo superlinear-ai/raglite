@@ -29,7 +29,7 @@ mdformat-gfm = ">=0.3.6"
 # Sentence and chunk splitting:
 numpy = ">=1.26.4"
 scipy = ">=1.5.0"
-spacy = ">=3.7.4"
+spacy = ">=3.7.0,<3.8.0"
 # Large Language Models:
 huggingface-hub = ">=0.22.0"
 litellm = ">=1.47.1"
