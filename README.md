@@ -34,10 +34,10 @@ RAGLite is a Python package for Retrieval-Augmented Generation (RAG) with Postgr
 
 ## Installing
 
-First, begin by installing SpaCy's multilingual sentence model:
+First, begin by installing spaCy's multilingual sentence model:
 
 ```sh
-# Install SpaCy's xx_sent_ud_sm:
+# Install spaCy's xx_sent_ud_sm:
 pip install https://github.com/explosion/spacy-models/releases/download/xx_sent_ud_sm-3.7.0/xx_sent_ud_sm-3.7.0-py3-none-any.whl
 ```
 
