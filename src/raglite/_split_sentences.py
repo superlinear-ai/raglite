@@ -46,7 +46,11 @@ def _mark_additional_sentence_boundaries(doc: spacy.tokens.Doc) -> spacy.tokens.
 def split_sentences(doc: str, max_len: int | None = None) -> list[str]:
     """Split a document into sentences."""
     # Split sentences with spaCy.
-    nlp = spacy.load("xx_sent_ud_sm")
+    try:
+        nlp = spacy.load("xx_sent_ud_sm")
+    except OSError as error:
+        error_message = "Please install `xx_sent_ud_sm` with `pip install https://github.com/explosion/spacy-models/releases/download/xx_sent_ud_sm-3.8.0/xx_sent_ud_sm-3.8.0-py3-none-any.whl`."
+        raise ImportError(error_message) from error
     nlp.add_pipe("_mark_additional_sentence_boundaries", before="senter")
     sentences = [sent.text_with_ws for sent in nlp(doc).sents if sent.text.strip()]
     # Apply additional splits on paragraphs and sentences because spaCy's splitting is not perfect.
