@@ -41,7 +41,7 @@ First, begin by installing SpaCy's multilingual sentence model:
 pip install https://github.com/explosion/spacy-models/releases/download/xx_sent_ud_sm-3.7.0/xx_sent_ud_sm-3.7.0-py3-none-any.whl
 ```
 
-Next, it is then optional but recommended to install [an accelerated llama-cpp-python precompiled binary](https://github.com/abetlen/llama-cpp-python?tab=readme-ov-file#supported-backends) with:
+Next, it is optional but recommended to install [an accelerated llama-cpp-python precompiled binary](https://github.com/abetlen/llama-cpp-python?tab=readme-ov-file#supported-backends) with:
 
 ```sh
 # Configure which llama-cpp-python precompiled binary to install (⚠️ only v0.2.88 is supported right now):
