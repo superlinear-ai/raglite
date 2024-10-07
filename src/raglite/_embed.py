@@ -77,7 +77,9 @@ def _embed_sentences_with_late_chunking(  # noqa: PLR0915
     assert len(sentinel_tokens), f"Sentinel `{sentinel_char}` not supported by embedder"
     # Compute the number of tokens per sentence. We use a method based on a sentinel token to
     # minimise the number of calls to embedder.tokenize, which incurs a significant overhead
-    # (presumably to load the tokenizer).
+    # (presumably to load the tokenizer) [1].
+    # TODO: Make token counting faster and more robust once [1] is fixed.
+    # [1] https://github.com/abetlen/llama-cpp-python/issues/1763
     num_tokens_list: list[int] = []
     sentence_batch, sentence_batch_len = [], 0
     for i, sentence in enumerate(sentences):
@@ -90,8 +92,9 @@ def _embed_sentences_with_late_chunking(  # noqa: PLR0915
             sentence_batch, sentence_batch_len = [], 0
     num_tokens = np.asarray(num_tokens_list, dtype=np.intp)
     # Compute the maximum number of tokens for each segment's preamble and content.
-    # TODO: Unfortunately, llama-cpp-python truncates the input to n_batch tokens and crashes if you
-    # try to increase it [1]. Until this is fixed, we have to limit max_tokens to n_batch.
+    # Unfortunately, llama-cpp-python truncates the input to n_batch tokens and crashes if you try
+    # to increase it [1]. Until this is fixed, we have to limit max_tokens to n_batch.
+    # TODO: Improve the context window size once [1] is fixed.
     # [1] https://github.com/abetlen/llama-cpp-python/issues/1762
     max_tokens = min(n_ctx, n_batch) - 16
     max_tokens_preamble = round(0.382 * max_tokens)  # Golden ratio.

@@ -1,6 +1,5 @@
 """Generation and evaluation of evals."""
 
-from collections.abc import Callable
 from random import randint
 from typing import ClassVar
 
@@ -15,6 +14,7 @@ from raglite._database import Chunk, Document, Eval, create_database_engine
 from raglite._extract import extract_with_llm
 from raglite._rag import rag
 from raglite._search import hybrid_search, retrieve_segments, vector_search
+from raglite._typing import SearchMethod
 
 
 def insert_evals(  # noqa: C901
@@ -167,7 +167,7 @@ The answer MUST satisfy ALL of the following criteria:
 
 def answer_evals(
     num_evals: int = 100,
-    search: Callable[[str], tuple[list[str], list[float]]] = hybrid_search,
+    search: SearchMethod = hybrid_search,
     *,
     config: RAGLiteConfig | None = None,
 ) -> pd.DataFrame:
@@ -184,7 +184,7 @@ def answer_evals(
         response = rag(eval_.question, search=search, config=config)
         answer = "".join(response)
         answers.append(answer)
-        chunk_ids, _ = search(eval_.question, config=config)  # type: ignore[call-arg]
+        chunk_ids, _ = search(eval_.question, config=config)
         contexts.append(retrieve_segments(chunk_ids))
     # Collect the answered evals.
     answered_evals: dict[str, list[str] | list[list[str]]] = {

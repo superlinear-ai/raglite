@@ -51,6 +51,9 @@ llama-cpp-python = [
 pydantic = ">=2.7.0"
 # Approximate Nearest Neighbors:
 pynndescent = ">=0.5.12"
+# Reranking
+langdetect = ">=1.0.9"
+rerankers = { extras = ["flashrank"], version = ">=0.5.3" }
 # Storage:
 pg8000 = ">=1.31.2"
 sqlmodel-slim = ">=0.0.18"
@@ -66,14 +69,14 @@ pandoc = ["pypandoc-binary"]
 ragas = ["ragas"]
 
 [tool.poetry.group.test.dependencies] # https://python-poetry.org/docs/master/managing-dependencies/
-commitizen = ">=3.21.3"
+commitizen = ">=3.29.1"
 coverage = { extras = ["toml"], version = ">=7.4.4" }
 mypy = ">=1.9.0"
 poethepoet = ">=0.25.0"
 pre-commit = ">=3.7.0"
 pytest = ">=8.1.1"
 pytest-mock = ">=3.14.0"
-ruff = ">=0.3.5"
+ruff = ">=0.5.7"
 safety = ">=3.1.0"
 shellcheck-py = ">=0.10.0.1"
 typeguard = ">=4.2.1"
@@ -81,6 +84,7 @@ typeguard = ">=4.2.1"
 [tool.poetry.group.dev.dependencies] # https://python-poetry.org/docs/master/managing-dependencies/
 cruft = ">=2.15.0"
 ipykernel = ">=6.29.4"
+ipython = ">=8.8.0"
 ipywidgets = ">=8.1.2"
 matplotlib = ">=3.9.0"
 memory-profiler = ">=0.61.0"

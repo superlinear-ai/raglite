@@ -70,6 +70,7 @@ RUN --mount=type=cache,target=/var/cache/apt/ \
     sh -c "$(curl -fsSL https://starship.rs/install.sh)" -- "--yes" && \
     usermod --shell /usr/bin/zsh user && \
     echo 'user ALL=(root) NOPASSWD:ALL' > /etc/sudoers.d/user && chmod 0440 /etc/sudoers.d/user
+RUN git config --system --add safe.directory '*'
 USER user
 
 # Install the development Python dependencies in the virtual environment.
