@@ -34,16 +34,30 @@ RAGLite is a Python package for Retrieval-Augmented Generation (RAG) with Postgr
 
 ## Installing
 
-To install this package (including Metal acceleration if on macOS), run:
+First, begin by installing SpaCy's multilingual sentence model:
+
+```sh
+# Install SpaCy's xx_sent_ud_sm:
+pip install https://github.com/explosion/spacy-models/releases/download/xx_sent_ud_sm-3.8.0/xx_sent_ud_sm-3.8.0-py3-none-any.whl
+```
+
+Next, it is then optional but recommended to install [an accelerated llama-cpp-python precompiled binary](https://github.com/abetlen/llama-cpp-python?tab=readme-ov-file#supported-backends) with:
+
+```sh
+# Configure which llama-cpp-python precompiled binary to install (⚠️ only v0.2.88 is supported right now):
+LLAMA_CPP_PYTHON_VERSION=0.2.88
+PYTHON_VERSION=310
+ACCELERATOR=metal|cu121|cu122|cu123|cu124
+PLATFORM=macosx_11_0_arm64|linux_x86_64|win_amd64
+
+# Install llama-python-cpp:
+pip install "https://github.com/abetlen/llama-cpp-python/releases/download/v$LLAMA_CPP_PYTHON_VERSION-$ACCELERATOR/llama_cpp_python-$LLAMA_CPP_PYTHON_VERSION-cp$PYTHON_VERSION-cp$PYTHON_VERSION-$PLATFORM.whl"
+```
+
+Finally, install RAGLite with:
 
 ```sh
 pip install raglite
-```
-
-To add CUDA 12.4 support, use the `cuda124` extra:
-
-```sh
-pip install raglite[cuda124]
 ```
 
 To add support for filetypes other than PDF, use the `pandoc` extra:
