@@ -8,10 +8,11 @@ from io import StringIO
 from llama_cpp import llama_supports_gpu_offload
 from sqlalchemy.engine import URL
 
+from raglite._flashrank import PatchedFlashRankRanker as FlashRankRanker
+
 # Suppress rerankers output on import until [1] is fixed.
 # [1] https://github.com/AnswerDotAI/rerankers/issues/36
 with contextlib.redirect_stdout(StringIO()):
-    from rerankers.models.flashrank_ranker import FlashRankRanker
     from rerankers.models.ranker import BaseRanker
 
 
