@@ -65,6 +65,7 @@ ruff = ">=0.5.7"
 safety = ">=3.1.0"
 shellcheck-py = ">=0.10.0.1"
 typeguard = ">=4.2.1"
+xx_sent_ud_sm = { url = "https://github.com/explosion/spacy-models/releases/download/xx_sent_ud_sm-3.7.0/xx_sent_ud_sm-3.7.0-py3-none-any.whl" }
 
 [tool.poetry.group.dev.dependencies] # https://python-poetry.org/docs/master/managing-dependencies/
 cruft = ">=2.15.0"
