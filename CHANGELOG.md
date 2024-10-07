@@ -1,3 +1,9 @@
+## v0.1.1 (2024-10-07)
+
+### Fix
+
+- patch rerankers flashrank issue (#22)
+
 ## v0.1.0 (2024-10-07)
 
 ### Feat
