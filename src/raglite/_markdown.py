@@ -1,7 +1,6 @@
 """Convert any document to Markdown."""
 
 import re
-import warnings
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -10,7 +9,6 @@ import mdformat
 import numpy as np
 from pdftext.extraction import dictionary_output
 from sklearn.cluster import KMeans
-from sklearn.exceptions import InconsistentVersionWarning
 
 
 def parsed_pdf_to_markdown(pages: list[dict[str, Any]]) -> list[str]:  # noqa: C901, PLR0915
@@ -202,9 +200,7 @@ def document_to_markdown(doc_path: Path) -> str:
     # Convert the file's content to GitHub Flavored Markdown.
     if doc_path.suffix == ".pdf":
         # Parse the PDF with pdftext and convert it to Markdown.
-        with warnings.catch_warnings():  # Ignore https://github.com/VikParuchuri/pdftext/issues/5.
-            warnings.simplefilter("ignore", InconsistentVersionWarning)
-            pages = dictionary_output(doc_path, sort=True, keep_chars=False)
+        pages = dictionary_output(doc_path, sort=True, keep_chars=False)
         doc = "\n\n".join(parsed_pdf_to_markdown(pages))
     else:
         # Use pandoc for everything else.
