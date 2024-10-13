@@ -50,7 +50,7 @@ PYTHON_VERSION=310
 ACCELERATOR=metal|cu121|cu122|cu123|cu124
 PLATFORM=macosx_11_0_arm64|linux_x86_64|win_amd64
 
-# Install llama-python-cpp:
+# Install llama-cpp-python:
 pip install "https://github.com/abetlen/llama-cpp-python/releases/download/v$LLAMA_CPP_PYTHON_VERSION-$ACCELERATOR/llama_cpp_python-$LLAMA_CPP_PYTHON_VERSION-cp$PYTHON_VERSION-cp$PYTHON_VERSION-$PLATFORM.whl"
 ```
 
