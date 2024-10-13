@@ -20,7 +20,7 @@ version_provider = "poetry"
 # Python:
 python = ">=3.10,<4.0"
 # Markdown conversion:
-pdftext = ">=0.3.10,!=0.3.11"
+pdftext = ">=0.3.13"
 pypandoc-binary = { version = ">=1.13", optional = true }
 scikit-learn = ">=1.4.2"
 # Markdown formatting:

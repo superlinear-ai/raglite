@@ -3374,20 +3374,20 @@ files = [
 
 [[package]]
 name = "pdftext"
-version = "0.3.10"
+version = "0.3.13"
 description = "Extract structured text from pdfs quickly"
 optional = false
 python-versions = "!=2.7.*,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,!=3.6.*,!=3.7.*,!=3.8.*,>=3.9"
 files = [
-    {file = "pdftext-0.3.10-py3-none-any.whl", hash = "sha256:99bd900d0d0692df06719c07ce10a859750ade3eb7f10c543f637118417497f9"},
-    {file = "pdftext-0.3.10.tar.gz", hash = "sha256:90de726e818fb5683a0616cabb1a75a32a7224e873c3058006c93da6e440c66c"},
+    {file = "pdftext-0.3.13-py3-none-any.whl", hash = "sha256:ae8f6876cdbbc1fe611527bb362cd3d584b4c8ec9370215560f2a01be4343bbc"},
+    {file = "pdftext-0.3.13.tar.gz", hash = "sha256:a37ceb759ac0da34c48f85ab5d43d0b128ad9526f949e98b96568495c7be4187"},
 ]
 
 [package.dependencies]
+onnxruntime = ">=1.19.2,<2.0.0"
 pydantic = ">=2.7.1,<3.0.0"
 pydantic-settings = ">=2.2.1,<3.0.0"
 pypdfium2 = ">=4.29.0,<5.0.0"
-scikit-learn = ">=1.4.2,<2.0.0"
 
 [[package]]
 name = "pdoc"
@@ -6143,4 +6143,4 @@ ragas = ["ragas"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<4.0"
-content-hash = "1ae99fe17eed206b710b17380ae77c2f6d87d66f34e59e17d865c4e705b2d0ae"
+content-hash = "43e46c87ead1e376f088fb9560919ffdea07af12cc7cb93303ea5e93b30b22fd"
