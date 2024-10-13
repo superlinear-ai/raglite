@@ -175,6 +175,7 @@ def retrieve_chunks(
     engine = create_database_engine(config)
     with Session(engine) as session:
         chunks = list(session.exec(select(Chunk).where(col(Chunk.id).in_(chunk_ids))).all())
+    chunks = sorted(chunks, key=lambda chunk: chunk_ids.index(chunk.id))
     return chunks
 
 
@@ -217,6 +218,12 @@ def retrieve_segments(
                 segments.append(segment)
                 segment = [chunk]
         segments.append(segment)
+    # Rank segments according to the aggregate relevance of their chunks.
+    chunk_id_to_score = {chunk.id: 1 / (i + 1) for i, chunk in enumerate(chunks)}
+    segments.sort(
+        key=lambda segment: sum(chunk_id_to_score.get(chunk.id, 0.0) for chunk in segment),
+        reverse=True,
+    )
     # Convert the segments into strings.
     segments = [
         segment[0].headings.strip() + "\n\n" + "".join(chunk.body for chunk in segment).strip()  # type: ignore[misc]
