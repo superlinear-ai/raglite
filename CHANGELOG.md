@@ -1,3 +1,10 @@
+## v0.1.3 (2024-10-13)
+
+### Fix
+
+- upgrade pdftext (#30)
+- improve chunk and segment ordering (#29)
+
 ## v0.1.2 (2024-10-08)
 
 ### Fix
