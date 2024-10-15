@@ -1,3 +1,9 @@
+## v0.1.4 (2024-10-15)
+
+### Fix
+
+- fix optimal chunking edge cases (#32)
+
 ## v0.1.3 (2024-10-13)
 
 ### Fix
