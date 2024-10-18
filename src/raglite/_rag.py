@@ -31,8 +31,9 @@ def rag(  # noqa: PLR0913
     model_info = get_model_info(config.llm, custom_llm_provider=llm_provider)
     max_tokens = (
         (model_info.get("max_tokens") or 2048)
-        - 256
-        - sum(len(m["content"]) // 3 for m in messages or [])
+        - sum(len(m["content"]) // 3 for m in messages or [])  # Previous messages.
+        - 192  # System prompt.
+        - len(prompt) // 3  # User prompt.
     )
     max_tokens_per_context = round(1.2 * (config.chunk_max_size // 4))
     max_tokens_per_context *= 1 + len(context_neighbors or [])

@@ -130,7 +130,7 @@ async def handle_message(user_message: cl.Message) -> None:
         rag(
             prompt=user_message.content,
             search=chunks,
-            messages=cl.chat_context.to_openai(),  # type: ignore[no-untyped-call]
+            messages=cl.chat_context.to_openai()[-5:],  # type: ignore[no-untyped-call]
             config=config,
         )
     )
