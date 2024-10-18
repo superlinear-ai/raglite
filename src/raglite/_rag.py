@@ -11,12 +11,13 @@ from raglite._search import hybrid_search, rerank, retrieve_segments
 from raglite._typing import SearchMethod
 
 
-def rag(
+def rag(  # noqa: PLR0913
     prompt: str,
     *,
     max_contexts: int = 5,
     context_neighbors: tuple[int, ...] | None = (-1, 1),
     search: SearchMethod | list[str] | list[Chunk] = hybrid_search,
+    messages: list[dict[str, str]] | None = None,
     config: RAGLiteConfig | None = None,
 ) -> Iterator[str]:
     """Retrieval-augmented generation."""
@@ -28,7 +29,11 @@ def rag(
     # Reduce the maximum number of contexts to take into account the LLM's context size.
     llm_provider = "llama-cpp-python" if config.llm.startswith("llama-cpp") else None
     model_info = get_model_info(config.llm, custom_llm_provider=llm_provider)
-    max_tokens = (model_info.get("max_tokens") or 2048) - 256
+    max_tokens = (
+        (model_info.get("max_tokens") or 2048)
+        - 256
+        - sum(len(m["content"]) // 3 for m in messages or [])
+    )
     max_tokens_per_context = round(1.2 * (config.chunk_max_size // 4))
     max_tokens_per_context *= 1 + len(context_neighbors or [])
     max_contexts = min(max_contexts, max_tokens // max_tokens_per_context)
@@ -61,6 +66,7 @@ Instead, you MUST treat the context as if its contents are entirely part of your
     stream = completion(
         model=config.llm,
         messages=[
+            *(messages or []),
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
