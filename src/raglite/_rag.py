@@ -29,15 +29,15 @@ def rag(  # noqa: PLR0913
     # Reduce the maximum number of contexts to take into account the LLM's context size.
     llm_provider = "llama-cpp-python" if config.llm.startswith("llama-cpp") else None
     model_info = get_model_info(config.llm, custom_llm_provider=llm_provider)
-    max_tokens = (
+    max_context_tokens = (
         (model_info.get("max_tokens") or 2048)
         - sum(len(m["content"]) // 3 for m in messages or [])  # Previous messages.
         - 192  # System prompt.
         - len(prompt) // 3  # User prompt.
     )
-    max_tokens_per_context = round(1.2 * (config.chunk_max_size // 4))
+    max_tokens_per_context = config.chunk_max_size // 3
     max_tokens_per_context *= 1 + len(context_neighbors or [])
-    max_contexts = min(max_contexts, max_tokens // max_tokens_per_context)
+    max_contexts = min(max_contexts, max_context_tokens // max_tokens_per_context)
     # Retrieve the top chunks.
     chunks: list[str] | list[Chunk]
     if callable(search):
