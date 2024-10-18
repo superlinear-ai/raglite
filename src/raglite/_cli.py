@@ -18,21 +18,31 @@ logging.getLogger("chainlit").setLevel(logging.WARNING)
 
 try:
     import chainlit as cl
-    from chainlit import (
-        ChatSettings,
-        Message,
-        on_chat_start,
-        on_message,
-        on_settings_update,
-    )
     from chainlit.cli import run_chainlit
     from chainlit.input_widget import Switch, TextInput
 except ImportError:
-    cl = None  # type: ignore[assignment]
-    ChatSettings, Message = None, None  # type: ignore[assignment,misc]
-    on_chat_start, on_message, on_settings_update = lambda x: x, lambda x: x, lambda x: x
+    from collections.abc import Callable
+    from typing import Any
+
+    class ChainlitStub:
+        @staticmethod
+        def on_chat_start(func: Callable[..., Any]) -> Callable[..., Any]:
+            return func
+
+        @staticmethod
+        def on_settings_update(func: Callable[..., Any]) -> Callable[..., Any]:
+            return func
+
+        @staticmethod
+        def on_message(func: Callable[..., Any]) -> Callable[..., Any]:
+            return func
+
+        class ChatSettings: ...
+
+        class Message: ...
+
+    cl = ChainlitStub()  # type: ignore[assignment]
     run_chainlit = None  # type: ignore[assignment]
-    Switch, TextInput = None, None  # type: ignore[assignment,misc]
 
 
 async def async_generator(sync_generator: Iterator[str]) -> AsyncGenerator[str, None]:
@@ -42,7 +52,7 @@ async def async_generator(sync_generator: Iterator[str]) -> AsyncGenerator[str, 
         await asyncio.sleep(0)  # Yield control to the event loop
 
 
-@on_chat_start
+@cl.on_chat_start
 async def start_chat() -> None:
     """Initialize the chat."""
     # Add Chainlit settings with which the user can configure the RAGLite config.
@@ -62,8 +72,8 @@ async def start_chat() -> None:
     await update_config(settings)
 
 
-@on_settings_update  # type: ignore[arg-type]
-async def update_config(settings: ChatSettings) -> None:
+@cl.on_settings_update  # type: ignore[arg-type]
+async def update_config(settings: cl.ChatSettings) -> None:
     """Update the RAGLite config."""
     # Update the RAGLite config given the Chainlit settings.
     config = RAGLiteConfig(
@@ -73,15 +83,17 @@ async def update_config(settings: ChatSettings) -> None:
         vector_search_query_adapter=settings["vector_search_query_adapter"],  # type: ignore[index]
     )
     cl.user_session.set("config", config)  # type: ignore[no-untyped-call]
-    # Run a search to prime the pipeline.
-    async with cl.Step(name="initialize", type="retrieval"):
-        query = "Hello world"
-        chunk_ids, _ = await cl.make_async(hybrid_search)(query=query, config=config)
-        _ = await cl.make_async(rerank)(query=query, chunk_ids=chunk_ids, config=config)
+    # Run a search to prime the pipeline if it's a local pipeline.
+    # TODO: Don't do this for SQLite once we switch from PyNNDescent to sqlite-vec.
+    if str(config.db_url).startswith("sqlite") or config.embedder.startswith("llama-cpp-python"):
+        async with cl.Step(name="initialize", type="retrieval"):
+            query = "Hello world"
+            chunk_ids, _ = await cl.make_async(hybrid_search)(query=query, config=config)
+            _ = await cl.make_async(rerank)(query=query, chunk_ids=chunk_ids, config=config)
 
 
-@on_message
-async def handle_message(user_message: Message) -> None:
+@cl.on_message
+async def handle_message(user_message: cl.Message) -> None:
     """Respond to a user message."""
     # Get the config and message history from the user session.
     config: RAGLiteConfig = cl.user_session.get("config")  # type: ignore[no-untyped-call]
@@ -142,6 +154,6 @@ def chainlit(db_url: str, llm: str, embedder: str) -> None:
     os.environ["RAGLITE_LLM"] = os.environ.get("RAGLITE_LLM", llm)
     os.environ["RAGLITE_EMBEDDER"] = os.environ.get("RAGLITE_EMBEDDER", embedder)
     if run_chainlit is None:
-        error_message = "To serve a Chainlit frontend, please install the `chainlit` extra."
+        error_message = "To serve a Chainlit frontend, please install the `chainlit` extra."  # type: ignore[unreachable]
         raise ImportError(error_message)
     run_chainlit(__file__)

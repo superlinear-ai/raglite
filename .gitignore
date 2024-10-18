@@ -24,7 +24,7 @@ data/
 # dotenv
 .env
 
-# Rerankers
+# rerankers
 .*_cache/
 
 # Hypothesis
@@ -61,6 +61,10 @@ dist/
 # Python
 __pycache__/
 *.py[cdo]
+
+# RAGLite
+*.db
+*.sqlite
 
 # Ruff
 .ruff_cache/
