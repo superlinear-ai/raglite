@@ -27,6 +27,7 @@ RAGLite is a Python package for Retrieval-Augmented Generation (RAG) with Postgr
 
 ##### Extensible
 
+- 💬 Optional customizable ChatGPT-like frontend with [Chainlit](https://github.com/Chainlit/chainlit)
 - ✍️ Optional conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
 - ✅ Optional evaluation of retrieval and generation performance with [Ragas](https://github.com/explodinggradients/ragas)
 
@@ -60,6 +61,12 @@ Finally, install RAGLite with:
 pip install raglite
 ```
 
+To add support for a customizable ChatGPT-like frontend, use the `chainlit` extra:
+
+```sh
+pip install raglite[chainlit]
+```
+
 To add support for filetypes other than PDF, use the `pandoc` extra:
 
 ```sh
@@ -81,6 +88,7 @@ pip install raglite[ragas]
 3. [Searching and Retrieval-Augmented Generation (RAG)](#3-searching-and-retrieval-augmented-generation-rag)
 4. [Computing and using an optimal query adapter](#4-computing-and-using-an-optimal-query-adapter)
 5. [Evaluation of retrieval and generation](#5-evaluation-of-retrieval-and-generation)
+6. [Serving a customizable ChatGPT-like frontend](#6-serving-a-customizable-chatgpt-like-frontend)
 
 ### 1. Configuring RAGLite
 
@@ -206,6 +214,29 @@ from raglite import answer_evals, evaluate, insert_evals
 insert_evals(num_evals=100, config=my_config)
 answered_evals_df = answer_evals(num_evals=10, config=my_config)
 evaluation_df = evaluate(answered_evals_df, config=my_config)
+```
+
+### 6. Serving a customizable ChatGPT-like frontend
+
+If you installed the `chainlit` extra, you can serve a customizable ChatGPT-like frontend with:
+
+```sh
+raglite chainlit
+```
+
+You can specify the database URL, LLM, and embedder directly in the Chainlit frontend, or with the CLI as follows:
+
+```sh
+raglite chainlit \
+    --db_url sqlite:///raglite.sqlite \
+    --llm llama-cpp-python/bartowski/Llama-3.2-3B-Instruct-GGUF/*Q4_K_M.gguf@4096 \
+    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf
+```
+
+To use an API-based LLM, make sure to include your credentials in a `.env` file or supply them inline:
+
+```sh
+OPENAI_API_KEY=sk-... raglite chainlit --llm gpt-4o-mini --embedder text-embedding-3-large
 ```
 
 ## Contributing

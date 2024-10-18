@@ -1,5 +1,6 @@
 """RAGLite."""
 
+from raglite._cli import cli
 from raglite._config import RAGLiteConfig
 from raglite._eval import answer_evals, evaluate, insert_evals
 from raglite._insert import insert_document
@@ -34,4 +35,6 @@ __all__ = [
     "insert_evals",
     "answer_evals",
     "evaluate",
+    # CLI
+    "cli",
 ]
