@@ -81,7 +81,7 @@ matplotlib = ">=3.9.0"
 memory-profiler = ">=0.61.0"
 pdoc = ">=14.4.0"
 
-[tool.poetry.scripts]  # https://python-poetry.org/docs/pyproject/#scripts
+[tool.poetry.scripts] # https://python-poetry.org/docs/pyproject/#scripts
 raglite = "raglite:cli"
 
 [tool.coverage.report] # https://coverage.readthedocs.io/en/latest/config.html#report
