@@ -49,7 +49,7 @@ tqdm = ">=4.66.0"
 pandas = ">=2.1.0"
 ragas = { version = ">=0.1.12", optional = true }
 # CLI:
-click = ">=8.1.3"
+typer = ">=0.12.5"
 # Frontend:
 chainlit = { version = ">=1.2.0", optional = true }
 
