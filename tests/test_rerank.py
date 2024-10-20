@@ -3,7 +3,7 @@
 import pytest
 from rerankers.models.ranker import BaseRanker
 
-from raglite import RAGLiteConfig, hybrid_search, rerank, retrieve_chunks
+from raglite import RAGLiteConfig, hybrid_search, rerank_chunks, retrieve_chunks
 from raglite._database import Chunk
 from raglite._flashrank import PatchedFlashRankRanker as FlashRankRanker
 
@@ -46,10 +46,10 @@ def test_reranker(
     assert all(isinstance(chunk, Chunk) for chunk in chunks)
     assert all(chunk_id == chunk.id for chunk_id, chunk in zip(chunk_ids, chunks, strict=True))
     # Rerank the chunks given an inverted chunk order.
-    reranked_chunks = rerank(query, chunks[::-1], config=raglite_test_config)
+    reranked_chunks = rerank_chunks(query, chunks[::-1], config=raglite_test_config)
     if reranker is not None and "text-embedding-3-small" not in raglite_test_config.embedder:
         assert reranked_chunks[0] == chunks[0]
     # Test that we can also rerank given the chunk_ids only.
-    reranked_chunks = rerank(query, chunk_ids[::-1], config=raglite_test_config)
+    reranked_chunks = rerank_chunks(query, chunk_ids[::-1], config=raglite_test_config)
     if reranker is not None and "text-embedding-3-small" not in raglite_test_config.embedder:
         assert reranked_chunks[0] == chunks[0]

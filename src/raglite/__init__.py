@@ -9,7 +9,7 @@ from raglite._rag import rag
 from raglite._search import (
     hybrid_search,
     keyword_search,
-    rerank,
+    rerank_chunks,
     retrieve_chunks,
     retrieve_segments,
     vector_search,
@@ -26,7 +26,7 @@ __all__ = [
     "vector_search",
     "retrieve_chunks",
     "retrieve_segments",
-    "rerank",
+    "rerank_chunks",
     # RAG
     "rag",
     # Query adapter

@@ -174,9 +174,9 @@ from raglite import retrieve_chunks
 chunks_hybrid = retrieve_chunks(chunk_ids_hybrid, config=my_config)
 
 # Rerank chunks:
-from raglite import rerank
+from raglite import rerank_chunks
 
-chunks_reranked = rerank(prompt, chunks_hybrid, config=my_config)
+chunks_reranked = rerank_chunks(prompt, chunks_hybrid, config=my_config)
 
 # Answer questions with RAG:
 from raglite import rag

@@ -7,7 +7,7 @@ from litellm import completion, get_model_info  # type: ignore[attr-defined]
 from raglite._config import RAGLiteConfig
 from raglite._database import Chunk
 from raglite._litellm import LlamaCppPythonLLM
-from raglite._search import hybrid_search, rerank, retrieve_segments
+from raglite._search import hybrid_search, rerank_chunks, retrieve_segments
 from raglite._typing import SearchMethod
 
 
@@ -42,11 +42,11 @@ def rag(  # noqa: PLR0913
     chunks: list[str] | list[Chunk]
     if callable(search):
         # If the user has configured a reranker, we retrieve extra contexts to rerank.
-        extra_contexts = 4 * max_contexts if config.reranker else 0
+        extra_contexts = 3 * max_contexts if config.reranker else 0
         # Retrieve relevant contexts.
         chunk_ids, _ = search(prompt, num_results=max_contexts + extra_contexts, config=config)
         # Rerank the relevant contexts.
-        chunks = rerank(query=prompt, chunk_ids=chunk_ids, config=config)
+        chunks = rerank_chunks(query=prompt, chunk_ids=chunk_ids, config=config)
     else:
         # The user has passed a list of chunk_ids or chunks directly.
         chunks = search

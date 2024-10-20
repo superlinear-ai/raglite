@@ -8,7 +8,20 @@ from pathlib import Path
 import chainlit as cl
 from chainlit.input_widget import Switch, TextInput
 
-from raglite import RAGLiteConfig, hybrid_search, insert_document, rag, rerank, retrieve_chunks
+from raglite import (
+    RAGLiteConfig,
+    hybrid_search,
+    insert_document,
+    rag,
+    rerank_chunks,
+    retrieve_chunks,
+)
+
+async_insert_document = cl.make_async(insert_document)
+async_hybrid_search = cl.make_async(hybrid_search)
+async_retrieve_chunks = cl.make_async(retrieve_chunks)
+async_rerank_chunks = cl.make_async(rerank_chunks)
+async_rag = cl.make_async(rag)
 
 
 async def async_generator(sync_generator: Iterator[str]) -> AsyncGenerator[str, None]:
@@ -55,8 +68,8 @@ async def update_config(settings: cl.ChatSettings) -> None:
     if str(config.db_url).startswith("sqlite") or config.embedder.startswith("llama-cpp-python"):
         async with cl.Step(name="initialize", type="retrieval"):
             query = "Hello world"
-            chunk_ids, _ = await cl.make_async(hybrid_search)(query=query, config=config)
-            _ = await cl.make_async(rerank)(query=query, chunk_ids=chunk_ids, config=config)
+            chunk_ids, _ = await async_hybrid_search(query=query, config=config)
+            _ = await async_rerank_chunks(query=query, chunk_ids=chunk_ids, config=config)
 
 
 @cl.on_message
@@ -69,14 +82,14 @@ async def handle_message(user_message: cl.Message) -> None:
         if file.path:
             async with cl.Step(name="insert", type="run") as step:
                 step.input = Path(file.path).name
-                await cl.make_async(insert_document)(Path(file.path), config=config)
+                await async_insert_document(Path(file.path), config=config)
     # Search for relevant contexts for RAG.
     async with cl.Step(name="search", type="retrieval") as step:
         step.input = user_message.content
-        chunk_ids, _ = await cl.make_async(hybrid_search)(
-            query=user_message.content, num_results=20, config=config
+        chunk_ids, _ = await async_hybrid_search(
+            query=user_message.content, num_results=10, config=config
         )
-        chunks = await cl.make_async(retrieve_chunks)(chunk_ids=chunk_ids, config=config)
+        chunks = await async_retrieve_chunks(chunk_ids=chunk_ids, config=config)
         step.output = chunks
         step.elements = [  # Show the top 3 chunks inline.
             cl.Text(content=str(chunk), display="inline") for chunk in chunks[:3]
@@ -84,7 +97,7 @@ async def handle_message(user_message: cl.Message) -> None:
     # Rerank the chunks.
     async with cl.Step(name="rerank", type="rerank") as step:
         step.input = chunks
-        chunks = await cl.make_async(rerank)(
+        chunks = await async_rerank_chunks(
             query=user_message.content, chunk_ids=chunks, config=config
         )
         step.output = chunks
