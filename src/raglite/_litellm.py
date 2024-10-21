@@ -1,8 +1,9 @@
 """Add support for llama-cpp-python models to LiteLLM."""
 
+import asyncio
 import logging
 import warnings
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from functools import cache
 from typing import Any, ClassVar, cast
 
@@ -14,7 +15,7 @@ from litellm import (  # type: ignore[attr-defined]
     ModelResponse,
     convert_to_model_response_object,
 )
-from litellm.llms.custom_httpx.http_handler import HTTPHandler
+from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
 from llama_cpp import (  # type: ignore[attr-defined]
     ChatCompletionRequestMessage,
     CreateChatCompletionResponse,
@@ -48,6 +49,9 @@ class LlamaCppPythonLLM(CustomLLM):
     )
     ```
     """
+
+    # Create a lock to prevent concurrent access to llama-cpp-python models.
+    streaming_lock: ClassVar[asyncio.Lock] = asyncio.Lock()
 
     # The set of supported OpenAI parameters is the intersection of [1] and [2]. Not included:
     # max_completion_tokens, stream_options, n, user, logprobs, top_logprobs, extra_headers.
@@ -203,6 +207,50 @@ class LlamaCppPythonLLM(CustomLLM):
                     },
                 )
                 yield litellm_generic_streaming_chunk
+
+    async def astreaming(  # type: ignore[misc,override]  # noqa: PLR0913
+        self,
+        model: str,
+        messages: list[ChatCompletionRequestMessage],
+        api_base: str,
+        custom_prompt_dict: dict[str, Any],
+        model_response: ModelResponse,
+        print_verbose: Callable,  # type: ignore[type-arg]
+        encoding: str,
+        api_key: str,
+        logging_obj: Any,
+        optional_params: dict[str, Any],
+        acompletion: Callable | None = None,  # type: ignore[type-arg]
+        litellm_params: dict[str, Any] | None = None,
+        logger_fn: Callable | None = None,  # type: ignore[type-arg]
+        headers: dict[str, Any] | None = None,
+        timeout: float | httpx.Timeout | None = None,  # noqa: ASYNC109
+        client: AsyncHTTPHandler | None = None,
+    ) -> AsyncIterator[GenericStreamingChunk]:
+        # Start a synchronous stream.
+        stream = self.streaming(
+            model,
+            messages,
+            api_base,
+            custom_prompt_dict,
+            model_response,
+            print_verbose,
+            encoding,
+            api_key,
+            logging_obj,
+            optional_params,
+            acompletion,
+            litellm_params,
+            logger_fn,
+            headers,
+            timeout,
+        )
+        await asyncio.sleep(0)  # Yield control to the event loop after initialising the context.
+        # Wrap the synchronous stream in an asynchronous stream.
+        async with LlamaCppPythonLLM.streaming_lock:
+            for litellm_generic_streaming_chunk in stream:
+                yield litellm_generic_streaming_chunk
+                await asyncio.sleep(0)  # Yield control to the event loop after each token.
 
 
 # Register the LlamaCppPythonLLM provider.

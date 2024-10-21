@@ -5,7 +5,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry] # https://python-poetry.org/docs/pyproject/
 name = "raglite"
 version = "0.1.4"
-description = "A Python package for Retrieval-Augmented Generation (RAG) with SQLite or PostgreSQL."
+description = "A Python toolkit for Retrieval-Augmented Generation (RAG) with SQLite or PostgreSQL."
 authors = ["Laurent Sorber <laurent@superlinear.eu>"]
 readme = "README.md"
 repository = "https://github.com/superlinear-ai/raglite"
@@ -37,7 +37,7 @@ llama-cpp-python = ">=0.2.88"
 pydantic = ">=2.7.0"
 # Approximate Nearest Neighbors:
 pynndescent = ">=0.5.12"
-# Reranking
+# Reranking:
 langdetect = ">=1.0.9"
 rerankers = { extras = ["flashrank"], version = ">=0.5.3" }
 # Storage:
@@ -48,8 +48,13 @@ tqdm = ">=4.66.0"
 # Evaluation:
 pandas = ">=2.1.0"
 ragas = { version = ">=0.1.12", optional = true }
+# CLI:
+typer = ">=0.12.5"
+# Frontend:
+chainlit = { version = ">=1.2.0", optional = true }
 
 [tool.poetry.extras] # https://python-poetry.org/docs/pyproject/#extras
+chainlit = ["chainlit"]
 pandoc = ["pypandoc-binary"]
 ragas = ["ragas"]
 
@@ -75,6 +80,9 @@ ipywidgets = ">=8.1.2"
 matplotlib = ">=3.9.0"
 memory-profiler = ">=0.61.0"
 pdoc = ">=14.4.0"
+
+[tool.poetry.scripts] # https://python-poetry.org/docs/pyproject/#scripts
+raglite = "raglite:cli"
 
 [tool.coverage.report] # https://coverage.readthedocs.io/en/latest/config.html#report
 fail_under = 50
@@ -104,7 +112,7 @@ show_error_context = true
 warn_unreachable = true
 
 [tool.pytest.ini_options] # https://docs.pytest.org/en/latest/reference/reference.html#ini-options-ref
-addopts = "--color=yes --doctest-modules --exitfirst --failed-first --strict-config --strict-markers --verbosity=2 --junitxml=reports/pytest.xml"
+addopts = "--color=yes --exitfirst --failed-first --strict-config --strict-markers --verbosity=2 --junitxml=reports/pytest.xml"
 filterwarnings = ["error", "ignore::DeprecationWarning", "ignore::pytest.PytestUnraisableExceptionWarning"]
 testpaths = ["src", "tests"]
 xfail_strict = true

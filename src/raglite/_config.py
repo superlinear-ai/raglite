@@ -51,7 +51,8 @@ class RAGLiteConfig:
         default_factory=lambda: (
             ("en", FlashRankRanker("ms-marco-MiniLM-L-12-v2", verbose=0)),
             ("other", FlashRankRanker("ms-marco-MultiBERT-L-12", verbose=0)),
-        )
+        ),
+        compare=False,  # Exclude the reranker from comparison to avoid lru_cache misses.
     )
 
     def __post_init__(self) -> None:

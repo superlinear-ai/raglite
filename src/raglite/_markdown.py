@@ -203,10 +203,19 @@ def document_to_markdown(doc_path: Path) -> str:
         pages = dictionary_output(doc_path, sort=True, keep_chars=False)
         doc = "\n\n".join(parsed_pdf_to_markdown(pages))
     else:
-        # Use pandoc for everything else.
-        import pypandoc
+        try:
+            # Use pandoc for everything else.
+            import pypandoc
 
-        doc = pypandoc.convert_file(doc_path, to="gfm")
+            doc = pypandoc.convert_file(doc_path, to="gfm")
+        except ImportError as error:
+            error_message = (
+                "To convert files to Markdown with pandoc, please install the `pandoc` extra."
+            )
+            raise ImportError(error_message) from error
+        except RuntimeError:
+            # File format not supported, fall back to reading the text.
+            doc = doc_path.read_text()
     # Improve Markdown quality.
     doc = mdformat.text(doc)
     return doc

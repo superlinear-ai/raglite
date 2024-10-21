@@ -232,7 +232,7 @@ def retrieve_segments(
     return segments  # type: ignore[return-value]
 
 
-def rerank(
+def rerank_chunks(
     query: str,
     chunk_ids: list[str] | list[Chunk],
     *,

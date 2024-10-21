@@ -1,6 +1,7 @@
 """PostgreSQL or SQLite database tables for RAGLite."""
 
 import datetime
+import json
 from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
@@ -19,7 +20,6 @@ from sqlmodel import (
     Session,
     SQLModel,
     create_engine,
-    select,
     text,
 )
 
@@ -124,12 +124,25 @@ class Chunk(SQLModel, table=True):
         # Uses the relationship chunk.embeddings to access the chunk_embedding table.
         return np.vstack([embedding.embedding[np.newaxis, :] for embedding in self.embeddings])
 
+    def __hash__(self) -> int:
+        return hash(self.id)
+
+    def __repr__(self) -> str:
+        return json.dumps(
+            {
+                "id": self.id,
+                "document_id": self.document_id,
+                "index": self.index,
+                "headings": self.headings,
+                "body": self.body[:100],
+                "metadata": self.metadata_,
+            },
+            indent=4,
+        )
+
     def __str__(self) -> str:
         """Context representation of this chunk."""
         return f"{self.headings.strip()}\n\n{self.body.strip()}".strip()
-
-    def __hash__(self) -> int:
-        return hash(self.id)
 
 
 class ChunkEmbedding(SQLModel, table=True):
@@ -172,22 +185,8 @@ class IndexMetadata(SQLModel, table=True):
     )
 
     @staticmethod
-    def _get_version(id_: str, *, config: RAGLiteConfig | None = None) -> datetime.datetime | None:
-        """Get the version of the index metadata with a given id."""
-        engine = create_database_engine(config)
-        with Session(engine) as session:
-            version = session.exec(
-                select(IndexMetadata.version).where(IndexMetadata.id == id_)
-            ).first()
-        return version
-
-    @staticmethod
     @lru_cache(maxsize=4)
-    def _get(
-        id_: str, version: datetime.datetime | None, *, config: RAGLiteConfig | None = None
-    ) -> dict[str, Any] | None:
-        if version is None:
-            return None
+    def _get(id_: str, *, config: RAGLiteConfig | None = None) -> dict[str, Any] | None:
         engine = create_database_engine(config)
         with Session(engine) as session:
             index_metadata_record = session.get(IndexMetadata, id_)
@@ -197,8 +196,7 @@ class IndexMetadata(SQLModel, table=True):
 
     @staticmethod
     def get(id_: str = "default", *, config: RAGLiteConfig | None = None) -> dict[str, Any]:
-        version = IndexMetadata._get_version(id_, config=config)
-        metadata = IndexMetadata._get(id_, version, config=config) or {}
+        metadata = IndexMetadata._get(id_, config=config) or {}
         return metadata
 
 
