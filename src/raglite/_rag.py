@@ -39,7 +39,7 @@ def _max_contexts(
     # Reduce the maximum number of contexts to take into account the LLM's context size.
     max_context_tokens = (
         max_tokens
-        - sum(len(m["content"]) // 3 for m in messages or [])  # Previous messages.
+        - sum(len(message["content"]) // 3 for message in messages or [])  # Previous messages.
         - len(RAG_SYSTEM_PROMPT) // 3  # System prompt.
         - len(prompt) // 3  # User prompt.
     )
