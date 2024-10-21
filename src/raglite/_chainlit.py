@@ -1,8 +1,6 @@
 """Chainlit frontend for RAGLite."""
 
-import asyncio
 import os
-from collections.abc import AsyncGenerator, Iterator
 from pathlib import Path
 
 import chainlit as cl
@@ -10,9 +8,9 @@ from chainlit.input_widget import Switch, TextInput
 
 from raglite import (
     RAGLiteConfig,
+    async_rag,
     hybrid_search,
     insert_document,
-    rag,
     rerank_chunks,
     retrieve_chunks,
 )
@@ -21,14 +19,6 @@ async_insert_document = cl.make_async(insert_document)
 async_hybrid_search = cl.make_async(hybrid_search)
 async_retrieve_chunks = cl.make_async(retrieve_chunks)
 async_rerank_chunks = cl.make_async(rerank_chunks)
-async_rag = cl.make_async(rag)
-
-
-async def async_generator(sync_generator: Iterator[str]) -> AsyncGenerator[str, None]:
-    """Convert a synchronous generator to an asynchronous generator."""
-    for item in sync_generator:
-        yield item
-        await asyncio.sleep(0)  # Yield control to the event loop
 
 
 @cl.on_chat_start
@@ -104,16 +94,13 @@ async def handle_message(user_message: cl.Message) -> None:
         step.elements = [  # Show the top 3 chunks inline.
             cl.Text(content=str(chunk), display="inline") for chunk in chunks[:3]
         ]
-    # Stream the RAG response.
+    # Stream the LLM response.
     assistant_message = cl.Message(content="")
-    stream = async_generator(
-        rag(
-            prompt=user_message.content,
-            search=chunks,
-            messages=cl.chat_context.to_openai()[-5:],  # type: ignore[no-untyped-call]
-            config=config,
-        )
-    )
-    async for token in stream:
+    async for token in async_rag(
+        prompt=user_message.content,
+        search=chunks,
+        messages=cl.chat_context.to_openai()[-5:],  # type: ignore[no-untyped-call]
+        config=config,
+    ):
         await assistant_message.stream_token(token)
     await assistant_message.update()  # type: ignore[no-untyped-call]
