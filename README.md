@@ -241,6 +241,8 @@ To use an API-based LLM, make sure to include your credentials in a `.env` file 
 OPENAI_API_KEY=sk-... raglite chainlit --llm gpt-4o-mini --embedder text-embedding-3-large
 ```
 
+<div align="center"><video src="https://github.com/user-attachments/assets/01cf98d3-6ddd-45bb-8617-cf290c09f187" /></div>
+
 ## Contributing
 
 <details>
