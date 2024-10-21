@@ -2,7 +2,7 @@
 
 # 🥤 RAGLite
 
-RAGLite is a Python package for Retrieval-Augmented Generation (RAG) with PostgreSQL or SQLite.
+RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with PostgreSQL or SQLite.
 
 ## Features
 
@@ -27,7 +27,7 @@ RAGLite is a Python package for Retrieval-Augmented Generation (RAG) with Postgr
 
 ##### Extensible
 
-- 💬 Optional customizable ChatGPT-like frontend with [Chainlit](https://github.com/Chainlit/chainlit)
+- 💬 Optional customizable ChatGPT-like frontend for [web](https://docs.chainlit.io/deploy/copilot), [Slack](https://docs.chainlit.io/deploy/slack), and [Teams](https://docs.chainlit.io/deploy/teams) with [Chainlit](https://github.com/Chainlit/chainlit)
 - ✍️ Optional conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
 - ✅ Optional evaluation of retrieval and generation performance with [Ragas](https://github.com/explodinggradients/ragas)
 
@@ -223,6 +223,8 @@ If you installed the `chainlit` extra, you can serve a customizable ChatGPT-like
 ```sh
 raglite chainlit
 ```
+
+The application is also deployable to [web](https://docs.chainlit.io/deploy/copilot), [Slack](https://docs.chainlit.io/deploy/slack), and [Teams](https://docs.chainlit.io/deploy/teams).
 
 You can specify the database URL, LLM, and embedder directly in the Chainlit frontend, or with the CLI as follows:
 

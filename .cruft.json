@@ -6,7 +6,7 @@
     "cookiecutter": {
       "project_type": "package",
       "project_name": "RAGLite",
-      "project_description": "A Python package for Retrieval-Augmented Generation (RAG) with SQLite or PostgreSQL.",
+      "project_description": "A Python toolkit for Retrieval-Augmented Generation (RAG) with SQLite or PostgreSQL.",
       "project_url": "https://github.com/superlinear-ai/raglite",
       "author_name": "Laurent Sorber",
       "author_email": "laurent@superlinear.eu",
