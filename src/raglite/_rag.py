@@ -95,6 +95,7 @@ def rag(  # noqa: PLR0913
     context_neighbors: tuple[int, ...] | None = (-1, 1),
     search: SearchMethod | list[str] | list[Chunk] = hybrid_search,
     messages: list[dict[str, str]] | None = None,
+    system_prompt: str = RAG_SYSTEM_PROMPT,
     config: RAGLiteConfig | None = None,
 ) -> Iterator[str]:
     """Retrieval-augmented generation."""
@@ -107,7 +108,7 @@ def rag(  # noqa: PLR0913
         search=search,
         config=config,
     )
-    system_prompt = f"{RAG_SYSTEM_PROMPT}\n\n" + "\n\n".join(
+    system_prompt = f"{system_prompt}\n\n" + "\n\n".join(
         f'<context index="{i}">\n{segment.strip()}\n</context>'
         for i, segment in enumerate(segments)
     )
@@ -133,6 +134,7 @@ async def async_rag(  # noqa: PLR0913
     context_neighbors: tuple[int, ...] | None = (-1, 1),
     search: SearchMethod | list[str] | list[Chunk] = hybrid_search,
     messages: list[dict[str, str]] | None = None,
+    system_prompt: str = RAG_SYSTEM_PROMPT,
     config: RAGLiteConfig | None = None,
 ) -> AsyncIterator[str]:
     """Retrieval-augmented generation."""
@@ -145,7 +147,7 @@ async def async_rag(  # noqa: PLR0913
         search=search,
         config=config,
     )
-    system_prompt = f"{RAG_SYSTEM_PROMPT}\n\n" + "\n\n".join(
+    system_prompt = f"{system_prompt}\n\n" + "\n\n".join(
         f'<context index="{i}">\n{segment.strip()}\n</context>'
         for i, segment in enumerate(segments)
     )
