@@ -33,11 +33,17 @@ def extract_with_llm(
     # Load the default config if not provided.
     config = config or RAGLiteConfig()
     # Update the system prompt with the JSON schema of the return type to help the LLM.
-    system_prompt = (
-        return_type.system_prompt.strip() + "\n",  # type: ignore[attr-defined]
-        "Format your response according to this JSON schema:\n",
-        return_type.model_json_schema(),
+    system_prompt = "\n".join(
+        (
+            return_type.system_prompt.strip(),  # type: ignore[attr-defined]
+            "Format your response according to this JSON schema:",
+            str(return_type.model_json_schema()),
+        )
     )
+    response_format: dict[str, Any] = {"type": "json_object"}
+    # Specify the 'schema' for llama_cpp models
+    if "llama-cpp" in config.llm:
+        response_format["schema"] = return_type.model_json_schema()
     # Concatenate the user prompt if it is a list of strings.
     if isinstance(user_prompt, list):
         user_prompt = "\n\n".join(
@@ -52,7 +58,7 @@ def extract_with_llm(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            response_format={"type": "json_object", "schema": return_type.model_json_schema()},
+            response_format=response_format,
             **kwargs,
         )
         try:
