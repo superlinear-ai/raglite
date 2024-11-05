@@ -24,6 +24,7 @@ from sqlmodel import (
 )
 
 from raglite._config import RAGLiteConfig
+from raglite._embed import embed_sentences
 from raglite._litellm import LlamaCppPythonLLM
 from raglite._typing import Embedding, FloatMatrix, FloatVector, PickledObject
 
@@ -241,6 +242,21 @@ class Eval(SQLModel, table=True):
         )
 
 
+@lru_cache
+def _get_embedding_dims(config: RAGLiteConfig, *, fallback: bool = True) -> int:
+    """Get the embedding dimension for the configured embedder, with fallback."""
+    llm_provider = "llama-cpp-python" if config.embedder.startswith("llama-cpp") else None
+    model_info = get_model_info(config.embedder, custom_llm_provider=llm_provider)
+    embedding_dim = model_info.get("output_vector_size")
+    if embedding_dim:
+        return embedding_dim
+    if fallback:
+        fallback_embeddings = embed_sentences(["Fallback sentence"], config=config)
+        return fallback_embeddings.shape[1]
+    error_msg = f"Could not determine embedding dimension for {config.embedder}."
+    raise ValueError(error_msg)
+
+
 @lru_cache(maxsize=1)
 def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
     """Create a database engine and initialize it."""
@@ -278,10 +294,8 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
     # to date by loading that LLM.
     if config.embedder.startswith("llama-cpp-python"):
         _ = LlamaCppPythonLLM.llm(config.embedder, embedding=True)
-    llm_provider = "llama-cpp-python" if config.embedder.startswith("llama-cpp") else None
-    model_info = get_model_info(config.embedder, custom_llm_provider=llm_provider)
-    embedding_dim = model_info.get("output_vector_size") or -1
-    assert embedding_dim > 0
+    embedding_dim = _get_embedding_dims(config)
+    assert embedding_dim > 0, "Embedding dimension must be greater than 0."
     # Create all SQLModel tables.
     ChunkEmbedding.set_embedding_dim(embedding_dim)
     SQLModel.metadata.create_all(engine)
