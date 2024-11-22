@@ -1,3 +1,12 @@
+## v0.2.1 (2024-11-22)
+
+### Fix
+
+- improve structured output extraction and query adapter updates (#34)
+- upgrade rerankers and remove flashrank patch (#47)
+- improve unpacking of keyword search results (#46)
+- add fallbacks for model info (#44)
+
 ## v0.2.0 (2024-10-21)
 
 ### Feat
