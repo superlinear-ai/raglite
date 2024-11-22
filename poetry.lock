@@ -4969,13 +4969,13 @@ use-chardet-on-py3 = ["chardet (>=3.0.2,<6)"]
 
 [[package]]
 name = "rerankers"
-version = "0.5.3"
+version = "0.6.0"
 description = "A unified API for various document re-ranking models."
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "rerankers-0.5.3-py3-none-any.whl", hash = "sha256:773aef2f7db371ec9c7b38b6652a78b7fdb96bb7999dc12817e882104c3e24e0"},
-    {file = "rerankers-0.5.3.tar.gz", hash = "sha256:415bae5e9aaa71e1c2e9932839cc84ff8d939afcf31833bdb398c4bb3cbc67a3"},
+    {file = "rerankers-0.6.0-py3-none-any.whl", hash = "sha256:2d70b4a20b040e87b94c46cc1dff817ddf86488949e477a2508eec08d79976f7"},
+    {file = "rerankers-0.6.0.tar.gz", hash = "sha256:3073456ecc6c704159b39138f30071c8cca15588315bfb3759ea8112ad5bcf1d"},
 ]
 
 [package.dependencies]
@@ -4984,14 +4984,15 @@ pydantic = "*"
 tqdm = "*"
 
 [package.extras]
-all = ["flash-attn", "flashrank", "litellm", "nmslib-metabrainz", "protobuf", "rank-llm", "requests", "sentencepiece", "torch", "transformers"]
+all = ["accelerate (>=0.26.0)", "flash-attn", "flashrank", "litellm", "nmslib-metabrainz", "peft (>=0.13.0)", "pillow", "protobuf", "rank-llm", "requests", "sentencepiece", "torch", "transformers (>=4.45.0)"]
 api = ["requests"]
 dev = ["ipyprogress", "ipython", "ir-datasets", "isort", "pytest", "ranx", "ruff", "srsly"]
 flashrank = ["flashrank"]
 gpt = ["litellm"]
-llmlayerwise = ["flash-attn", "protobuf", "sentencepiece", "torch", "transformers"]
+llmlayerwise = ["flash-attn", "protobuf", "sentencepiece", "torch", "transformers (>=4.45.0)"]
+monovlm = ["accelerate (>=0.26.0)", "flash-attn", "peft (>=0.13.0)", "pillow", "protobuf", "sentencepiece", "torch", "transformers (>=4.45.0)"]
 rankllm = ["nmslib-metabrainz", "rank-llm"]
-transformers = ["protobuf", "sentencepiece", "torch", "transformers"]
+transformers = ["protobuf", "sentencepiece", "torch", "transformers (>=4.45.0)"]
 
 [[package]]
 name = "rich"
@@ -6812,4 +6813,4 @@ ragas = ["ragas"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<4.0"
-content-hash = "0b68b835b8d0a256c99deb2e0497f912799be1ce022bab73414bcd9d74bfb7ec"
+content-hash = "bd140a94bea25c626ad990faf55886d0ca589a9524125a0e7d1aa607e9aa1609"

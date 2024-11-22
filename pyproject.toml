@@ -39,7 +39,7 @@ pydantic = ">=2.7.0"
 pynndescent = ">=0.5.12"
 # Reranking:
 langdetect = ">=1.0.9"
-rerankers = { extras = ["flashrank"], version = ">=0.5.3" }
+rerankers = { extras = ["flashrank"], version = ">=0.6.0" }
 # Storage:
 pg8000 = ">=1.31.2"
 sqlmodel-slim = ">=0.0.18"
