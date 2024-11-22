@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from litellm import get_model_info  # type: ignore[attr-defined]
 from markdown_it import MarkdownIt
 from pydantic import ConfigDict
 from sqlalchemy.engine import Engine, make_url
@@ -24,8 +23,7 @@ from sqlmodel import (
 )
 
 from raglite._config import RAGLiteConfig
-from raglite._embed import embed_sentences
-from raglite._litellm import LlamaCppPythonLLM
+from raglite._litellm import get_embedding_dim
 from raglite._typing import Embedding, FloatMatrix, FloatVector, PickledObject
 
 
@@ -242,21 +240,6 @@ class Eval(SQLModel, table=True):
         )
 
 
-@lru_cache
-def _get_embedding_dims(config: RAGLiteConfig, *, fallback: bool = True) -> int:
-    """Get the embedding dimension for the configured embedder, with fallback."""
-    llm_provider = "llama-cpp-python" if config.embedder.startswith("llama-cpp") else None
-    model_info = get_model_info(config.embedder, custom_llm_provider=llm_provider)
-    embedding_dim = model_info.get("output_vector_size")
-    if embedding_dim:
-        return embedding_dim
-    if fallback:
-        fallback_embeddings = embed_sentences(["Fallback sentence"], config=config)
-        return fallback_embeddings.shape[1]
-    error_msg = f"Could not determine embedding dimension for {config.embedder}."
-    raise ValueError(error_msg)
-
-
 @lru_cache(maxsize=1)
 def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
     """Create a database engine and initialize it."""
@@ -290,12 +273,8 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
         with Session(engine) as session:
             session.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
             session.commit()
-    # If the user has configured a llama-cpp-python model, we ensure that LiteLLM's model info is up
-    # to date by loading that LLM.
-    if config.embedder.startswith("llama-cpp-python"):
-        _ = LlamaCppPythonLLM.llm(config.embedder, embedding=True)
-    embedding_dim = _get_embedding_dims(config)
-    assert embedding_dim > 0, "Embedding dimension must be greater than 0."
+    # Get the embedding dimension.
+    embedding_dim = get_embedding_dim(config)
     # Create all SQLModel tables.
     ChunkEmbedding.set_embedding_dim(embedding_dim)
     SQLModel.metadata.create_all(engine)

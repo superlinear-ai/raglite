@@ -2,11 +2,11 @@
 
 from collections.abc import AsyncIterator, Iterator
 
-from litellm import acompletion, completion, get_model_info  # type: ignore[attr-defined]
+from litellm import acompletion, completion
 
 from raglite._config import RAGLiteConfig
 from raglite._database import Chunk
-from raglite._litellm import LlamaCppPythonLLM
+from raglite._litellm import get_context_size
 from raglite._search import hybrid_search, rerank_chunks, retrieve_segments
 from raglite._typing import SearchMethod
 
@@ -27,15 +27,9 @@ def _max_contexts(
     config: RAGLiteConfig | None = None,
 ) -> int:
     """Determine the maximum number of contexts for RAG."""
-    # If the user has configured a llama-cpp-python model, we ensure that LiteLLM's model info is up
-    # to date by loading that LLM.
+    # Get the model's context size.
     config = config or RAGLiteConfig()
-    if config.llm.startswith("llama-cpp-python"):
-        _ = LlamaCppPythonLLM.llm(config.llm)
-    # Get the model's maximum context size.
-    llm_provider = "llama-cpp-python" if config.llm.startswith("llama-cpp") else None
-    model_info = get_model_info(config.llm, custom_llm_provider=llm_provider)
-    max_tokens = model_info.get("max_tokens") or 2048
+    max_tokens = get_context_size(config)
     # Reduce the maximum number of contexts to take into account the LLM's context size.
     max_context_tokens = (
         max_tokens
