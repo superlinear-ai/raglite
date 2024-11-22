@@ -129,9 +129,10 @@ def keyword_search(
             """)
             results = session.execute(statement, params={"match": fts5_query, "limit": num_results})
         # Unpack the results.
-        chunk_ids, keyword_score = zip(*results, strict=True)
-        chunk_ids, keyword_score = list(chunk_ids), list(keyword_score)  # type: ignore[assignment]
-    return chunk_ids, keyword_score  # type: ignore[return-value]
+        results = list(results)  # type: ignore[assignment]
+        chunk_ids = [result.chunk_id for result in results]
+        keyword_score = [result.score for result in results]
+    return chunk_ids, keyword_score
 
 
 def reciprocal_rank_fusion(
