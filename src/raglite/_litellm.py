@@ -129,6 +129,24 @@ class LlamaCppPythonLLM(CustomLLM):
         )
         return llm
 
+    def _translate_openai_params(self, optional_params: dict[str, Any]) -> dict[str, Any]:
+        # Filter out unsupported OpenAI parameters.
+        llama_cpp_python_params = {
+            k: v for k, v in optional_params.items() if k in self.supported_openai_params
+        }
+        # Translate OpenAI's response_format [1] to llama-cpp-python's response_format [2].
+        # [1] https://platform.openai.com/docs/guides/structured-outputs
+        # [2] https://github.com/abetlen/llama-cpp-python#json-schema-mode
+        if (
+            "response_format" in llama_cpp_python_params
+            and "json_schema" in llama_cpp_python_params["response_format"]
+        ):
+            llama_cpp_python_params["response_format"] = {
+                "type": "json_object",
+                "schema": llama_cpp_python_params["response_format"]["json_schema"]["schema"],
+            }
+        return llama_cpp_python_params
+
     def completion(  # noqa: PLR0913
         self,
         model: str,
@@ -149,9 +167,7 @@ class LlamaCppPythonLLM(CustomLLM):
         client: HTTPHandler | None = None,
     ) -> ModelResponse:
         llm = self.llm(model)
-        llama_cpp_python_params = {
-            k: v for k, v in optional_params.items() if k in self.supported_openai_params
-        }
+        llama_cpp_python_params = self._translate_openai_params(optional_params)
         response = cast(
             CreateChatCompletionResponse,
             llm.create_chat_completion(messages=messages, **llama_cpp_python_params),
@@ -184,9 +200,7 @@ class LlamaCppPythonLLM(CustomLLM):
         client: HTTPHandler | None = None,
     ) -> Iterator[GenericStreamingChunk]:
         llm = self.llm(model)
-        llama_cpp_python_params = {
-            k: v for k, v in optional_params.items() if k in self.supported_openai_params
-        }
+        llama_cpp_python_params = self._translate_openai_params(optional_params)
         stream = cast(
             Iterator[CreateChatCompletionStreamResponse],
             llm.create_chat_completion(messages=messages, **llama_cpp_python_params, stream=True),

@@ -2,7 +2,8 @@
 
 from typing import Any, TypeVar
 
-from litellm import completion
+import litellm
+from litellm import completion, get_supported_openai_params  # type: ignore[attr-defined]
 from pydantic import BaseModel, ValidationError
 
 from raglite._config import RAGLiteConfig
@@ -40,16 +41,32 @@ def extract_with_llm(
             str(return_type.model_json_schema()),
         )
     )
-    response_format: dict[str, Any] = {"type": "json_object"}
-    # Specify the 'schema' for llama_cpp models
-    if "llama-cpp" in config.llm:
-        response_format["schema"] = return_type.model_json_schema()
+    # Constrain the reponse format to the JSON schema if it's supported by the LLM [1].
+    # [1] https://docs.litellm.ai/docs/completion/json_mode
+    # TODO: Fall back to {"type": "json_object"} if JSON schema is not supported by the LLM.
+    llm_provider = "llama-cpp-python" if config.embedder.startswith("llama-cpp") else None
+    response_format: dict[str, Any] | None = (
+        {
+            "type": "json_schema",
+            "json_schema": {
+                "name": return_type.__name__,
+                "description": return_type.__doc__ or "",
+                "schema": return_type.model_json_schema(),
+            },
+        }
+        if "response_format"
+        in (get_supported_openai_params(model=config.llm, custom_llm_provider=llm_provider) or [])
+        else None
+    )
     # Concatenate the user prompt if it is a list of strings.
     if isinstance(user_prompt, list):
         user_prompt = "\n\n".join(
             f'<context index="{i}">\n{chunk.strip()}\n</context>'
             for i, chunk in enumerate(user_prompt)
         )
+    # Enable JSON schema validation.
+    enable_json_schema_validation = litellm.enable_json_schema_validation
+    litellm.enable_json_schema_validation = True
     # Extract structured data from the unstructured input.
     for _ in range(config.llm_max_tries):
         response = completion(
@@ -72,4 +89,6 @@ def extract_with_llm(
     else:
         error_message = f"Failed to extract {return_type} from input {user_prompt}."
         raise ValueError(error_message) from last_exception
+    # Restore the previous JSON schema validation setting.
+    litellm.enable_json_schema_validation = enable_json_schema_validation
     return instance
