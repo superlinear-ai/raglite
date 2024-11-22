@@ -14,6 +14,7 @@ from litellm import (  # type: ignore[attr-defined]
     GenericStreamingChunk,
     ModelResponse,
     convert_to_model_response_object,
+    get_model_info,
 )
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
 from llama_cpp import (  # type: ignore[attr-defined]
@@ -23,6 +24,8 @@ from llama_cpp import (  # type: ignore[attr-defined]
     Llama,
     LlamaRAMCache,
 )
+
+from raglite._config import RAGLiteConfig
 
 # Reduce the logging level for LiteLLM and flashrank.
 logging.getLogger("litellm").setLevel(logging.WARNING)
@@ -259,3 +262,54 @@ if not any(provider["provider"] == "llama-cpp-python" for provider in litellm.cu
         {"provider": "llama-cpp-python", "custom_handler": LlamaCppPythonLLM()}
     )
     litellm.suppress_debug_info = True
+
+
+@cache
+def get_context_size(config: RAGLiteConfig, *, fallback: int = 2048) -> int:
+    """Get the context size for the configured LLM."""
+    # If the user has configured a llama-cpp-python model, we ensure that LiteLLM's model info is up
+    # to date by loading that LLM.
+    if config.llm.startswith("llama-cpp-python"):
+        _ = LlamaCppPythonLLM.llm(config.llm)
+    # Attempt to read the context size from LiteLLM's model info.
+    llm_provider = "llama-cpp-python" if config.llm.startswith("llama-cpp") else None
+    model_info = get_model_info(config.llm, custom_llm_provider=llm_provider)
+    max_tokens = model_info.get("max_tokens")
+    if isinstance(max_tokens, int) and max_tokens > 0:
+        return max_tokens
+    # Fall back to a default context size if the model info is not available.
+    if fallback > 0:
+        warnings.warn(
+            f"Could not determine the context size of {config.llm} from LiteLLM's model_info, using {fallback}.",
+            stacklevel=2,
+        )
+        return 2048
+    error_message = f"Could not determine the context size of {config.llm}."
+    raise ValueError(error_message)
+
+
+@cache
+def get_embedding_dim(config: RAGLiteConfig, *, fallback: bool = True) -> int:
+    """Get the embedding dimension for the configured embedder."""
+    # If the user has configured a llama-cpp-python model, we ensure that LiteLLM's model info is up
+    # to date by loading that LLM.
+    if config.embedder.startswith("llama-cpp-python"):
+        _ = LlamaCppPythonLLM.llm(config.embedder, embedding=True)
+    # Attempt to read the embedding dimension from LiteLLM's model info.
+    llm_provider = "llama-cpp-python" if config.embedder.startswith("llama-cpp") else None
+    model_info = get_model_info(config.embedder, custom_llm_provider=llm_provider)
+    embedding_dim = model_info.get("output_vector_size")
+    if isinstance(embedding_dim, int) and embedding_dim > 0:
+        return embedding_dim
+    # If that fails, fall back to embedding a single sentence and reading its embedding dimension.
+    if fallback:
+        from raglite._embed import embed_sentences
+
+        warnings.warn(
+            f"Could not determine the embedding dimension of {config.embedder} from LiteLLM's model_info, using fallback.",
+            stacklevel=2,
+        )
+        fallback_embeddings = embed_sentences(["Hello world"], config=config)
+        return fallback_embeddings.shape[1]
+    error_message = f"Could not determine the embedding dimension of {config.embedder}."
+    raise ValueError(error_message)
