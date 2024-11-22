@@ -1,11 +1,11 @@
 """Test RAGLite's reranking functionality."""
 
 import pytest
+from rerankers.models.flashrank_ranker import FlashRankRanker
 from rerankers.models.ranker import BaseRanker
 
 from raglite import RAGLiteConfig, hybrid_search, rerank_chunks, retrieve_chunks
 from raglite._database import Chunk
-from raglite._flashrank import PatchedFlashRankRanker as FlashRankRanker
 
 
 @pytest.fixture(
