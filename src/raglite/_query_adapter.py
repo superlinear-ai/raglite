@@ -1,6 +1,7 @@
 """Compute and update an optimal query adapter."""
 
 import numpy as np
+from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import Session, col, select
 from tqdm.auto import tqdm
 
@@ -157,6 +158,7 @@ def update_query_adapter(  # noqa: PLR0915, C901
             raise ValueError(error_message)
         # Store the optimal query adapter in the database.
         index_metadata = session.get(IndexMetadata, "default") or IndexMetadata(id="default")
-        index_metadata.metadata_ = {**index_metadata.metadata_, "query_adapter": A_star}
+        index_metadata.metadata_["query_adapter"] = A_star
+        flag_modified(index_metadata, "metadata_")
         session.add(index_metadata)
         session.commit()
