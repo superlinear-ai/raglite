@@ -47,8 +47,8 @@ pip install https://github.com/explosion/spacy-models/releases/download/xx_sent_
 Next, it is optional but recommended to install [an accelerated llama-cpp-python precompiled binary](https://github.com/abetlen/llama-cpp-python?tab=readme-ov-file#supported-backends) with:
 
 ```sh
-# Configure which llama-cpp-python precompiled binary to install (⚠️ only v0.2.88 is supported right now):
-LLAMA_CPP_PYTHON_VERSION=0.2.88
+# Configure which llama-cpp-python precompiled binary to install (⚠️ only v0.3.2 is supported right now):
+LLAMA_CPP_PYTHON_VERSION=0.3.2
 PYTHON_VERSION=310
 ACCELERATOR=metal|cu121|cu122|cu123|cu124
 PLATFORM=macosx_11_0_arm64|linux_x86_64|win_amd64
@@ -116,7 +116,7 @@ my_config = RAGLiteConfig(
 my_config = RAGLiteConfig(
     db_url="sqlite:///raglite.sqlite",
     llm="llama-cpp-python/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/*Q4_K_M.gguf@8192",
-    embedder="llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf",
+    embedder="llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@4096",
 )
 ```
 
@@ -281,7 +281,7 @@ You can specify the database URL, LLM, and embedder directly in the Chainlit fro
 raglite chainlit \
     --db_url sqlite:///raglite.sqlite \
     --llm llama-cpp-python/bartowski/Llama-3.2-3B-Instruct-GGUF/*Q4_K_M.gguf@4096 \
-    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf
+    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@4096
 ```
 
 To use an API-based LLM, make sure to include your credentials in a `.env` file or supply them inline:

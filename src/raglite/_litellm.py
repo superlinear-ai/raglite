@@ -104,6 +104,10 @@ class LlamaCppPythonLLM(CustomLLM):
                 n_ctx=n_ctx,
                 n_gpu_layers=-1,
                 verbose=False,
+                # Workaround to enable long context embedding models [1].
+                # [1] https://github.com/abetlen/llama-cpp-python/issues/1762
+                n_batch=n_ctx if n_ctx > 0 else 2048,
+                n_ubatch=n_ctx if n_ctx > 0 else 2048,
                 **kwargs,
             )
         # Enable caching.
