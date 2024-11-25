@@ -397,34 +397,35 @@ class ContextSegment:
     def __str__(self) -> str:
         """Return a string representation reconstructing the document with headings.
 
-        Shows each unique header exactly once, when it first appears.
-        For example:
-        - First chunk with "# A ## B" shows both headers
-        - Next chunk with "# A ## B" shows no headers as they're the same
-        - Next chunk with "# A ## C" only shows "## C" as it's the only new header
+        Treats headings as a stack, showing headers only when they differ from
+        the current stack path.
 
-        Returns
-        -------
-            str: A string containing content with each heading shown once.
+        For example:
+        - "# A ## B" shows both headers
+        - "# A ## B" shows nothing (already seen)
+        - "# A ## C" shows only "## C" (new branch)
+        - "# D ## B" shows both (new path)
         """
         if not self.chunks:
             return ""
 
-        result = []
-        seen_headers = set()  # Track headers we've already shown
+        result: list[str] = []
+        stack: list[str] = []
 
         for chunk in self.chunks:
-            # Get all headers in this chunk
             headers = [h.strip() for h in chunk.headings.split("\n") if h.strip()]
 
-            # Add any headers we haven't seen before
-            new_headers = [h for h in headers if h not in seen_headers]
-            if new_headers:
-                result.extend(new_headers)
-                result.append("")  # Empty line after headers
-                seen_headers.update(new_headers)  # Mark these headers as seen
+            # Find first differing header
+            i = 0
+            while i < len(headers) and i < len(stack) and headers[i] == stack[i]:
+                i += 1
 
-            # Add the chunk body if it's not empty
+            # Update stack and show new headers
+            stack[i:] = headers[i:]
+            if headers[i:]:
+                result.extend(headers[i:])
+                result.append("")
+
             if chunk.body.strip():
                 result.append(chunk.body.strip())
 
