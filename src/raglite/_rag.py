@@ -1,11 +1,12 @@
 """Retrieval-augmented generation."""
 
 from collections.abc import AsyncIterator, Iterator
+from typing import Literal
 
 from litellm import acompletion, completion
 
 from raglite._config import RAGLiteConfig
-from raglite._database import Chunk
+from raglite._database import Chunk, ContextSegment
 from raglite._litellm import get_context_size
 from raglite._search import hybrid_search, rerank_chunks, retrieve_segments
 from raglite._typing import SearchMethod
@@ -46,7 +47,7 @@ def _max_contexts(
     return max_contexts
 
 
-def _contexts(  # noqa: PLR0913
+def context_segments(  # noqa: PLR0913
     prompt: str,
     *,
     max_contexts: int = 5,
@@ -54,7 +55,7 @@ def _contexts(  # noqa: PLR0913
     search: SearchMethod | list[str] | list[Chunk] = hybrid_search,
     messages: list[dict[str, str]] | None = None,
     config: RAGLiteConfig | None = None,
-) -> list[str]:
+) -> list[ContextSegment]:
     """Retrieve contexts for RAG."""
     # Determine the maximum number of contexts.
     max_contexts = _max_contexts(
@@ -95,25 +96,19 @@ def rag(  # noqa: PLR0913
     """Retrieval-augmented generation."""
     # Get the contexts for RAG as contiguous segments of chunks.
     config = config or RAGLiteConfig()
-    segments = _contexts(
+    segments = context_segments(
         prompt,
         max_contexts=max_contexts,
         context_neighbors=context_neighbors,
         search=search,
         config=config,
     )
-    system_prompt = f"{system_prompt}\n\n" + "\n\n".join(
-        f'<context index="{i}">\n{segment.strip()}\n</context>'
-        for i, segment in enumerate(segments)
-    )
     # Stream the LLM response.
     stream = completion(
         model=config.llm,
-        messages=[
-            *(messages or []),
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt},
-        ],
+        messages=_compose_messages(
+            prompt=prompt, system_prompt=system_prompt, messages=messages, segments=segments
+        ),
         stream=True,
     )
     for output in stream:
@@ -134,27 +129,61 @@ async def async_rag(  # noqa: PLR0913
     """Retrieval-augmented generation."""
     # Get the contexts for RAG as contiguous segments of chunks.
     config = config or RAGLiteConfig()
-    segments = _contexts(
+    segments = context_segments(
         prompt,
         max_contexts=max_contexts,
         context_neighbors=context_neighbors,
         search=search,
         config=config,
     )
-    system_prompt = f"{system_prompt}\n\n" + "\n\n".join(
-        f'<context index="{i}">\n{segment.strip()}\n</context>'
-        for i, segment in enumerate(segments)
+    messages = _compose_messages(
+        prompt=prompt, system_prompt=system_prompt, messages=messages, segments=segments
     )
     # Stream the LLM response.
-    async_stream = await acompletion(
-        model=config.llm,
-        messages=[
-            *(messages or []),
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt},
-        ],
-        stream=True,
-    )
+    async_stream = await acompletion(model=config.llm, messages=messages, stream=True)
     async for output in async_stream:
         token: str = output["choices"][0]["delta"].get("content") or ""
         yield token
+
+
+def _compose_messages(
+    prompt: str,
+    system_prompt: str,
+    messages: list[dict[str, str]] | None,
+    segments: list[ContextSegment] | None,
+    context_placement: Literal[
+        "system_prompt", "user_prompt", "separate_system_prompt"
+    ] = "user_prompt",
+) -> list[dict[str, str]]:
+    """Compose the messages for the LLM, placing the context in the desired position."""
+    # Using the format recommended by Anthropic for documents in RAG
+    # (https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips#essential-tips-for-long-context-prompts
+    if not segments:
+        return [
+            {"role": "system", "content": system_prompt},
+            *(messages or []),
+            {"role": "user", "content": prompt},
+        ]
+    context_content = (
+        "\n\n<documents>\n" + "\n\n".join(seg.to_xml() for seg in segments) + "\n</documents>"
+    )
+    if context_placement == "system_prompt":
+        return [
+            {"role": "system", "content": system_prompt + "\n\n" + context_content},
+            *(messages or []),
+            {"role": "user", "content": prompt},
+        ]
+    if context_placement == "user_prompt":
+        return [
+            {"role": "system", "content": system_prompt},
+            *(messages or []),
+            {"role": "user", "content": prompt + "\n\n" + context_content},
+        ]
+
+    # Separate system prompt from context
+    return [
+        {"role": "system", "content": system_prompt},
+        *(messages or []),
+        {"role": "system", "content": context_content},
+        {"role": "user", "content": prompt},
+    ]

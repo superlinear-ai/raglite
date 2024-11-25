@@ -10,7 +10,7 @@ from raglite import (
     retrieve_segments,
     vector_search,
 )
-from raglite._database import Chunk
+from raglite._database import Chunk, ContextSegment
 from raglite._typing import SearchMethod
 
 
@@ -45,7 +45,7 @@ def test_search(raglite_test_config: RAGLiteConfig, search_method: SearchMethod)
     assert any("Definition of Simultaneity" in str(chunk) for chunk in chunks)
     # Extend the chunks with their neighbours and group them into contiguous segments.
     segments = retrieve_segments(chunk_ids, neighbors=(-1, 1), config=raglite_test_config)
-    assert all(isinstance(segment, str) for segment in segments)
+    assert all(isinstance(segment, ContextSegment) for segment in segments)
 
 
 def test_search_no_results(raglite_test_config: RAGLiteConfig, search_method: SearchMethod) -> None:

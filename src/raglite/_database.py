@@ -2,25 +2,19 @@
 
 import datetime
 import json
+from collections.abc import Callable
+from dataclasses import dataclass
 from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
+from xml.sax.saxutils import escape
 
 import numpy as np
 from markdown_it import MarkdownIt
 from pydantic import ConfigDict
 from sqlalchemy.engine import Engine, make_url
-from sqlmodel import (
-    JSON,
-    Column,
-    Field,
-    Relationship,
-    Session,
-    SQLModel,
-    create_engine,
-    text,
-)
+from sqlmodel import JSON, Column, Field, Relationship, Session, SQLModel, create_engine, text
 
 from raglite._config import RAGLiteConfig
 from raglite._litellm import get_embedding_dim
@@ -83,11 +77,7 @@ class Chunk(SQLModel, table=True):
 
     @staticmethod
     def from_body(
-        document_id: str,
-        index: int,
-        body: str,
-        headings: str = "",
-        **kwargs: Any,
+        document_id: str, index: int, body: str, headings: str = "", **kwargs: Any
     ) -> "Chunk":
         """Create a chunk from Markdown."""
         return Chunk(
@@ -221,10 +211,7 @@ class Eval(SQLModel, table=True):
 
     @staticmethod
     def from_chunks(
-        question: str,
-        contexts: list[Chunk],
-        ground_truth: str,
-        **kwargs: Any,
+        question: str, contexts: list[Chunk], ground_truth: str, **kwargs: Any
     ) -> "Eval":
         """Create a chunk from Markdown."""
         document_id = contexts[0].document_id
@@ -284,18 +271,22 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
         with Session(engine) as session:
             metrics = {"cosine": "cosine", "dot": "ip", "euclidean": "l2", "l1": "l1", "l2": "l2"}
             session.execute(
-                text("""
+                text(
+                    """
                 CREATE INDEX IF NOT EXISTS keyword_search_chunk_index ON chunk USING GIN (to_tsvector('simple', body));
-                """)
+                """
+                )
             )
             session.execute(
-                text(f"""
+                text(
+                    f"""
                 CREATE INDEX IF NOT EXISTS vector_search_chunk_index ON chunk_embedding
                 USING hnsw (
                      (embedding::halfvec({embedding_dim}))
                      halfvec_{metrics[config.vector_search_index_metric]}_ops
                 );
-                """)
+                """
+                )
             )
             session.commit()
     elif db_backend == "sqlite":
@@ -304,31 +295,137 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
         # [1] https://www.sqlite.org/fts5.html#external_content_tables
         with Session(engine) as session:
             session.execute(
-                text("""
+                text(
+                    """
                 CREATE VIRTUAL TABLE IF NOT EXISTS keyword_search_chunk_index USING fts5(body, content='chunk', content_rowid='rowid');
-                """)
+                """
+                )
             )
             session.execute(
-                text("""
+                text(
+                    """
                 CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_insert AFTER INSERT ON chunk BEGIN
                     INSERT INTO keyword_search_chunk_index(rowid, body) VALUES (new.rowid, new.body);
                 END;
-                """)
+                """
+                )
             )
             session.execute(
-                text("""
+                text(
+                    """
                 CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_delete AFTER DELETE ON chunk BEGIN
                     INSERT INTO keyword_search_chunk_index(keyword_search_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
                 END;
-                """)
+                """
+                )
             )
             session.execute(
-                text("""
+                text(
+                    """
                 CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_update AFTER UPDATE ON chunk BEGIN
                     INSERT INTO keyword_search_chunk_index(keyword_search_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
                     INSERT INTO keyword_search_chunk_index(rowid, body) VALUES (new.rowid, new.body);
                 END;
-                """)
+                """
+                )
             )
             session.commit()
     return engine
+
+
+@dataclass
+class ContextSegment:
+    """A class representing a segment of context from a document.
+
+    This class holds information about a specific segment of a document,
+    including its document ID and associated chunks of text with their IDs and scores.
+
+    Attributes
+    ----------
+        document_id (str): The unique identifier for the document.
+        chunks (list[Chunk]): List of chunks for this segment.
+        chunk_scores (list[float]): List of scores for each chunk.
+
+    Raises
+    ------
+        ValueError: If document_id is empty or if chunks is empty.
+    """
+
+    document_id: str
+    chunks: list[Chunk]
+    chunk_scores: list[float]
+
+    def __post_init__(self) -> None:
+        """Validate the segment data after initialization."""
+        if not isinstance(self.document_id, str) or not self.document_id.strip():
+            msg = "document_id must be a non-empty string"
+            raise ValueError(msg)
+        if not self.chunks:
+            msg = "chunks cannot be empty"
+            raise ValueError(msg)
+        if not all(isinstance(chunk, Chunk) for chunk in self.chunks):
+            msg = "all elements in chunks must be Chunk instances"
+            raise ValueError(msg)
+
+    def to_xml(self, indent: int = 4) -> str:
+        """Convert the segment to an XML string representation.
+
+        Args:
+            indent (int): Number of spaces to use for indentation.
+
+        Returns
+        -------
+            str: XML representation of the segment.
+        """
+        chunks_content = "\n".join(str(chunk) for chunk in self.chunks)
+
+        # Create the final XML
+        chunk_ids = ",".join(self.chunk_ids)
+        xml = f"""<document id="{escape(self.document_id)}" chunk_ids="{escape(chunk_ids)}">\n{escape(str(chunks_content))}\n</document>"""
+
+        return xml
+
+    def score(self, scoring_function: Callable[[list[float]], float] = sum) -> float:
+        """Return an aggregated score of the segment, given a scoring function."""
+        return scoring_function(self.chunk_scores)
+
+    @property
+    def chunk_ids(self) -> list[str]:
+        """Return a list of chunk IDs."""
+        return [chunk.id for chunk in self.chunks]
+
+    def __str__(self) -> str:
+        """Return a string representation reconstructing the document with headings.
+
+        Shows each unique header exactly once, when it first appears.
+        For example:
+        - First chunk with "# A ## B" shows both headers
+        - Next chunk with "# A ## B" shows no headers as they're the same
+        - Next chunk with "# A ## C" only shows "## C" as it's the only new header
+
+        Returns
+        -------
+            str: A string containing content with each heading shown once.
+        """
+        if not self.chunks:
+            return ""
+
+        result = []
+        seen_headers = set()  # Track headers we've already shown
+
+        for chunk in self.chunks:
+            # Get all headers in this chunk
+            headers = [h.strip() for h in chunk.headings.split("\n") if h.strip()]
+
+            # Add any headers we haven't seen before
+            new_headers = [h for h in headers if h not in seen_headers]
+            if new_headers:
+                result.extend(new_headers)
+                result.append("")  # Empty line after headers
+                seen_headers.update(new_headers)  # Mark these headers as seen
+
+            # Add the chunk body if it's not empty
+            if chunk.body.strip():
+                result.append(chunk.body.strip())
+
+        return "\n".join(result).strip()

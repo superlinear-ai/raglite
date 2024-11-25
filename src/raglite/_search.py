@@ -5,6 +5,7 @@ import string
 from collections import defaultdict
 from collections.abc import Sequence
 from itertools import groupby
+from operator import attrgetter, methodcaller
 from typing import cast
 
 import numpy as np
@@ -13,16 +14,19 @@ from sqlalchemy.engine import make_url
 from sqlmodel import Session, and_, col, or_, select, text
 
 from raglite._config import RAGLiteConfig
-from raglite._database import Chunk, ChunkEmbedding, IndexMetadata, create_database_engine
+from raglite._database import (
+    Chunk,
+    ChunkEmbedding,
+    ContextSegment,
+    IndexMetadata,
+    create_database_engine,
+)
 from raglite._embed import embed_sentences
 from raglite._typing import FloatMatrix
 
 
 def vector_search(
-    query: str | FloatMatrix,
-    *,
-    num_results: int = 3,
-    config: RAGLiteConfig | None = None,
+    query: str | FloatMatrix, *, num_results: int = 3, config: RAGLiteConfig | None = None
 ) -> tuple[list[str], list[float]]:
     """Search chunks using ANN vector search."""
     # Read the config.
@@ -104,13 +108,15 @@ def keyword_search(
             query_escaped = re.sub(r"[&|!():<>\"]", " ", query)
             tsv_query = " | ".join(query_escaped.split())
             # Perform keyword search with tsvector.
-            statement = text("""
+            statement = text(
+                """
                 SELECT id as chunk_id, ts_rank(to_tsvector('simple', body), to_tsquery('simple', :query)) AS score
                 FROM chunk
                 WHERE to_tsvector('simple', body) @@ to_tsquery('simple', :query)
                 ORDER BY score DESC
                 LIMIT :limit;
-            """)
+            """
+            )
             results = session.execute(statement, params={"query": tsv_query, "limit": num_results})
         elif db_backend == "sqlite":
             # Convert the query to an FTS5 query [1].
@@ -120,13 +126,15 @@ def keyword_search(
             # Perform keyword search with FTS5. In FTS5, BM25 scores are negative [1], so we
             # negate them to make them positive.
             # [1] https://www.sqlite.org/fts5.html#the_bm25_function
-            statement = text("""
+            statement = text(
+                """
                 SELECT chunk.id as chunk_id, -bm25(keyword_search_chunk_index) as score
                 FROM chunk JOIN keyword_search_chunk_index ON chunk.rowid = keyword_search_chunk_index.rowid
                 WHERE keyword_search_chunk_index MATCH :match
                 ORDER BY score DESC
                 LIMIT :limit;
-            """)
+            """
+            )
             results = session.execute(statement, params={"match": fts5_query, "limit": num_results})
         # Unpack the results.
         results = list(results)  # type: ignore[assignment]
@@ -166,11 +174,7 @@ def hybrid_search(
     return chunk_ids, hybrid_score
 
 
-def retrieve_chunks(
-    chunk_ids: list[str],
-    *,
-    config: RAGLiteConfig | None = None,
-) -> list[Chunk]:
+def retrieve_chunks(chunk_ids: list[str], *, config: RAGLiteConfig | None = None) -> list[Chunk]:
     """Retrieve chunks by their ids."""
     config = config or RAGLiteConfig()
     engine = create_database_engine(config)
@@ -185,7 +189,7 @@ def retrieve_segments(
     *,
     neighbors: tuple[int, ...] | None = (-1, 1),
     config: RAGLiteConfig | None = None,
-) -> list[str]:
+) -> list[ContextSegment]:
     """Group chunks into contiguous segments and retrieve them."""
     # Retrieve the chunks.
     config = config or RAGLiteConfig()
@@ -204,40 +208,26 @@ def retrieve_segments(
                 for offset in neighbors
             ]
             chunks += list(session.exec(select(Chunk).where(or_(*neighbor_conditions))).all())
-    # Keep only the unique chunks.
-    chunks = list(set(chunks))
-    # Sort the chunks by document_id and index (needed for groupby).
-    chunks = sorted(chunks, key=lambda chunk: (chunk.document_id, chunk.index))
-    # Group the chunks into contiguous segments.
-    segments: list[list[Chunk]] = []
-    for _, group in groupby(chunks, key=lambda chunk: chunk.document_id):
-        segment: list[Chunk] = []
-        for chunk in group:
-            if not segment or chunk.index == segment[-1].index + 1:
-                segment.append(chunk)
-            else:
-                segments.append(segment)
-                segment = [chunk]
-        segments.append(segment)
-    # Rank segments according to the aggregate relevance of their chunks.
+    # Assign a reciprocal ranking score to each chunk based on its position in the original list.
     chunk_id_to_score = {chunk.id: 1 / (i + 1) for i, chunk in enumerate(chunks)}
-    segments.sort(
-        key=lambda segment: sum(chunk_id_to_score.get(chunk.id, 0.0) for chunk in segment),
-        reverse=True,
-    )
-    # Convert the segments into strings.
-    segments = [
-        segment[0].headings.strip() + "\n\n" + "".join(chunk.body for chunk in segment).strip()  # type: ignore[misc]
-        for segment in segments
+    # Deduplicate and sort the chunks by document_id and index (needed for groupby).
+    unique_chunks = sorted(set(chunks), key=lambda chunk: (chunk.document_id, chunk.index))
+    # Group the chunks into contiguous segments.
+    context_segments: list[ContextSegment] = [
+        ContextSegment(
+            document_id=doc_id,
+            chunks=(doc_chunks := list(group)),
+            chunk_scores=[chunk_id_to_score.get(chunk.id, 0.0) for chunk in doc_chunks],
+        )
+        for doc_id, group in groupby(unique_chunks, key=attrgetter("document_id"))
     ]
-    return segments  # type: ignore[return-value]
+    # Rank segments according to the aggregate relevance of their chunks.
+    context_segments.sort(key=methodcaller("score", scoring_function=sum), reverse=True)
+    return context_segments
 
 
 def rerank_chunks(
-    query: str,
-    chunk_ids: list[str] | list[Chunk],
-    *,
-    config: RAGLiteConfig | None = None,
+    query: str, chunk_ids: list[str] | list[Chunk], *, config: RAGLiteConfig | None = None
 ) -> list[Chunk]:
     """Rerank chunks according to their relevance to a given query."""
     # Retrieve the chunks.

@@ -78,7 +78,9 @@ The question MUST satisfy ALL of the following criteria:
                 num_results=randint(2, max_contexts_per_eval // 2),  # noqa: S311
                 config=config,
             )
-            related_chunks = retrieve_segments(related_chunk_ids, config=config)
+            related_chunks = [
+                str(segment) for segment in retrieve_segments(related_chunk_ids, config=config)
+            ]
             # Extract a question from the seed chunk's related chunks.
             try:
                 question_response = extract_with_llm(
@@ -157,9 +159,7 @@ The answer MUST satisfy ALL of the following criteria:
                 answer = answer_response.answer
             # Store the eval in the database.
             eval_ = Eval.from_chunks(
-                question=question,
-                contexts=relevant_chunks,
-                ground_truth=answer,
+                question=question, contexts=relevant_chunks, ground_truth=answer
             )
             session.add(eval_)
             session.commit()
@@ -185,7 +185,7 @@ def answer_evals(
         answer = "".join(response)
         answers.append(answer)
         chunk_ids, _ = search(eval_.question, config=config)
-        contexts.append(retrieve_segments(chunk_ids))
+        contexts.append([str(segment) for segment in retrieve_segments(chunk_ids)])
     # Collect the answered evals.
     answered_evals: dict[str, list[str] | list[list[str]]] = {
         "question": [eval_.question for eval_ in evals],
@@ -199,8 +199,7 @@ def answer_evals(
 
 
 def evaluate(
-    answered_evals: pd.DataFrame | int = 100,
-    config: RAGLiteConfig | None = None,
+    answered_evals: pd.DataFrame | int = 100, config: RAGLiteConfig | None = None
 ) -> pd.DataFrame:
     """Evaluate the performance of a set of answered evals with Ragas."""
     try:
