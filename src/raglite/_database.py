@@ -355,33 +355,26 @@ class ContextSegment:
     chunks: list[Chunk]
     chunk_scores: list[float]
 
-    def __post_init__(self) -> None:
-        """Validate the segment data after initialization."""
-        if not isinstance(self.document_id, str) or not self.document_id.strip():
-            msg = "document_id must be a non-empty string"
-            raise ValueError(msg)
-        if not self.chunks:
-            msg = "chunks cannot be empty"
-            raise ValueError(msg)
-        if not all(isinstance(chunk, Chunk) for chunk in self.chunks):
-            msg = "all elements in chunks must be Chunk instances"
-            raise ValueError(msg)
+    def __str__(self) -> str:
+        """Return a string representation of the segment."""
+        return self.as_xml
 
-    def to_xml(self, indent: int = 4) -> str:
-        """Convert the segment to an XML string representation.
-
-        Args:
-            indent (int): Number of spaces to use for indentation.
+    @property
+    def as_xml(self) -> str:
+        """Returns the segment as an XML string representation.
 
         Returns
         -------
             str: XML representation of the segment.
         """
-        chunks_content = "\n".join(str(chunk) for chunk in self.chunks)
-
-        # Create the final XML
         chunk_ids = ",".join(self.chunk_ids)
-        xml = f"""<document id="{escape(self.document_id)}" chunk_ids="{escape(chunk_ids)}">\n{escape(str(chunks_content))}\n</document>"""
+        xml = "\n".join(
+            [
+                f'<document id="{escape(self.document_id)}" chunk_ids="{escape(chunk_ids)}">',
+                escape(self.as_str),
+                "</document>",
+            ]
+        )
 
         return xml
 
@@ -394,7 +387,8 @@ class ContextSegment:
         """Return a list of chunk IDs."""
         return [chunk.id for chunk in self.chunks]
 
-    def __str__(self) -> str:
+    @property
+    def as_str(self) -> str:
         """Return a string representation reconstructing the document with headings.
 
         Treats headings as a stack, showing headers only when they differ from
