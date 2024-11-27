@@ -1,7 +1,6 @@
 """Retrieval-augmented generation."""
 
 from collections.abc import AsyncIterator, Iterator
-from typing import cast
 
 from litellm import acompletion, completion
 
@@ -47,7 +46,7 @@ def _max_contexts(
     return max_contexts
 
 
-def context_segments(  # noqa: PLR0913
+def get_context_segments(  # noqa: PLR0913
     prompt: str,
     *,
     max_contexts: int = 5,
@@ -83,35 +82,22 @@ def context_segments(  # noqa: PLR0913
     return segments
 
 
-def rag(  # noqa: PLR0913
+def generate(
     prompt: str,
     *,
-    max_contexts: int = 5,
-    context_neighbors: tuple[int, ...] | None = (-1, 1),
-    search: SearchMethod | list[str] | list[Chunk] | list[ContextSegment] = hybrid_search,
-    messages: list[dict[str, str]] | None = None,
     system_prompt: str = RAG_SYSTEM_PROMPT,
-    config: RAGLiteConfig | None = None,
+    messages: list[dict[str, str]] | None = None,
+    context_segments: list[ContextSegment],
+    config: RAGLiteConfig,
 ) -> Iterator[str]:
-    """Retrieval-augmented generation."""
-    # Get the contexts for RAG as contiguous segments of chunks.
-    config = config or RAGLiteConfig()
-    segments: list[ContextSegment]
-    if isinstance(search, list) and any(isinstance(segment, ContextSegment) for segment in search):
-        segments = cast(list[ContextSegment], search)
-    else:
-        segments = context_segments(
-            prompt,
-            max_contexts=max_contexts,
-            context_neighbors=context_neighbors,
-            search=search,  # type: ignore[arg-type]
-            config=config,
-        )
+    messages = _compose_messages(
+        prompt=prompt, system_prompt=system_prompt, messages=messages, segments=context_segments
+    )
     # Stream the LLM response.
     stream = completion(
         model=config.llm,
         messages=_compose_messages(
-            prompt=prompt, system_prompt=system_prompt, messages=messages, segments=segments
+            prompt=prompt, system_prompt=system_prompt, messages=messages, segments=context_segments
         ),
         stream=True,
     )
@@ -120,32 +106,16 @@ def rag(  # noqa: PLR0913
         yield token
 
 
-async def async_rag(  # noqa: PLR0913
+async def async_generate(
     prompt: str,
     *,
-    max_contexts: int = 5,
-    context_neighbors: tuple[int, ...] | None = (-1, 1),
-    search: SearchMethod | list[str] | list[Chunk] | list[ContextSegment] = hybrid_search,
-    messages: list[dict[str, str]] | None = None,
     system_prompt: str = RAG_SYSTEM_PROMPT,
-    config: RAGLiteConfig | None = None,
+    messages: list[dict[str, str]] | None = None,
+    context_segments: list[ContextSegment],
+    config: RAGLiteConfig,
 ) -> AsyncIterator[str]:
-    """Retrieval-augmented generation."""
-    # Get the contexts for RAG as contiguous segments of chunks.
-    config = config or RAGLiteConfig()
-    segments: list[ContextSegment]
-    if isinstance(search, list) and any(isinstance(segment, ContextSegment) for segment in search):
-        segments = cast(list[ContextSegment], search)
-    else:
-        segments = context_segments(
-            prompt,
-            max_contexts=max_contexts,
-            context_neighbors=context_neighbors,
-            search=search,  # type: ignore[arg-type]
-            config=config,
-        )
     messages = _compose_messages(
-        prompt=prompt, system_prompt=system_prompt, messages=messages, segments=segments
+        prompt=prompt, system_prompt=system_prompt, messages=messages, segments=context_segments
     )
     # Stream the LLM response.
     async_stream = await acompletion(model=config.llm, messages=messages, stream=True)

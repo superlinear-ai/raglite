@@ -8,7 +8,8 @@ from chainlit.input_widget import Switch, TextInput
 
 from raglite import (
     RAGLiteConfig,
-    async_rag,
+    async_generate,
+    get_context_segments,
     hybrid_search,
     insert_document,
     rerank_chunks,
@@ -107,10 +108,11 @@ async def handle_message(user_message: cl.Message) -> None:
         ]
     # Stream the LLM response.
     assistant_message = cl.Message(content="")
-    async for token in async_rag(
+    context_segments = get_context_segments(user_prompt, config=config)
+    async for token in async_generate(
         prompt=user_prompt,
-        search=chunks,
-        messages=cl.chat_context.to_openai()[-5:],  # type: ignore[no-untyped-call]
+        messages=cl.chat_context.to_openai()[-5:-1],  # type: ignore[no-untyped-call]
+        context_segments=context_segments,
         config=config,
     ):
         await assistant_message.stream_token(token)

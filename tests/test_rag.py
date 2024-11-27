@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING
 import pytest
 from llama_cpp import llama_supports_gpu_offload
 
-from raglite import RAGLiteConfig, hybrid_search, rag, retrieve_chunks
+from raglite import RAGLiteConfig, hybrid_search, retrieve_chunks
+from raglite._rag import generate, get_context_segments
 
 if TYPE_CHECKING:
     from raglite._database import Chunk
@@ -32,7 +33,8 @@ def test_rag(raglite_test_config: RAGLiteConfig) -> None:
     ]
     # Answer a question with RAG.
     for search_input in search_inputs:
-        stream = rag(prompt, search=search_input, config=raglite_test_config)
+        segments = get_context_segments(prompt, search=search_input, config=raglite_test_config)
+        stream = generate(prompt, context_segments=segments, config=raglite_test_config)
         answer = ""
         for update in stream:
             assert isinstance(update, str)

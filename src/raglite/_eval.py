@@ -12,7 +12,7 @@ from tqdm.auto import tqdm, trange
 from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, Document, Eval, create_database_engine
 from raglite._extract import extract_with_llm
-from raglite._rag import rag
+from raglite._rag import generate, get_context_segments
 from raglite._search import hybrid_search, retrieve_segments, vector_search
 from raglite._typing import SearchMethod
 
@@ -181,7 +181,8 @@ def answer_evals(
     answers: list[str] = []
     contexts: list[list[str]] = []
     for eval_ in tqdm(evals, desc="Answering evals", unit="eval", dynamic_ncols=True):
-        response = rag(eval_.question, search=search, config=config)
+        segments = get_context_segments(eval_.question, search=search, config=config)
+        response = generate(eval_.question, context_segments=segments, config=config)
         answer = "".join(response)
         answers.append(answer)
         chunk_ids, _ = search(eval_.question, config=config)
@@ -233,13 +234,13 @@ def evaluate(
             verbose=llm.verbose,
         )
     else:
-        lc_llm = ChatLiteLLM(model=config.llm)  # type: ignore[call-arg]
+        lc_llm = ChatLiteLLM(model=config.llm)
     # Load the embedder.
     if not config.embedder.startswith("llama-cpp-python"):
         error_message = "Currently, only `llama-cpp-python` embedders are supported."
         raise NotImplementedError(error_message)
     embedder = LlamaCppPythonLLM().llm(model=config.embedder, embedding=True)
-    lc_embedder = LlamaCppEmbeddings(  # type: ignore[call-arg]
+    lc_embedder = LlamaCppEmbeddings(
         model_path=embedder.model_path,
         n_batch=embedder.n_batch,
         n_ctx=embedder.n_ctx(),

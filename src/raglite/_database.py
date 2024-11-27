@@ -371,7 +371,7 @@ class ContextSegment:
         xml = "\n".join(
             [
                 f'<document id="{escape(self.document_id)}" chunk_ids="{escape(chunk_ids)}">',
-                escape(self.as_str),
+                escape(self.reconstructed_str),
                 "</document>",
             ]
         )
@@ -388,39 +388,9 @@ class ContextSegment:
         return [chunk.id for chunk in self.chunks]
 
     @property
-    def as_str(self) -> str:
-        """Return a string representation reconstructing the document with headings.
+    def reconstructed_str(self) -> str:
+        """Return a string representation reconstructing the document with headings."""
+        heading = self.chunks[0].headings if self.chunks else ""
+        bodies = "\n".join(chunk.body for chunk in self.chunks)
 
-        Treats headings as a stack, showing headers only when they differ from
-        the current stack path.
-
-        For example:
-        - "# A ## B" shows both headers
-        - "# A ## B" shows nothing (already seen)
-        - "# A ## C" shows only "## C" (new branch)
-        - "# D ## B" shows both (new path)
-        """
-        if not self.chunks:
-            return ""
-
-        result: list[str] = []
-        stack: list[str] = []
-
-        for chunk in self.chunks:
-            headers = [h.strip() for h in chunk.headings.split("\n") if h.strip()]
-
-            # Find first differing header
-            i = 0
-            while i < len(headers) and i < len(stack) and headers[i] == stack[i]:
-                i += 1
-
-            # Update stack and show new headers
-            stack[i:] = headers[i:]
-            if headers[i:]:
-                result.extend(headers[i:])
-                result.append("")
-
-            if chunk.body.strip():
-                result.append(chunk.body.strip())
-
-        return "\n".join(result).strip()
+        return f"{heading}\n\n{bodies}".strip()
