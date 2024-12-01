@@ -198,6 +198,8 @@ def retrieve_segments(
         if all(isinstance(chunk_id, str) for chunk_id in chunk_ids)
         else chunk_ids
     )
+    # Assign a reciprocal ranking score to each chunk based on its position in the original list.
+    chunk_id_to_score = {chunk.id: 1 / (i + 1) for i, chunk in enumerate(chunks)}
     # Extend the chunks with their neighbouring chunks.
     if neighbors:
         engine = create_database_engine(config)
@@ -208,8 +210,6 @@ def retrieve_segments(
                 for offset in neighbors
             ]
             chunks += list(session.exec(select(Chunk).where(or_(*neighbor_conditions))).all())
-    # Assign a reciprocal ranking score to each chunk based on its position in the original list.
-    chunk_id_to_score = {chunk.id: 1 / (i + 1) for i, chunk in enumerate(chunks)}
     # Deduplicate and sort the chunks by document_id and index (needed for groupby).
     unique_chunks = sorted(set(chunks), key=lambda chunk: (chunk.document_id, chunk.index))
     # Group the chunks into contiguous segments.
