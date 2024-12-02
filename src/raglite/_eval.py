@@ -234,13 +234,13 @@ def evaluate(
             verbose=llm.verbose,
         )
     else:
-        lc_llm = ChatLiteLLM(model=config.llm)
+        lc_llm = ChatLiteLLM(model=config.llm)  # type: ignore[call-arg]
     # Load the embedder.
     if not config.embedder.startswith("llama-cpp-python"):
         error_message = "Currently, only `llama-cpp-python` embedders are supported."
         raise NotImplementedError(error_message)
     embedder = LlamaCppPythonLLM().llm(model=config.embedder, embedding=True)
-    lc_embedder = LlamaCppEmbeddings(
+    lc_embedder = LlamaCppEmbeddings(  # type: ignore[call-arg]
         model_path=embedder.model_path,
         n_batch=embedder.n_batch,
         n_ctx=embedder.n_ctx(),
