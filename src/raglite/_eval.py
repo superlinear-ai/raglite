@@ -12,8 +12,8 @@ from tqdm.auto import tqdm, trange
 from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, Document, Eval, create_database_engine
 from raglite._extract import extract_with_llm
-from raglite._rag import rag
-from raglite._search import hybrid_search, retrieve_segments, vector_search
+from raglite._rag import create_rag_instruction, rag, retrieve_rag_context
+from raglite._search import hybrid_search, retrieve_chunk_spans, vector_search
 from raglite._typing import SearchMethod
 
 
@@ -74,11 +74,14 @@ The question MUST satisfy ALL of the following criteria:
                 continue
             # Expand the seed chunk into a set of related chunks.
             related_chunk_ids, _ = vector_search(
-                np.mean(seed_chunk.embedding_matrix, axis=0, keepdims=True),
+                query=np.mean(seed_chunk.embedding_matrix, axis=0, keepdims=True),
                 num_results=randint(2, max_contexts_per_eval // 2),  # noqa: S311
                 config=config,
             )
-            related_chunks = retrieve_segments(related_chunk_ids, config=config)
+            related_chunks = [
+                str(chunk_spans)
+                for chunk_spans in retrieve_chunk_spans(related_chunk_ids, config=config)
+            ]
             # Extract a question from the seed chunk's related chunks.
             try:
                 question_response = extract_with_llm(
@@ -90,7 +93,7 @@ The question MUST satisfy ALL of the following criteria:
                 question = question_response.question
             # Search for candidate chunks to answer the generated question.
             candidate_chunk_ids, _ = hybrid_search(
-                question, num_results=max_contexts_per_eval, config=config
+                query=question, num_results=max_contexts_per_eval, config=config
             )
             candidate_chunks = [session.get(Chunk, chunk_id) for chunk_id in candidate_chunk_ids]
 
@@ -157,9 +160,7 @@ The answer MUST satisfy ALL of the following criteria:
                 answer = answer_response.answer
             # Store the eval in the database.
             eval_ = Eval.from_chunks(
-                question=question,
-                contexts=relevant_chunks,
-                ground_truth=answer,
+                question=question, contexts=relevant_chunks, ground_truth=answer
             )
             session.add(eval_)
             session.commit()
@@ -181,11 +182,15 @@ def answer_evals(
     answers: list[str] = []
     contexts: list[list[str]] = []
     for eval_ in tqdm(evals, desc="Answering evals", unit="eval", dynamic_ncols=True):
-        response = rag(eval_.question, search=search, config=config)
+        chunk_spans = retrieve_rag_context(query=eval_.question, search=search, config=config)
+        messages = [create_rag_instruction(user_prompt=eval_.question, context=chunk_spans)]
+        response = rag(messages, config=config)
         answer = "".join(response)
         answers.append(answer)
-        chunk_ids, _ = search(eval_.question, config=config)
-        contexts.append(retrieve_segments(chunk_ids))
+        chunk_ids, _ = search(query=eval_.question, config=config)
+        contexts.append(
+            [str(chunk_span) for chunk_span in retrieve_chunk_spans(chunk_ids, config=config)]
+        )
     # Collect the answered evals.
     answered_evals: dict[str, list[str] | list[list[str]]] = {
         "question": [eval_.question for eval_ in evals],
@@ -199,8 +204,7 @@ def answer_evals(
 
 
 def evaluate(
-    answered_evals: pd.DataFrame | int = 100,
-    config: RAGLiteConfig | None = None,
+    answered_evals: pd.DataFrame | int = 100, config: RAGLiteConfig | None = None
 ) -> pd.DataFrame:
     """Evaluate the performance of a set of answered evals with Ragas."""
     try:

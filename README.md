@@ -23,6 +23,8 @@ RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with Postgr
 - 🧬 Multi-vector chunk embedding with [late chunking](https://weaviate.io/blog/late-chunking) and [contextual chunk headings](https://d-star.ai/solving-the-out-of-context-chunk-problem-for-rag)
 - ✂️ Optimal [level 4 semantic chunking](https://medium.com/@anuragmishra_27746/five-levels-of-chunking-strategies-in-rag-notes-from-gregs-video-7b735895694d) by solving a [binary integer programming problem](https://en.wikipedia.org/wiki/Integer_programming)
 - 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) with the database's native keyword & vector search ([tsvector](https://www.postgresql.org/docs/current/datatype-textsearch.html)+[pgvector](https://github.com/pgvector/pgvector), [FTS5](https://www.sqlite.org/fts5.html)+[sqlite-vec](https://github.com/asg017/sqlite-vec)[^1])
+- 💰 Improved cost and latency with a [prompt caching-aware message array structure](https://platform.openai.com/docs/guides/prompt-caching)
+- 🍰 Improved output quality with [Anthropic's long-context prompt format](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips)
 - 🌀 Optimal [closed-form linear query adapter](src/raglite/_query_adapter.py) by solving an [orthogonal Procrustes problem](https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem)
 
 ##### Extensible
@@ -157,38 +159,85 @@ insert_document(Path("Special Relativity.pdf"), config=my_config)
 
 ### 3. Searching and Retrieval-Augmented Generation (RAG)
 
-Now, you can search for chunks with vector search, keyword search, or a hybrid of the two. You can also rerank the search results with the configured reranker. And you can use any search method of your choice (`hybrid_search` is the default) together with reranking to answer questions with RAG:
+#### 3.1 Simple RAG pipeline
+
+Now you can run a simple but powerful RAG pipeline that consists of retrieving the most relevant chunk spans (each of which is a list of consecutive chunks) with hybrid search and reranking, converting the user prompt to a RAG instruction and appending it to the message history, and finally generating the RAG response:
+
+```python
+from raglite import create_rag_instruction, rag, retrieve_rag_context
+
+# Retrieve relevant chunk spans with hybrid search and reranking:
+user_prompt = "How is intelligence measured?"
+chunk_spans = retrieve_rag_context(query=user_prompt, num_chunks=5, config=my_config)
+
+# Append a RAG instruction based on the user prompt and context to the message history:
+messages = []  # Or start with an existing message history.
+messages.append(create_rag_instruction(user_prompt=user_prompt, context=chunk_spans))
+
+# Stream the RAG response:
+stream = rag(messages, config=my_config)
+for update in stream:
+    print(update, end="")
+
+# Access the documents cited in the RAG response:
+documents = [chunk_span.document for chunk_span in chunk_spans]
+```
+
+#### 3.2 Advanced RAG pipeline
+
+> [!TIP]
+> 🥇 Reranking can significantly improve the output quality of a RAG application. To add reranking to your application: first search for a larger set of 20 relevant chunks, then rerank them with a [rerankers](https://github.com/AnswerDotAI/rerankers) reranker, and finally keep the top 5 chunks.
+
+In addition to the simple RAG pipeline, RAGLite also offers more advanced control over the individual steps of the pipeline. A full pipeline consists of several steps:
+
+1. Searching for relevant chunks with keyword, vector, or hybrid search
+2. Retrieving the chunks from the database
+3. Reranking the chunks and selecting the top 5 results
+4. Extending the chunks with their neighbors and grouping them into chunk spans
+5. Converting the user prompt to a RAG instruction and appending it to the message history
+6. Streaming an LLM response to the message history
+7. Accessing the cited documents from the chunk spans
 
 ```python
 # Search for chunks:
 from raglite import hybrid_search, keyword_search, vector_search
 
-prompt = "How is intelligence measured?"
-chunk_ids_vector, _ = vector_search(prompt, num_results=20, config=my_config)
-chunk_ids_keyword, _ = keyword_search(prompt, num_results=20, config=my_config)
-chunk_ids_hybrid, _ = hybrid_search(prompt, num_results=20, config=my_config)
+user_prompt = "How is intelligence measured?"
+chunk_ids_vector, _ = vector_search(user_prompt, num_results=20, config=my_config)
+chunk_ids_keyword, _ = keyword_search(user_prompt, num_results=20, config=my_config)
+chunk_ids_hybrid, _ = hybrid_search(user_prompt, num_results=20, config=my_config)
 
 # Retrieve chunks:
 from raglite import retrieve_chunks
 
 chunks_hybrid = retrieve_chunks(chunk_ids_hybrid, config=my_config)
 
-# Rerank chunks:
+# Rerank chunks and keep the top 5 (optional, but recommended):
 from raglite import rerank_chunks
 
-chunks_reranked = rerank_chunks(prompt, chunks_hybrid, config=my_config)
+chunks_reranked = rerank_chunks(user_prompt, chunks_hybrid, config=my_config)
+chunks_reranked = chunks_reranked[:5]
 
-# Answer questions with RAG:
+# Extend chunks with their neighbors and group them into chunk spans:
+from raglite import retrieve_chunk_spans
+
+chunk_spans = retrieve_chunk_spans(chunks_reranked, config=my_config)
+
+# Append a RAG instruction based on the user prompt and context to the message history:
+from raglite import create_rag_instruction
+
+messages = []  # Or start with an existing message history.
+messages.append(create_rag_instruction(user_prompt=user_prompt, context=chunk_spans))
+
+# Stream the RAG response:
 from raglite import rag
 
-prompt = "What does it mean for two events to be simultaneous?"
-stream = rag(prompt, config=my_config)
+stream = rag(messages, config=my_config)
 for update in stream:
     print(update, end="")
 
-# You can also pass a search method or search results directly:
-stream = rag(prompt, search=hybrid_search, config=my_config)
-stream = rag(prompt, search=chunks_reranked, config=my_config)
+# Access the documents cited in the RAG response:
+documents = [chunk_span.document for chunk_span in chunk_spans]
 ```
 
 ### 4. Computing and using an optimal query adapter
@@ -200,7 +249,7 @@ RAGLite can compute and apply an [optimal closed-form query adapter](src/raglite
 from raglite import insert_evals, update_query_adapter
 
 insert_evals(num_evals=100, config=my_config)
-update_query_adapter(config=my_config)  # From here, simply call vector_search to use the query adapter.
+update_query_adapter(config=my_config)  # From here, every vector search will use the query adapter.
 ```
 
 ### 5. Evaluation of retrieval and generation

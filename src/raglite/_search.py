@@ -1,4 +1,4 @@
-"""Query documents."""
+"""Search and retrieve chunks."""
 
 import re
 import string
@@ -10,20 +10,24 @@ from typing import cast
 import numpy as np
 from langdetect import detect
 from sqlalchemy.engine import make_url
+from sqlalchemy.orm import joinedload
 from sqlmodel import Session, and_, col, or_, select, text
 
 from raglite._config import RAGLiteConfig
-from raglite._database import Chunk, ChunkEmbedding, IndexMetadata, create_database_engine
+from raglite._database import (
+    Chunk,
+    ChunkEmbedding,
+    ChunkSpan,
+    IndexMetadata,
+    create_database_engine,
+)
 from raglite._embed import embed_sentences
-from raglite._typing import FloatMatrix
+from raglite._typing import ChunkId, FloatMatrix
 
 
 def vector_search(
-    query: str | FloatMatrix,
-    *,
-    num_results: int = 3,
-    config: RAGLiteConfig | None = None,
-) -> tuple[list[str], list[float]]:
+    query: str | FloatMatrix, *, num_results: int = 3, config: RAGLiteConfig | None = None
+) -> tuple[list[ChunkId], list[float]]:
     """Search chunks using ANN vector search."""
     # Read the config.
     config = config or RAGLiteConfig()
@@ -90,7 +94,7 @@ def vector_search(
 
 def keyword_search(
     query: str, *, num_results: int = 3, config: RAGLiteConfig | None = None
-) -> tuple[list[str], list[float]]:
+) -> tuple[list[ChunkId], list[float]]:
     """Search chunks using BM25 keyword search."""
     # Read the config.
     config = config or RAGLiteConfig()
@@ -104,13 +108,15 @@ def keyword_search(
             query_escaped = re.sub(r"[&|!():<>\"]", " ", query)
             tsv_query = " | ".join(query_escaped.split())
             # Perform keyword search with tsvector.
-            statement = text("""
+            statement = text(
+                """
                 SELECT id as chunk_id, ts_rank(to_tsvector('simple', body), to_tsquery('simple', :query)) AS score
                 FROM chunk
                 WHERE to_tsvector('simple', body) @@ to_tsquery('simple', :query)
                 ORDER BY score DESC
                 LIMIT :limit;
-            """)
+            """
+            )
             results = session.execute(statement, params={"query": tsv_query, "limit": num_results})
         elif db_backend == "sqlite":
             # Convert the query to an FTS5 query [1].
@@ -120,13 +126,15 @@ def keyword_search(
             # Perform keyword search with FTS5. In FTS5, BM25 scores are negative [1], so we
             # negate them to make them positive.
             # [1] https://www.sqlite.org/fts5.html#the_bm25_function
-            statement = text("""
+            statement = text(
+                """
                 SELECT chunk.id as chunk_id, -bm25(keyword_search_chunk_index) as score
                 FROM chunk JOIN keyword_search_chunk_index ON chunk.rowid = keyword_search_chunk_index.rowid
                 WHERE keyword_search_chunk_index MATCH :match
                 ORDER BY score DESC
                 LIMIT :limit;
-            """)
+            """
+            )
             results = session.execute(statement, params={"match": fts5_query, "limit": num_results})
         # Unpack the results.
         results = list(results)  # type: ignore[assignment]
@@ -136,8 +144,8 @@ def keyword_search(
 
 
 def reciprocal_rank_fusion(
-    rankings: list[list[str]], *, k: int = 60
-) -> tuple[list[str], list[float]]:
+    rankings: list[list[ChunkId]], *, k: int = 60
+) -> tuple[list[ChunkId], list[float]]:
     """Reciprocal Rank Fusion."""
     # Compute the RRF score.
     chunk_ids = {chunk_id for ranking in rankings for chunk_id in ranking}
@@ -155,7 +163,7 @@ def reciprocal_rank_fusion(
 
 def hybrid_search(
     query: str, *, num_results: int = 3, num_rerank: int = 100, config: RAGLiteConfig | None = None
-) -> tuple[list[str], list[float]]:
+) -> tuple[list[ChunkId], list[float]]:
     """Search chunks by combining ANN vector search with BM25 keyword search."""
     # Run both searches.
     vs_chunk_ids, _ = vector_search(query, num_results=num_rerank, config=config)
@@ -167,84 +175,33 @@ def hybrid_search(
 
 
 def retrieve_chunks(
-    chunk_ids: list[str],
-    *,
-    config: RAGLiteConfig | None = None,
+    chunk_ids: list[ChunkId], *, config: RAGLiteConfig | None = None
 ) -> list[Chunk]:
     """Retrieve chunks by their ids."""
     config = config or RAGLiteConfig()
     engine = create_database_engine(config)
     with Session(engine) as session:
-        chunks = list(session.exec(select(Chunk).where(col(Chunk.id).in_(chunk_ids))).all())
+        chunks = list(
+            session.exec(
+                select(Chunk)
+                .where(col(Chunk.id).in_(chunk_ids))
+                # Eagerly load chunk.document.
+                .options(joinedload(Chunk.document))  # type: ignore[arg-type]
+            ).all()
+        )
     chunks = sorted(chunks, key=lambda chunk: chunk_ids.index(chunk.id))
     return chunks
 
 
-def retrieve_segments(
-    chunk_ids: list[str] | list[Chunk],
-    *,
-    neighbors: tuple[int, ...] | None = (-1, 1),
-    config: RAGLiteConfig | None = None,
-) -> list[str]:
-    """Group chunks into contiguous segments and retrieve them."""
-    # Retrieve the chunks.
-    config = config or RAGLiteConfig()
-    chunks: list[Chunk] = (
-        retrieve_chunks(chunk_ids, config=config)  # type: ignore[arg-type,assignment]
-        if all(isinstance(chunk_id, str) for chunk_id in chunk_ids)
-        else chunk_ids
-    )
-    # Extend the chunks with their neighbouring chunks.
-    if neighbors:
-        engine = create_database_engine(config)
-        with Session(engine) as session:
-            neighbor_conditions = [
-                and_(Chunk.document_id == chunk.document_id, Chunk.index == chunk.index + offset)
-                for chunk in chunks
-                for offset in neighbors
-            ]
-            chunks += list(session.exec(select(Chunk).where(or_(*neighbor_conditions))).all())
-    # Keep only the unique chunks.
-    chunks = list(set(chunks))
-    # Sort the chunks by document_id and index (needed for groupby).
-    chunks = sorted(chunks, key=lambda chunk: (chunk.document_id, chunk.index))
-    # Group the chunks into contiguous segments.
-    segments: list[list[Chunk]] = []
-    for _, group in groupby(chunks, key=lambda chunk: chunk.document_id):
-        segment: list[Chunk] = []
-        for chunk in group:
-            if not segment or chunk.index == segment[-1].index + 1:
-                segment.append(chunk)
-            else:
-                segments.append(segment)
-                segment = [chunk]
-        segments.append(segment)
-    # Rank segments according to the aggregate relevance of their chunks.
-    chunk_id_to_score = {chunk.id: 1 / (i + 1) for i, chunk in enumerate(chunks)}
-    segments.sort(
-        key=lambda segment: sum(chunk_id_to_score.get(chunk.id, 0.0) for chunk in segment),
-        reverse=True,
-    )
-    # Convert the segments into strings.
-    segments = [
-        segment[0].headings.strip() + "\n\n" + "".join(chunk.body for chunk in segment).strip()  # type: ignore[misc]
-        for segment in segments
-    ]
-    return segments  # type: ignore[return-value]
-
-
 def rerank_chunks(
-    query: str,
-    chunk_ids: list[str] | list[Chunk],
-    *,
-    config: RAGLiteConfig | None = None,
+    query: str, chunk_ids: list[ChunkId] | list[Chunk], *, config: RAGLiteConfig | None = None
 ) -> list[Chunk]:
     """Rerank chunks according to their relevance to a given query."""
     # Retrieve the chunks.
     config = config or RAGLiteConfig()
     chunks: list[Chunk] = (
         retrieve_chunks(chunk_ids, config=config)  # type: ignore[arg-type,assignment]
-        if all(isinstance(chunk_id, str) for chunk_id in chunk_ids)
+        if all(isinstance(chunk_id, ChunkId) for chunk_id in chunk_ids)
         else chunk_ids
     )
     # Early exit if no reranker is configured.
@@ -269,3 +226,63 @@ def rerank_chunks(
         results = reranker.rank(query=query, docs=[str(chunk) for chunk in chunks])
         chunks = [chunks[result.doc_id] for result in results.results]
     return chunks
+
+
+def retrieve_chunk_spans(
+    chunk_ids: list[ChunkId] | list[Chunk],
+    *,
+    neighbors: tuple[int, ...] | None = (-1, 1),
+    config: RAGLiteConfig | None = None,
+) -> list[ChunkSpan]:
+    """Group chunks into contiguous chunk spans and retrieve them.
+
+    Chunk spans are ordered according to the aggregate relevance of their underlying chunks, as
+    determined by the order in which they are provided to this function.
+    """
+    # Retrieve the chunks.
+    config = config or RAGLiteConfig()
+    chunks: list[Chunk] = (
+        retrieve_chunks(chunk_ids, config=config)  # type: ignore[arg-type,assignment]
+        if all(isinstance(chunk_id, ChunkId) for chunk_id in chunk_ids)
+        else chunk_ids
+    )
+    # Assign a reciprocal ranking score to each chunk based on its position in the original list.
+    chunk_id_to_score = {chunk.id: 1 / (i + 1) for i, chunk in enumerate(chunks)}
+    # Extend the chunks with their neighbouring chunks.
+    engine = create_database_engine(config)
+    with Session(engine) as session:
+        if neighbors:
+            neighbor_conditions = [
+                and_(Chunk.document_id == chunk.document_id, Chunk.index == chunk.index + offset)
+                for chunk in chunks
+                for offset in neighbors
+            ]
+            chunks += list(
+                session.exec(
+                    select(Chunk)
+                    .where(or_(*neighbor_conditions))
+                    # Eagerly load chunk.document.
+                    .options(joinedload(Chunk.document))  # type: ignore[arg-type]
+                ).all()
+            )
+    # Deduplicate and sort the chunks by document_id and index (needed for groupby).
+    unique_chunks = sorted(set(chunks), key=lambda chunk: (chunk.document_id, chunk.index))
+    # Group the chunks into contiguous segments.
+    chunk_spans: list[ChunkSpan] = []
+    for _, group in groupby(unique_chunks, key=lambda chunk: chunk.document_id):
+        chunk_sequence: list[Chunk] = []
+        for chunk in group:
+            if not chunk_sequence or chunk.index == chunk_sequence[-1].index + 1:
+                chunk_sequence.append(chunk)
+            else:
+                chunk_spans.append(ChunkSpan(chunks=chunk_sequence))
+                chunk_sequence = [chunk]
+        chunk_spans.append(ChunkSpan(chunks=chunk_sequence))
+    # Rank segments according to the aggregate relevance of their chunks.
+    chunk_spans.sort(
+        key=lambda chunk_span: sum(
+            chunk_id_to_score.get(chunk.id, 0.0) for chunk in chunk_span.chunks
+        ),
+        reverse=True,
+    )
+    return chunk_spans

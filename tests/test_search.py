@@ -6,11 +6,11 @@ from raglite import (
     RAGLiteConfig,
     hybrid_search,
     keyword_search,
+    retrieve_chunk_spans,
     retrieve_chunks,
-    retrieve_segments,
     vector_search,
 )
-from raglite._database import Chunk
+from raglite._database import Chunk, ChunkSpan, Document
 from raglite._typing import SearchMethod
 
 
@@ -43,9 +43,14 @@ def test_search(raglite_test_config: RAGLiteConfig, search_method: SearchMethod)
     assert all(isinstance(chunk, Chunk) for chunk in chunks)
     assert all(chunk_id == chunk.id for chunk_id, chunk in zip(chunk_ids, chunks, strict=True))
     assert any("Definition of Simultaneity" in str(chunk) for chunk in chunks)
+    assert all(isinstance(chunk.document, Document) for chunk in chunks)
     # Extend the chunks with their neighbours and group them into contiguous segments.
-    segments = retrieve_segments(chunk_ids, neighbors=(-1, 1), config=raglite_test_config)
-    assert all(isinstance(segment, str) for segment in segments)
+    chunk_spans = retrieve_chunk_spans(chunk_ids, neighbors=(-1, 1), config=raglite_test_config)
+    assert all(isinstance(chunk_span, ChunkSpan) for chunk_span in chunk_spans)
+    assert all(isinstance(chunk_span.document, Document) for chunk_span in chunk_spans)
+    chunk_spans = retrieve_chunk_spans(chunks, neighbors=(-1, 1), config=raglite_test_config)
+    assert all(isinstance(chunk_span, ChunkSpan) for chunk_span in chunk_spans)
+    assert all(isinstance(chunk_span.document, Document) for chunk_span in chunk_spans)
 
 
 def test_search_no_results(raglite_test_config: RAGLiteConfig, search_method: SearchMethod) -> None:

@@ -13,11 +13,11 @@ from raglite._embed import embed_sentences, sentence_embedding_type
 from raglite._markdown import document_to_markdown
 from raglite._split_chunks import split_chunks
 from raglite._split_sentences import split_sentences
-from raglite._typing import FloatMatrix
+from raglite._typing import DocumentId, FloatMatrix
 
 
 def _create_chunk_records(
-    document_id: str,
+    document_id: DocumentId,
     chunks: list[str],
     chunk_embeddings: list[FloatMatrix],
     config: RAGLiteConfig,

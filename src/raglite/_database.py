@@ -2,29 +2,31 @@
 
 import datetime
 import json
+from dataclasses import dataclass, field
 from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
+from xml.sax.saxutils import escape
 
 import numpy as np
 from markdown_it import MarkdownIt
 from pydantic import ConfigDict
 from sqlalchemy.engine import Engine, make_url
-from sqlmodel import (
-    JSON,
-    Column,
-    Field,
-    Relationship,
-    Session,
-    SQLModel,
-    create_engine,
-    text,
-)
+from sqlmodel import JSON, Column, Field, Relationship, Session, SQLModel, create_engine, text
 
 from raglite._config import RAGLiteConfig
 from raglite._litellm import get_embedding_dim
-from raglite._typing import Embedding, FloatMatrix, FloatVector, PickledObject
+from raglite._typing import (
+    ChunkId,
+    DocumentId,
+    Embedding,
+    EvalId,
+    FloatMatrix,
+    FloatVector,
+    IndexId,
+    PickledObject,
+)
 
 
 def hash_bytes(data: bytes, max_len: int = 16) -> str:
@@ -39,7 +41,7 @@ class Document(SQLModel, table=True):
     model_config = ConfigDict(arbitrary_types_allowed=True)  # type: ignore[assignment]
 
     # Table columns.
-    id: str = Field(..., primary_key=True)
+    id: DocumentId = Field(..., primary_key=True)
     filename: str
     url: str | None = Field(default=None)
     metadata_: dict[str, Any] = Field(default_factory=dict, sa_column=Column("metadata", JSON))
@@ -70,8 +72,8 @@ class Chunk(SQLModel, table=True):
     model_config = ConfigDict(arbitrary_types_allowed=True)  # type: ignore[assignment]
 
     # Table columns.
-    id: str = Field(..., primary_key=True)
-    document_id: str = Field(..., foreign_key="document.id", index=True)
+    id: ChunkId = Field(..., primary_key=True)
+    document_id: DocumentId = Field(..., foreign_key="document.id", index=True)
     index: int = Field(..., index=True)
     headings: str
     body: str
@@ -83,11 +85,7 @@ class Chunk(SQLModel, table=True):
 
     @staticmethod
     def from_body(
-        document_id: str,
-        index: int,
-        body: str,
-        headings: str = "",
-        **kwargs: Any,
+        document_id: DocumentId, index: int, body: str, headings: str = "", **kwargs: Any
     ) -> "Chunk":
         """Create a chunk from Markdown."""
         return Chunk(
@@ -139,9 +137,61 @@ class Chunk(SQLModel, table=True):
             indent=4,
         )
 
-    def __str__(self) -> str:
-        """Context representation of this chunk."""
+    @property
+    def content(self) -> str:
+        """Return this chunk's contextual heading and body."""
         return f"{self.headings.strip()}\n\n{self.body.strip()}".strip()
+
+    def __str__(self) -> str:
+        """Return this chunk's content."""
+        return self.content
+
+
+@dataclass
+class ChunkSpan:
+    """A consecutive sequence of chunks from a single document."""
+
+    chunks: list[Chunk]
+    document: Document = field(init=False)
+
+    def __post_init__(self) -> None:
+        """Set the document field."""
+        if self.chunks:
+            self.document = self.chunks[0].document
+
+    def to_xml(self, index: int | None = None) -> str:
+        """Convert this chunk span to an XML representation.
+
+        The XML representation follows Anthropic's best practices [1].
+
+        [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
+        """
+        if not self.chunks:
+            return ""
+        index_attribute = f' index="{index}"' if index is not None else ""
+        xml = "\n".join(
+            [
+                f'<document{index_attribute} id="{self.document.id}">',
+                f"<source>{self.document.url if self.document.url else self.document.filename}</source>",
+                f'<span from_chunk_id="{self.chunks[0].id}" to_chunk_id="{self.chunks[0].id}">',
+                f"<heading>\n{escape(self.chunks[0].headings.strip())}\n</heading>",
+                f"<content>\n{escape(''.join(chunk.body for chunk in self.chunks).strip())}\n</content>",
+                "</span>",
+                "</document>",
+            ]
+        )
+        return xml
+
+    @property
+    def content(self) -> str:
+        """Return this chunk span's contextual heading and chunk bodies."""
+        heading = self.chunks[0].headings.strip() if self.chunks else ""
+        bodies = "".join(chunk.body for chunk in self.chunks)
+        return f"{heading}\n\n{bodies}".strip()
+
+    def __str__(self) -> str:
+        """Return this chunk span's content."""
+        return self.content
 
 
 class ChunkEmbedding(SQLModel, table=True):
@@ -154,7 +204,7 @@ class ChunkEmbedding(SQLModel, table=True):
 
     # Table columns.
     id: int = Field(..., primary_key=True)
-    chunk_id: str = Field(..., foreign_key="chunk.id", index=True)
+    chunk_id: ChunkId = Field(..., foreign_key="chunk.id", index=True)
     embedding: FloatVector = Field(..., sa_column=Column(Embedding(dim=-1)))
 
     # Add relationship so we can access embedding.chunk.
@@ -175,7 +225,7 @@ class IndexMetadata(SQLModel, table=True):
     model_config = ConfigDict(arbitrary_types_allowed=True)  # type: ignore[assignment]
 
     # Table columns.
-    id: str = Field(..., primary_key=True)
+    id: IndexId = Field(..., primary_key=True)
     version: datetime.datetime = Field(
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
@@ -208,9 +258,9 @@ class Eval(SQLModel, table=True):
     model_config = ConfigDict(arbitrary_types_allowed=True)  # type: ignore[assignment]
 
     # Table columns.
-    id: str = Field(..., primary_key=True)
-    document_id: str = Field(..., foreign_key="document.id", index=True)
-    chunk_ids: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    id: EvalId = Field(..., primary_key=True)
+    document_id: DocumentId = Field(..., foreign_key="document.id", index=True)
+    chunk_ids: list[ChunkId] = Field(default_factory=list, sa_column=Column(JSON))
     question: str
     contexts: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     ground_truth: str
@@ -221,10 +271,7 @@ class Eval(SQLModel, table=True):
 
     @staticmethod
     def from_chunks(
-        question: str,
-        contexts: list[Chunk],
-        ground_truth: str,
-        **kwargs: Any,
+        question: str, contexts: list[Chunk], ground_truth: str, **kwargs: Any
     ) -> "Eval":
         """Create a chunk from Markdown."""
         document_id = contexts[0].document_id
@@ -284,18 +331,22 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
         with Session(engine) as session:
             metrics = {"cosine": "cosine", "dot": "ip", "euclidean": "l2", "l1": "l1", "l2": "l2"}
             session.execute(
-                text("""
+                text(
+                    """
                 CREATE INDEX IF NOT EXISTS keyword_search_chunk_index ON chunk USING GIN (to_tsvector('simple', body));
-                """)
+                """
+                )
             )
             session.execute(
-                text(f"""
+                text(
+                    f"""
                 CREATE INDEX IF NOT EXISTS vector_search_chunk_index ON chunk_embedding
                 USING hnsw (
                      (embedding::halfvec({embedding_dim}))
                      halfvec_{metrics[config.vector_search_index_metric]}_ops
                 );
-                """)
+                """
+                )
             )
             session.commit()
     elif db_backend == "sqlite":
@@ -304,31 +355,39 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
         # [1] https://www.sqlite.org/fts5.html#external_content_tables
         with Session(engine) as session:
             session.execute(
-                text("""
+                text(
+                    """
                 CREATE VIRTUAL TABLE IF NOT EXISTS keyword_search_chunk_index USING fts5(body, content='chunk', content_rowid='rowid');
-                """)
+                """
+                )
             )
             session.execute(
-                text("""
+                text(
+                    """
                 CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_insert AFTER INSERT ON chunk BEGIN
                     INSERT INTO keyword_search_chunk_index(rowid, body) VALUES (new.rowid, new.body);
                 END;
-                """)
+                """
+                )
             )
             session.execute(
-                text("""
+                text(
+                    """
                 CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_delete AFTER DELETE ON chunk BEGIN
                     INSERT INTO keyword_search_chunk_index(keyword_search_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
                 END;
-                """)
+                """
+                )
             )
             session.execute(
-                text("""
+                text(
+                    """
                 CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_update AFTER UPDATE ON chunk BEGIN
                     INSERT INTO keyword_search_chunk_index(keyword_search_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
                     INSERT INTO keyword_search_chunk_index(rowid, body) VALUES (new.rowid, new.body);
                 END;
-                """)
+                """
+                )
             )
             session.commit()
     return engine

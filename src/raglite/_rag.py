@@ -2,159 +2,93 @@
 
 from collections.abc import AsyncIterator, Iterator
 
+import numpy as np
 from litellm import acompletion, completion
 
 from raglite._config import RAGLiteConfig
-from raglite._database import Chunk
+from raglite._database import ChunkSpan
 from raglite._litellm import get_context_size
-from raglite._search import hybrid_search, rerank_chunks, retrieve_segments
+from raglite._search import hybrid_search, rerank_chunks, retrieve_chunk_spans
 from raglite._typing import SearchMethod
 
-RAG_SYSTEM_PROMPT = """
+# The default RAG instruction template follows Anthropic's best practices [1].
+# [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
+RAG_INSTRUCTION_TEMPLATE = """
 You are a friendly and knowledgeable assistant that provides complete and insightful answers.
-Answer the user's question using only the context below.
+Whenever possible, use only the provided context to respond to the question at the end.
 When responding, you MUST NOT reference the existence of the context, directly or indirectly.
 Instead, you MUST treat the context as if its contents are entirely part of your working memory.
+
+{context}
+
+{user_prompt}
 """.strip()
 
 
-def _max_contexts(
-    prompt: str,
+def retrieve_rag_context(
+    query: str,
     *,
-    max_contexts: int = 5,
-    context_neighbors: tuple[int, ...] | None = (-1, 1),
-    messages: list[dict[str, str]] | None = None,
+    num_chunks: int = 5,
+    chunk_neighbors: tuple[int, ...] | None = (-1, 1),
+    search: SearchMethod = hybrid_search,
     config: RAGLiteConfig | None = None,
-) -> int:
-    """Determine the maximum number of contexts for RAG."""
-    # Get the model's context size.
+) -> list[ChunkSpan]:
+    """Retrieve context for RAG."""
+    # If the user has configured a reranker, we retrieve extra contexts to rerank.
     config = config or RAGLiteConfig()
-    max_tokens = get_context_size(config)
-    # Reduce the maximum number of contexts to take into account the LLM's context size.
-    max_context_tokens = (
-        max_tokens
-        - sum(len(message["content"]) // 3 for message in messages or [])  # Previous messages.
-        - len(RAG_SYSTEM_PROMPT) // 3  # System prompt.
-        - len(prompt) // 3  # User prompt.
-    )
-    max_tokens_per_context = config.chunk_max_size // 3
-    max_tokens_per_context *= 1 + len(context_neighbors or [])
-    max_contexts = min(max_contexts, max_context_tokens // max_tokens_per_context)
-    if max_contexts <= 0:
-        error_message = "Not enough context tokens available for RAG."
-        raise ValueError(error_message)
-    return max_contexts
-
-
-def _contexts(  # noqa: PLR0913
-    prompt: str,
-    *,
-    max_contexts: int = 5,
-    context_neighbors: tuple[int, ...] | None = (-1, 1),
-    search: SearchMethod | list[str] | list[Chunk] = hybrid_search,
-    messages: list[dict[str, str]] | None = None,
-    config: RAGLiteConfig | None = None,
-) -> list[str]:
-    """Retrieve contexts for RAG."""
-    # Determine the maximum number of contexts.
-    max_contexts = _max_contexts(
-        prompt,
-        max_contexts=max_contexts,
-        context_neighbors=context_neighbors,
-        messages=messages,
-        config=config,
-    )
-    # Retrieve the top chunks.
-    config = config or RAGLiteConfig()
-    chunks: list[str] | list[Chunk]
-    if callable(search):
-        # If the user has configured a reranker, we retrieve extra contexts to rerank.
-        extra_contexts = 3 * max_contexts if config.reranker else 0
-        # Retrieve relevant contexts.
-        chunk_ids, _ = search(prompt, num_results=max_contexts + extra_contexts, config=config)
-        # Rerank the relevant contexts.
-        chunks = rerank_chunks(query=prompt, chunk_ids=chunk_ids, config=config)
-    else:
-        # The user has passed a list of chunk_ids or chunks directly.
-        chunks = search
+    extra_chunks = 3 * num_chunks if config.reranker else 0
+    # Search for relevant chunks.
+    chunk_ids, _ = search(query, num_results=num_chunks + extra_chunks, config=config)
+    # Rerank the chunks from most to least relevant.
+    chunks = rerank_chunks(query, chunk_ids=chunk_ids, config=config)
     # Extend the top contexts with their neighbors and group chunks into contiguous segments.
-    segments = retrieve_segments(chunks[:max_contexts], neighbors=context_neighbors, config=config)
-    return segments
+    context = retrieve_chunk_spans(chunks[:num_chunks], neighbors=chunk_neighbors, config=config)
+    return context
 
 
-def rag(  # noqa: PLR0913
-    prompt: str,
+def create_rag_instruction(
+    user_prompt: str,
+    context: list[ChunkSpan],
     *,
-    max_contexts: int = 5,
-    context_neighbors: tuple[int, ...] | None = (-1, 1),
-    search: SearchMethod | list[str] | list[Chunk] = hybrid_search,
-    messages: list[dict[str, str]] | None = None,
-    system_prompt: str = RAG_SYSTEM_PROMPT,
-    config: RAGLiteConfig | None = None,
-) -> Iterator[str]:
-    """Retrieval-augmented generation."""
-    # Get the contexts for RAG as contiguous segments of chunks.
-    config = config or RAGLiteConfig()
-    segments = _contexts(
-        prompt,
-        max_contexts=max_contexts,
-        context_neighbors=context_neighbors,
-        search=search,
-        config=config,
-    )
-    system_prompt = f"{system_prompt}\n\n" + "\n\n".join(
-        f'<context index="{i}">\n{segment.strip()}\n</context>'
-        for i, segment in enumerate(segments)
-    )
+    rag_instruction_template: str = RAG_INSTRUCTION_TEMPLATE,
+) -> dict[str, str]:
+    """Convert a user prompt to a RAG instruction.
+
+    The RAG instruction's format follows Anthropic's best practices [1].
+
+    [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
+    """
+    message = {
+        "role": "user",
+        "content": rag_instruction_template.format(
+            user_prompt=user_prompt.strip(),
+            context="\n".join(
+                chunk_span.to_xml(index=i + 1) for i, chunk_span in enumerate(context)
+            ),
+        ),
+    }
+    return message
+
+
+def rag(messages: list[dict[str, str]], *, config: RAGLiteConfig) -> Iterator[str]:
+    # Truncate the oldest messages so we don't hit the context limit.
+    max_tokens = get_context_size(config)
+    cum_tokens = np.cumsum([len(message.get("content", "")) // 3 for message in messages][::-1])
+    messages = messages[-np.searchsorted(cum_tokens, max_tokens) :]
     # Stream the LLM response.
-    stream = completion(
-        model=config.llm,
-        messages=[
-            *(messages or []),
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt},
-        ],
-        stream=True,
-    )
+    stream = completion(model=config.llm, messages=messages, stream=True)
     for output in stream:
         token: str = output["choices"][0]["delta"].get("content") or ""
         yield token
 
 
-async def async_rag(  # noqa: PLR0913
-    prompt: str,
-    *,
-    max_contexts: int = 5,
-    context_neighbors: tuple[int, ...] | None = (-1, 1),
-    search: SearchMethod | list[str] | list[Chunk] = hybrid_search,
-    messages: list[dict[str, str]] | None = None,
-    system_prompt: str = RAG_SYSTEM_PROMPT,
-    config: RAGLiteConfig | None = None,
-) -> AsyncIterator[str]:
-    """Retrieval-augmented generation."""
-    # Get the contexts for RAG as contiguous segments of chunks.
-    config = config or RAGLiteConfig()
-    segments = _contexts(
-        prompt,
-        max_contexts=max_contexts,
-        context_neighbors=context_neighbors,
-        search=search,
-        config=config,
-    )
-    system_prompt = f"{system_prompt}\n\n" + "\n\n".join(
-        f'<context index="{i}">\n{segment.strip()}\n</context>'
-        for i, segment in enumerate(segments)
-    )
-    # Stream the LLM response.
-    async_stream = await acompletion(
-        model=config.llm,
-        messages=[
-            *(messages or []),
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt},
-        ],
-        stream=True,
-    )
+async def async_rag(messages: list[dict[str, str]], *, config: RAGLiteConfig) -> AsyncIterator[str]:
+    # Truncate the oldest messages so we don't hit the context limit.
+    max_tokens = get_context_size(config)
+    cum_tokens = np.cumsum([len(message.get("content", "")) // 3 for message in messages][::-1])
+    messages = messages[-np.searchsorted(cum_tokens, max_tokens) :]
+    # Asynchronously stream the LLM response.
+    async_stream = await acompletion(model=config.llm, messages=messages, stream=True)
     async for output in async_stream:
         token: str = output["choices"][0]["delta"].get("content") or ""
         yield token

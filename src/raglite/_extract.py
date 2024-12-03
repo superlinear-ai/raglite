@@ -61,7 +61,7 @@ def extract_with_llm(
     # Concatenate the user prompt if it is a list of strings.
     if isinstance(user_prompt, list):
         user_prompt = "\n\n".join(
-            f'<context index="{i}">\n{chunk.strip()}\n</context>'
+            f'<context index="{i + 1}">\n{chunk.strip()}\n</context>'
             for i, chunk in enumerate(user_prompt)
         )
     # Enable JSON schema validation.
