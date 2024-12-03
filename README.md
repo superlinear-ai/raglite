@@ -23,6 +23,8 @@ RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with Postgr
 - 🧬 Multi-vector chunk embedding with [late chunking](https://weaviate.io/blog/late-chunking) and [contextual chunk headings](https://d-star.ai/solving-the-out-of-context-chunk-problem-for-rag)
 - ✂️ Optimal [level 4 semantic chunking](https://medium.com/@anuragmishra_27746/five-levels-of-chunking-strategies-in-rag-notes-from-gregs-video-7b735895694d) by solving a [binary integer programming problem](https://en.wikipedia.org/wiki/Integer_programming)
 - 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) with the database's native keyword & vector search ([tsvector](https://www.postgresql.org/docs/current/datatype-textsearch.html)+[pgvector](https://github.com/pgvector/pgvector), [FTS5](https://www.sqlite.org/fts5.html)+[sqlite-vec](https://github.com/asg017/sqlite-vec)[^1])
+- 💰 Improved cost and latency with a [prompt caching-aware message array structure](https://platform.openai.com/docs/guides/prompt-caching)
+- 🍰 Improved output quality with [Anthropic's long-context prompt format](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips)
 - 🌀 Optimal [closed-form linear query adapter](src/raglite/_query_adapter.py) by solving an [orthogonal Procrustes problem](https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem)
 
 ##### Extensible
@@ -190,7 +192,7 @@ In addition to the simple RAG pipeline, RAGLite also offers more advanced contro
 
 1. Searching for relevant chunks with keyword, vector, or hybrid search
 2. Retrieving the chunks from the database
-3. Reranking the chunks and truncating the results to the top 5
+3. Reranking the chunks and selecting the top 5 results
 4. Extending the chunks with their neighbors and grouping them into chunk spans
 5. Converting the user prompt to a RAG instruction and appending it to the message history
 6. Streaming an LLM response to the message history
