@@ -114,7 +114,7 @@ async def handle_message(user_message: cl.Message) -> None:
         ]
     # Stream the LLM response.
     assistant_message = cl.Message(content="")
-    messages: list[dict[str, str]] = cl.chat_context.to_openai()  # type: ignore[no-untyped-call]
+    messages: list[dict[str, str]] = cl.chat_context.to_openai()[:-1]  # type: ignore[no-untyped-call]
     messages.append(create_rag_instruction(user_prompt=user_prompt, context=chunk_spans))
     async for token in async_rag(messages, config=config):
         await assistant_message.stream_token(token)
