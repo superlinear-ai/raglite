@@ -8,11 +8,12 @@ from chainlit.input_widget import Switch, TextInput
 
 from raglite import (
     RAGLiteConfig,
-    async_generate,
-    get_context_segments,
+    async_rag,
+    create_rag_instruction,
     hybrid_search,
     insert_document,
     rerank_chunks,
+    retrieve_chunk_spans,
     retrieve_chunks,
 )
 from raglite._markdown import document_to_markdown
@@ -20,6 +21,7 @@ from raglite._markdown import document_to_markdown
 async_insert_document = cl.make_async(insert_document)
 async_hybrid_search = cl.make_async(hybrid_search)
 async_retrieve_chunks = cl.make_async(retrieve_chunks)
+async_retrieve_chunk_spans = cl.make_async(retrieve_chunk_spans)
 async_rerank_chunks = cl.make_async(rerank_chunks)
 
 
@@ -85,9 +87,12 @@ async def handle_message(user_message: cl.Message) -> None:
                     step.input = Path(file.path).name
                     await async_insert_document(Path(file.path), config=config)
     # Append any inline attachments to the user prompt.
-    user_prompt = f"{user_message.content}\n\n" + "\n\n".join(
-        f'<attachment index="{i}">\n{attachment.strip()}\n</attachment>'
-        for i, attachment in enumerate(inline_attachments)
+    user_prompt = (
+        "\n\n".join(
+            f'<attachment index="{i}">\n{attachment.strip()}\n</attachment>'
+            for i, attachment in enumerate(inline_attachments)
+        )
+        + f"\n\n{user_message.content}"
     )
     # Search for relevant contexts for RAG.
     async with cl.Step(name="search", type="retrieval") as step:
@@ -95,25 +100,22 @@ async def handle_message(user_message: cl.Message) -> None:
         chunk_ids, _ = await async_hybrid_search(query=user_prompt, num_results=10, config=config)
         chunks = await async_retrieve_chunks(chunk_ids=chunk_ids, config=config)
         step.output = chunks
-        step.elements = [  # Show the top 3 chunks inline.
-            cl.Text(content=str(chunk), display="inline") for chunk in chunks[:3]
+        step.elements = [  # Show the top chunks inline.
+            cl.Text(content=str(chunk), display="inline") for chunk in chunks[:5]
         ]
-    # Rerank the chunks.
+    # Rerank the chunks and group them into chunk spans.
     async with cl.Step(name="rerank", type="rerank") as step:
         step.input = chunks
         chunks = await async_rerank_chunks(query=user_prompt, chunk_ids=chunks, config=config)
-        step.output = chunks
-        step.elements = [  # Show the top 3 chunks inline.
-            cl.Text(content=str(chunk), display="inline") for chunk in chunks[:3]
+        chunk_spans = await async_retrieve_chunk_spans(chunks[:5], config=config)
+        step.output = chunk_spans
+        step.elements = [  # Show the top chunk spans inline.
+            cl.Text(content=str(chunk_span), display="inline") for chunk_span in chunk_spans
         ]
     # Stream the LLM response.
     assistant_message = cl.Message(content="")
-    context_segments = get_context_segments(user_prompt, config=config)
-    async for token in async_generate(
-        prompt=user_prompt,
-        messages=cl.chat_context.to_openai()[-5:-1],  # type: ignore[no-untyped-call]
-        context_segments=context_segments,
-        config=config,
-    ):
+    messages: list[dict[str, str]] = cl.chat_context.to_openai()  # type: ignore[no-untyped-call]
+    messages.append(create_rag_instruction(user_prompt=user_prompt, context=chunk_spans))
+    async for token in async_rag(messages, config=config):
         await assistant_message.stream_token(token)
     await assistant_message.update()  # type: ignore[no-untyped-call]

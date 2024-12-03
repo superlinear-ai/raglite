@@ -12,6 +12,11 @@ from sqlalchemy.types import Float, LargeBinary, TypeDecorator, TypeEngine, User
 
 from raglite._config import RAGLiteConfig
 
+ChunkId = str
+DocumentId = str
+EvalId = str
+IndexId = str
+
 FloatMatrix = np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]
 FloatVector = np.ndarray[tuple[int], np.dtype[np.floating[Any]]]
 IntVector = np.ndarray[tuple[int], np.dtype[np.intp]]
