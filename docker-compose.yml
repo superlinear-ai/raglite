@@ -43,7 +43,7 @@ services:
       - dev
 
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: raglite_user
       POSTGRES_PASSWORD: raglite_password
