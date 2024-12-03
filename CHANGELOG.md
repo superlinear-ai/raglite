@@ -1,3 +1,9 @@
+## v0.3.0 (2024-12-03)
+
+### Feat
+
+- support prompt caching and apply Anthropic's long-context prompt format (#52)
+
 ## v0.2.1 (2024-11-22)
 
 ### Fix
