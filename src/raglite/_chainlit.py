@@ -103,6 +103,7 @@ async def handle_message(user_message: cl.Message) -> None:
         step.elements = [  # Show the top chunks inline.
             cl.Text(content=str(chunk), display="inline") for chunk in chunks[:5]
         ]
+        await step.update()  # TODO: Workaround for https://github.com/Chainlit/chainlit/issues/602.
     # Rerank the chunks and group them into chunk spans.
     async with cl.Step(name="rerank", type="rerank") as step:
         step.input = chunks
@@ -112,6 +113,7 @@ async def handle_message(user_message: cl.Message) -> None:
         step.elements = [  # Show the top chunk spans inline.
             cl.Text(content=str(chunk_span), display="inline") for chunk_span in chunk_spans
         ]
+        await step.update()  # TODO: Workaround for https://github.com/Chainlit/chainlit/issues/602.
     # Stream the LLM response.
     assistant_message = cl.Message(content="")
     messages: list[dict[str, str]] = cl.chat_context.to_openai()[:-1]  # type: ignore[no-untyped-call]
