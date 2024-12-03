@@ -166,7 +166,7 @@ class ChunkSpan:
         index_attribute = f' index="{index}"' if index is not None else ""
         xml = "\n".join(
             [
-                f'<document{index_attribute} id="{self.document.id}" from_chunk_id="{self.chunks[0].id}" to_chunk_id="{self.chunks[-1].id}">',
+                f'<document{index_attribute} id="{self.document.id}" from_chunk_index="{self.chunks[0].index}" to_chunk_index="{self.chunks[-1].index}">',
                 f"<source>{self.document.url if self.document.url else self.document.filename}</source>"
                 f"<span_heading>{escape(self.chunks[0].headings.strip())}</span_heading>"
                 f"<span_content>\n{escape(''.join(chunk.body for chunk in self.chunks).strip())}\n</span_content>",
