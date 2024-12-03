@@ -275,11 +275,9 @@ def retrieve_chunk_spans(
             if not chunk_sequence or chunk.index == chunk_sequence[-1].index + 1:
                 chunk_sequence.append(chunk)
             else:
-                chunk_spans.append(
-                    ChunkSpan(chunks=chunk_sequence, document=chunk_sequence[0].document)
-                )
+                chunk_spans.append(ChunkSpan(chunks=chunk_sequence))
                 chunk_sequence = [chunk]
-        chunk_spans.append(ChunkSpan(chunks=chunk_sequence, document=chunk_sequence[0].document))
+        chunk_spans.append(ChunkSpan(chunks=chunk_sequence))
     # Rank segments according to the aggregate relevance of their chunks.
     chunk_spans.sort(
         key=lambda chunk_span: sum(

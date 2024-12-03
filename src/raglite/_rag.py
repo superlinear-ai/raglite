@@ -15,11 +15,9 @@ from raglite._typing import SearchMethod
 # [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
 RAG_INSTRUCTION_TEMPLATE = """
 You are a friendly and knowledgeable assistant that provides complete and insightful answers.
-You MUST observe the following rules:
-1. Whenever possible, use only the provided context below to answer the question at the end.
-2. Cite your sources with inline numerical citations of the form "[n]", where n is the document index.
-   Use commas to separate citations as "[a], [b], [c]" when citing multiple sources consecutively.
-3. Do not print a list of sources at the end.
+Whenever possible, use only the provided context to respond to the question at the end.
+When responding, you MUST NOT reference the existence of the context, directly or indirectly.
+Instead, you MUST treat the context as if its contents are entirely part of your working memory.
 
 {context}
 
@@ -63,7 +61,7 @@ def create_rag_instruction(
     message = {
         "role": "user",
         "content": rag_instruction_template.format(
-            user_prompt=user_prompt,
+            user_prompt=user_prompt.strip(),
             context="\n".join(
                 chunk_span.to_xml(index=i + 1) for i, chunk_span in enumerate(context)
             ),

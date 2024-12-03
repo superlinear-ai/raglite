@@ -2,7 +2,7 @@
 
 import datetime
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
@@ -152,7 +152,12 @@ class ChunkSpan:
     """A consecutive sequence of chunks from a single document."""
 
     chunks: list[Chunk]
-    document: Document
+    document: Document = field(init=False)
+
+    def __post_init__(self) -> None:
+        """Set the document field."""
+        if self.chunks:
+            self.document = self.chunks[0].document
 
     def to_xml(self, index: int | None = None) -> str:
         """Convert this chunk span to an XML representation.
@@ -166,10 +171,12 @@ class ChunkSpan:
         index_attribute = f' index="{index}"' if index is not None else ""
         xml = "\n".join(
             [
-                f'<document{index_attribute} id="{self.document.id}" from_chunk_index="{self.chunks[0].index}" to_chunk_index="{self.chunks[-1].index}">',
-                f"<source>{self.document.url if self.document.url else self.document.filename}</source>"
-                f"<span_heading>{escape(self.chunks[0].headings.strip())}</span_heading>"
-                f"<span_content>\n{escape(''.join(chunk.body for chunk in self.chunks).strip())}\n</span_content>",
+                f'<document{index_attribute} id="{self.document.id}">',
+                f"<source>{self.document.url if self.document.url else self.document.filename}</source>",
+                f'<span from_chunk_id="{self.chunks[0].id}" to_chunk_id="{self.chunks[0].id}">',
+                f"<heading>\n{escape(self.chunks[0].headings.strip())}\n</heading>",
+                f"<content>\n{escape(''.join(chunk.body for chunk in self.chunks).strip())}\n</content>",
+                "</span>",
                 "</document>",
             ]
         )
