@@ -223,6 +223,7 @@ def evaluate(
         raise ImportError(error_message) from import_error
 
     class RAGLiteRagasEmbeddings(BaseRagasEmbeddings):
+        """A RAGLite embedder for Ragas."""
         def __init__(self, config: RAGLiteConfig):
             self.config = config or RAGLiteConfig()
 
