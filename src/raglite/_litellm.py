@@ -1,10 +1,13 @@
 """Add support for llama-cpp-python models to LiteLLM."""
 
 import asyncio
+import contextlib
 import logging
+import os
 import warnings
 from collections.abc import AsyncIterator, Callable, Iterator
 from functools import cache
+from io import StringIO
 from typing import Any, ClassVar, cast
 
 import httpx
@@ -28,7 +31,8 @@ from llama_cpp import (  # type: ignore[attr-defined]
 from raglite._config import RAGLiteConfig
 
 # Reduce the logging level for LiteLLM and flashrank.
-logging.getLogger("litellm").setLevel(logging.WARNING)
+os.environ["LITELLM_LOG"] = "WARNING"
+logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 logging.getLogger("flashrank").setLevel(logging.WARNING)
 
 
@@ -96,7 +100,10 @@ class LlamaCppPythonLLM(CustomLLM):
             filename, n_ctx_str = filename_n_ctx
             n_ctx = int(n_ctx_str)
         # Load the LLM.
-        with warnings.catch_warnings():  # Filter huggingface_hub warning about HF_TOKEN.
+        with (
+            contextlib.redirect_stderr(StringIO()),  # Filter spurious llama.cpp output.
+            warnings.catch_warnings(),  # Filter huggingface_hub warning about HF_TOKEN.
+        ):
             warnings.filterwarnings("ignore", category=UserWarning)
             llm = Llama.from_pretrained(
                 repo_id=repo_id,
@@ -104,6 +111,10 @@ class LlamaCppPythonLLM(CustomLLM):
                 n_ctx=n_ctx,
                 n_gpu_layers=-1,
                 verbose=False,
+                # Workaround to enable long context embedding models [1].
+                # [1] https://github.com/abetlen/llama-cpp-python/issues/1762
+                n_batch=n_ctx if n_ctx > 0 else 1024,
+                n_ubatch=n_ctx if n_ctx > 0 else 1024,
                 **kwargs,
             )
         # Enable caching.

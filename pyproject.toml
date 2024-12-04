@@ -33,7 +33,7 @@ spacy = ">=3.7.0,<3.8.0"
 # Large Language Models:
 huggingface-hub = ">=0.22.0"
 litellm = ">=1.47.1"
-llama-cpp-python = ">=0.2.88"
+llama-cpp-python = ">=0.3.2"
 pydantic = ">=2.7.0"
 # Approximate Nearest Neighbors:
 pynndescent = ">=0.5.12"

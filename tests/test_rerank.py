@@ -1,11 +1,23 @@
 """Test RAGLite's reranking functionality."""
 
+import random
+from typing import TypeVar
+
 import pytest
 from rerankers.models.flashrank_ranker import FlashRankRanker
 from rerankers.models.ranker import BaseRanker
+from scipy.stats import kendalltau
 
 from raglite import RAGLiteConfig, hybrid_search, rerank_chunks, retrieve_chunks
 from raglite._database import Chunk
+
+T = TypeVar("T")
+
+
+def kendall_tau(a: list[T], b: list[T]) -> float:
+    """Measure the Kendall rank correlation coefficient between two lists."""
+    τ: float = kendalltau(range(len(a)), [a.index(el) for el in b])[0]  # noqa: PLC2401
+    return τ
 
 
 @pytest.fixture(
@@ -40,16 +52,19 @@ def test_reranker(
     )
     # Search for a query.
     query = "What does it mean for two events to be simultaneous?"
-    chunk_ids, _ = hybrid_search(query, num_results=3, config=raglite_test_config)
+    chunk_ids, _ = hybrid_search(query, num_results=20, config=raglite_test_config)
     # Retrieve the chunks.
     chunks = retrieve_chunks(chunk_ids, config=raglite_test_config)
     assert all(isinstance(chunk, Chunk) for chunk in chunks)
     assert all(chunk_id == chunk.id for chunk_id, chunk in zip(chunk_ids, chunks, strict=True))
-    # Rerank the chunks given an inverted chunk order.
-    reranked_chunks = rerank_chunks(query, chunks[::-1], config=raglite_test_config)
-    if reranker is not None and "text-embedding-3-small" not in raglite_test_config.embedder:
-        assert reranked_chunks[0] == chunks[0]
-    # Test that we can also rerank given the chunk_ids only.
-    reranked_chunks = rerank_chunks(query, chunk_ids[::-1], config=raglite_test_config)
-    if reranker is not None and "text-embedding-3-small" not in raglite_test_config.embedder:
-        assert reranked_chunks[0] == chunks[0]
+    # Randomly shuffle the chunks.
+    random.seed(42)
+    chunks_random = random.sample(chunks, len(chunks))
+    # Rerank the chunks starting from a pathological order and verify that it improves the ranking.
+    for arg in (chunks[::-1], chunk_ids[::-1]):
+        reranked_chunks = rerank_chunks(query, arg, config=raglite_test_config)
+        if reranker:
+            τ_search = kendall_tau(chunks, reranked_chunks)  # noqa: PLC2401
+            τ_inverse = kendall_tau(chunks[::-1], reranked_chunks)  # noqa: PLC2401
+            τ_random = kendall_tau(chunks_random, reranked_chunks)  # noqa: PLC2401
+            assert τ_search >= τ_random >= τ_inverse

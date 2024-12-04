@@ -33,9 +33,9 @@ class RAGLiteConfig:
     # Embedder config used for indexing.
     embedder: str = field(
         default_factory=lambda: (  # Nomic-embed may be better if only English is used.
-            "llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf"
+            "llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024"
             if llama_supports_gpu_offload() or (os.cpu_count() or 1) >= 4  # noqa: PLR2004
-            else "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf"
+            else "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@1024"
         )
     )
     embedder_normalize: bool = True

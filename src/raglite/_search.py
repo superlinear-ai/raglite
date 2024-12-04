@@ -26,7 +26,11 @@ from raglite._typing import ChunkId, FloatMatrix
 
 
 def vector_search(
-    query: str | FloatMatrix, *, num_results: int = 3, config: RAGLiteConfig | None = None
+    query: str | FloatMatrix,
+    *,
+    num_results: int = 3,
+    oversample: int = 8,
+    config: RAGLiteConfig | None = None,
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks using ANN vector search."""
     # Read the config.
@@ -57,7 +61,9 @@ def vector_search(
             )
             distance = distance_func(query_embedding).label("distance")
             results = session.exec(
-                select(ChunkEmbedding.chunk_id, distance).order_by(distance).limit(8 * num_results)
+                select(ChunkEmbedding.chunk_id, distance)
+                .order_by(distance)
+                .limit(oversample * num_results)
             )
             chunk_ids_, distance = zip(*results, strict=True)
             chunk_ids, similarity = np.asarray(chunk_ids_), 1.0 - np.asarray(distance)
@@ -70,7 +76,7 @@ def vector_search(
         from pynndescent import NNDescent
 
         multi_vector_indices, distance = cast(NNDescent, index).query(
-            query_embedding[np.newaxis, :], k=8 * num_results
+            query_embedding[np.newaxis, :], k=oversample * num_results
         )
         similarity = 1 - distance[0, :]
         # Transform the multi-vector indices into chunk indices, and then to chunk ids.
@@ -105,36 +111,32 @@ def keyword_search(
         if db_backend == "postgresql":
             # Convert the query to a tsquery [1].
             # [1] https://www.postgresql.org/docs/current/textsearch-controls.html
-            query_escaped = re.sub(r"[&|!():<>\"]", " ", query)
+            query_escaped = re.sub(f"[{re.escape(string.punctuation)}]", " ", query)
             tsv_query = " | ".join(query_escaped.split())
             # Perform keyword search with tsvector.
-            statement = text(
-                """
+            statement = text("""
                 SELECT id as chunk_id, ts_rank(to_tsvector('simple', body), to_tsquery('simple', :query)) AS score
                 FROM chunk
                 WHERE to_tsvector('simple', body) @@ to_tsquery('simple', :query)
                 ORDER BY score DESC
                 LIMIT :limit;
-            """
-            )
+                """)
             results = session.execute(statement, params={"query": tsv_query, "limit": num_results})
         elif db_backend == "sqlite":
             # Convert the query to an FTS5 query [1].
             # [1] https://www.sqlite.org/fts5.html#full_text_query_syntax
-            query_escaped = re.sub(f"[{re.escape(string.punctuation)}]", "", query)
+            query_escaped = re.sub(f"[{re.escape(string.punctuation)}]", " ", query)
             fts5_query = " OR ".join(query_escaped.split())
             # Perform keyword search with FTS5. In FTS5, BM25 scores are negative [1], so we
             # negate them to make them positive.
             # [1] https://www.sqlite.org/fts5.html#the_bm25_function
-            statement = text(
-                """
+            statement = text("""
                 SELECT chunk.id as chunk_id, -bm25(keyword_search_chunk_index) as score
                 FROM chunk JOIN keyword_search_chunk_index ON chunk.rowid = keyword_search_chunk_index.rowid
                 WHERE keyword_search_chunk_index MATCH :match
                 ORDER BY score DESC
                 LIMIT :limit;
-            """
-            )
+                """)
             results = session.execute(statement, params={"match": fts5_query, "limit": num_results})
         # Unpack the results.
         results = list(results)  # type: ignore[assignment]
@@ -162,12 +164,12 @@ def reciprocal_rank_fusion(
 
 
 def hybrid_search(
-    query: str, *, num_results: int = 3, num_rerank: int = 100, config: RAGLiteConfig | None = None
+    query: str, *, num_results: int = 3, oversample: int = 4, config: RAGLiteConfig | None = None
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks by combining ANN vector search with BM25 keyword search."""
     # Run both searches.
-    vs_chunk_ids, _ = vector_search(query, num_results=num_rerank, config=config)
-    ks_chunk_ids, _ = keyword_search(query, num_results=num_rerank, config=config)
+    vs_chunk_ids, _ = vector_search(query, num_results=oversample * num_results, config=config)
+    ks_chunk_ids, _ = keyword_search(query, num_results=oversample * num_results, config=config)
     # Combine the results with Reciprocal Rank Fusion (RRF).
     chunk_ids, hybrid_score = reciprocal_rank_fusion([vs_chunk_ids, ks_chunk_ids])
     chunk_ids, hybrid_score = chunk_ids[:num_results], hybrid_score[:num_results]
