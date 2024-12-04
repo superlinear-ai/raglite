@@ -1,3 +1,9 @@
+## v0.4.0 (2024-12-04)
+
+### Feat
+
+- improve late chunking and optimize pgvector settings (#51)
+
 ## v0.3.0 (2024-12-03)
 
 ### Feat
