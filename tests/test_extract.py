@@ -13,11 +13,9 @@ from raglite._extract import extract_with_llm
     params=[
         pytest.param(RAGLiteConfig().llm, id="llama_cpp_python"),
         pytest.param("gpt-4o-mini", id="openai"),
-    ],
+    ]
 )
-def llm(
-    request: pytest.FixtureRequest,
-) -> str:
+def llm(request: pytest.FixtureRequest) -> str:
     """Get an LLM to test RAGLite with."""
     llm: str = request.param
     return llm
@@ -33,6 +31,9 @@ def test_extract(llm: str) -> None:
         username: str = Field(..., description="The username.")
         password: str = Field(..., description="The password.")
         system_prompt: ClassVar[str] = "Extract the username and password from the input."
+
+        class Config:
+            extra = "forbid"
 
     username, password = "cypher", "steak"
     login_response = extract_with_llm(LoginResponse, f"{username} // {password}", config=config)
