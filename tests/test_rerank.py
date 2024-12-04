@@ -52,7 +52,7 @@ def test_reranker(
     )
     # Search for a query.
     query = "What does it mean for two events to be simultaneous?"
-    chunk_ids, _ = hybrid_search(query, num_results=10, config=raglite_test_config)
+    chunk_ids, _ = hybrid_search(query, num_results=20, config=raglite_test_config)
     # Retrieve the chunks.
     chunks = retrieve_chunks(chunk_ids, config=raglite_test_config)
     assert all(isinstance(chunk, Chunk) for chunk in chunks)

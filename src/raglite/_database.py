@@ -342,7 +342,7 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
                     (embedding::halfvec({embedding_dim}))
                     halfvec_{metrics[config.vector_search_index_metric]}_ops
                 );
-                SET hnsw.ef_search = 200;
+                SET hnsw.ef_search = {20 * 4 * 8};
                 SET hnsw.iterative_scan = {'relaxed_order' if config.reranker else 'strict_order'};
                 """)
             )
