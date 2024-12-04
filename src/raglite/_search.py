@@ -105,8 +105,8 @@ def keyword_search(
         if db_backend == "postgresql":
             # Convert the query to a tsquery [1].
             # [1] https://www.postgresql.org/docs/current/textsearch-controls.html
-            query_escaped = re.sub(r"[&|!():<>\"]", " ", query)
-            tsv_query = " | ".join(query_escaped.split())
+            words = re.findall(r"\w+", query)
+            tsv_query = " | ".join(words)
             # Perform keyword search with tsvector.
             statement = text(
                 """
