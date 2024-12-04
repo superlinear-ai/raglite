@@ -227,7 +227,7 @@ def evaluate(
             self.config = config or RAGLiteConfig()
 
         def embed_query(self, text: str) -> list[float]:
-            # Embed the query text using RAGLite's embedding function
+            # Embed the input text with RAGLite's embedding function.
             embeddings = embed_sentences([text], config=self.config)
             return embeddings[0].tolist()  # type: ignore[no-any-return]
 
