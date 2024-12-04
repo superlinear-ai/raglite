@@ -26,9 +26,7 @@ def insert_evals(  # noqa: C901
         """A specific question about the content of a set of document contexts."""
 
         question: str = Field(
-            ...,
-            description="A specific question about the content of a set of document contexts.",
-            min_length=1,
+            ..., description="A specific question about the content of a set of document contexts."
         )
         system_prompt: ClassVar[str] = """
 You are given a set of contexts extracted from a document.
@@ -42,6 +40,9 @@ The question MUST satisfy ALL of the following criteria:
 - The question MUST NOT reference the existence of the context, directly or indirectly.
 - The question MUST treat the context as if its contents are entirely part of your working memory.
             """.strip()
+
+        class Config:
+            extra = "forbid"  # Ensure no extra fields are allowed as required by OpenAI API json schema.
 
         @field_validator("question")
         @classmethod
@@ -112,6 +113,9 @@ Your task is to answer whether the provided context contains (a part of) the ans
 An example of a context that does NOT contain (a part of) the answer is a table of contents.
                     """.strip()
 
+                class Config:
+                    extra = "forbid"  # Ensure no extra fields are allowed as required by OpenAI API json schema.
+
             relevant_chunks = []
             for candidate_chunk in tqdm(
                 candidate_chunks, desc="Evaluating chunks", unit="chunk", dynamic_ncols=True
@@ -135,7 +139,6 @@ An example of a context that does NOT contain (a part of) the answer is a table 
                 answer: str = Field(
                     ...,
                     description="A complete answer to the given question using the provided context.",
-                    min_length=1,
                 )
                 system_prompt: ClassVar[str] = f"""
 You are given a set of contexts extracted from a document.
@@ -147,6 +150,9 @@ The answer MUST satisfy ALL of the following criteria:
 - The answer MUST NOT reference the existence of the context, directly or indirectly.
 - The answer MUST treat the context as if its contents are entirely part of your working memory.
                     """.strip()
+
+                class Config:
+                    extra = "forbid"  # Ensure no extra fields are allowed as required by OpenAI API json schema.
 
             try:
                 answer_response = extract_with_llm(

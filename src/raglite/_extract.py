@@ -52,6 +52,7 @@ def extract_with_llm(
                 "name": return_type.__name__,
                 "description": return_type.__doc__ or "",
                 "schema": return_type.model_json_schema(),
+                "strict": True,
             },
         }
         if "response_format"
