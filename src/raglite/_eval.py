@@ -224,7 +224,7 @@ def evaluate(
 
     class RAGLiteRagasEmbeddings(BaseRagasEmbeddings):
         """A RAGLite embedder for Ragas."""
-        def __init__(self, config: RAGLiteConfig):
+        def __init__(self, config: RAGLiteConfig | None = None):
             self.config = config or RAGLiteConfig()
 
         def embed_query(self, text: str) -> list[float]:
