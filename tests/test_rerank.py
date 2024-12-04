@@ -1,5 +1,6 @@
 """Test RAGLite's reranking functionality."""
 
+import random
 from typing import TypeVar
 
 import pytest
@@ -15,8 +16,8 @@ T = TypeVar("T")
 
 def kendall_tau(a: list[T], b: list[T]) -> float:
     """Measure the Kendall rank correlation coefficient between two lists."""
-    tau: float = kendalltau(range(len(a)), [a.index(el) for el in b])[0]
-    return tau
+    τ: float = kendalltau(range(len(a)), [a.index(el) for el in b])[0]  # noqa: PLC2401
+    return τ
 
 
 @pytest.fixture(
@@ -56,11 +57,14 @@ def test_reranker(
     chunks = retrieve_chunks(chunk_ids, config=raglite_test_config)
     assert all(isinstance(chunk, Chunk) for chunk in chunks)
     assert all(chunk_id == chunk.id for chunk_id, chunk in zip(chunk_ids, chunks, strict=True))
-    # Rerank the chunks given an inverted chunk order.
-    reranked_chunks = rerank_chunks(query, chunks[::-1], config=raglite_test_config)
-    if reranker:
-        assert kendall_tau(chunks, reranked_chunks) >= kendall_tau(chunks[::-1], reranked_chunks)
-    # Test that we can also rerank given the chunk_ids only.
-    reranked_chunks = rerank_chunks(query, chunk_ids[::-1], config=raglite_test_config)
-    if reranker:
-        assert kendall_tau(chunks, reranked_chunks) >= kendall_tau(chunks[::-1], reranked_chunks)
+    # Randomly shuffle the chunks.
+    random.seed(42)
+    chunks_random = random.sample(chunks, len(chunks))
+    # Rerank the chunks starting from a pathological order and verify that it improves the ranking.
+    for arg in (chunks[::-1], chunk_ids[::-1]):
+        reranked_chunks = rerank_chunks(query, arg, config=raglite_test_config)
+        if reranker:
+            τ_search = kendall_tau(chunks, reranked_chunks)  # noqa: PLC2401
+            τ_inverse = kendall_tau(chunks[::-1], reranked_chunks)  # noqa: PLC2401
+            τ_random = kendall_tau(chunks_random, reranked_chunks)  # noqa: PLC2401
+            assert τ_search >= τ_random >= τ_inverse
