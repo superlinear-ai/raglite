@@ -331,24 +331,20 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
         with Session(engine) as session:
             metrics = {"cosine": "cosine", "dot": "ip", "euclidean": "l2", "l1": "l1", "l2": "l2"}
             session.execute(
-                text(
-                    """
+                text("""
                 CREATE INDEX IF NOT EXISTS keyword_search_chunk_index ON chunk USING GIN (to_tsvector('simple', body));
-                """
-                )
+                """)
             )
             session.execute(
-                text(
-                    f"""
+                text(f"""
                 CREATE INDEX IF NOT EXISTS vector_search_chunk_index ON chunk_embedding
                 USING hnsw (
-                     (embedding::halfvec({embedding_dim}))
-                     halfvec_{metrics[config.vector_search_index_metric]}_ops
+                    (embedding::halfvec({embedding_dim}))
+                    halfvec_{metrics[config.vector_search_index_metric]}_ops
                 );
                 SET hnsw.ef_search = 200;
-                SET hnsw.iterative_scan = relaxed_order;
-                """
-                )
+                SET hnsw.iterative_scan = {'relaxed_order' if config.reranker else 'strict_order'};
+                """)
             )
             session.commit()
     elif db_backend == "sqlite":
@@ -357,39 +353,31 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
         # [1] https://www.sqlite.org/fts5.html#external_content_tables
         with Session(engine) as session:
             session.execute(
-                text(
-                    """
+                text("""
                 CREATE VIRTUAL TABLE IF NOT EXISTS keyword_search_chunk_index USING fts5(body, content='chunk', content_rowid='rowid');
-                """
-                )
+                """)
             )
             session.execute(
-                text(
-                    """
+                text("""
                 CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_insert AFTER INSERT ON chunk BEGIN
                     INSERT INTO keyword_search_chunk_index(rowid, body) VALUES (new.rowid, new.body);
                 END;
-                """
-                )
+                """)
             )
             session.execute(
-                text(
-                    """
+                text("""
                 CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_delete AFTER DELETE ON chunk BEGIN
                     INSERT INTO keyword_search_chunk_index(keyword_search_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
                 END;
-                """
-                )
+                """)
             )
             session.execute(
-                text(
-                    """
+                text("""
                 CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_update AFTER UPDATE ON chunk BEGIN
                     INSERT INTO keyword_search_chunk_index(keyword_search_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
                     INSERT INTO keyword_search_chunk_index(rowid, body) VALUES (new.rowid, new.body);
                 END;
-                """
-                )
+                """)
             )
             session.commit()
     return engine
