@@ -233,7 +233,7 @@ def evaluate(
             return embeddings[0].tolist()  # type: ignore[no-any-return]
 
         def embed_documents(self, texts: list[str]) -> list[list[float]]:
-            # Embed a list of documents using RAGLite's embedding function
+            # Embed a list of documents with RAGLite's embedding function.
             embeddings = embed_sentences(texts, config=self.config)
             return embeddings.tolist()  # type: ignore[no-any-return]
 
