@@ -151,8 +151,7 @@ The answer MUST satisfy ALL of the following criteria:
                     """.strip()
 
                 class Config:
-                    extra = "forbid"  # Ensure no extra fields are allowed as required by OpenAI API json schema.
-
+                    extra = "forbid"  # Ensure no extra fields are allowed as required by OpenAI API's strict mode.
             try:
                 answer_response = extract_with_llm(
                     AnswerResponse,
