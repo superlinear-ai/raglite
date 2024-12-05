@@ -5,7 +5,7 @@ from typing import ClassVar
 
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlmodel import Session, func, select
 from tqdm.auto import tqdm, trange
 
@@ -25,10 +25,11 @@ def insert_evals(  # noqa: C901
     class QuestionResponse(BaseModel):
         """A specific question about the content of a set of document contexts."""
 
+        model_config = ConfigDict(
+            extra="forbid"  # Forbid extra attributes as required by OpenAI's strict mode.
+        )
         question: str = Field(
-            ...,
-            description="A specific question about the content of a set of document contexts.",
-            min_length=1,
+            ..., description="A specific question about the content of a set of document contexts."
         )
         system_prompt: ClassVar[str] = """
 You are given a set of contexts extracted from a document.
@@ -85,7 +86,7 @@ The question MUST satisfy ALL of the following criteria:
             # Extract a question from the seed chunk's related chunks.
             try:
                 question_response = extract_with_llm(
-                    QuestionResponse, related_chunks, config=config
+                    QuestionResponse, related_chunks, strict=True, config=config
                 )
             except ValueError:
                 continue
@@ -101,6 +102,9 @@ The question MUST satisfy ALL of the following criteria:
             class ContextEvalResponse(BaseModel):
                 """Indicate whether the provided context can be used to answer a given question."""
 
+                model_config = ConfigDict(
+                    extra="forbid"  # Forbid extra attributes as required by OpenAI's strict mode.
+                )
                 hit: bool = Field(
                     ...,
                     description="True if the provided context contains (a part of) the answer to the given question, false otherwise.",
@@ -118,7 +122,7 @@ An example of a context that does NOT contain (a part of) the answer is a table 
             ):
                 try:
                     context_eval_response = extract_with_llm(
-                        ContextEvalResponse, str(candidate_chunk), config=config
+                        ContextEvalResponse, str(candidate_chunk), strict=True, config=config
                     )
                 except ValueError:  # noqa: PERF203
                     pass
@@ -132,10 +136,12 @@ An example of a context that does NOT contain (a part of) the answer is a table 
             class AnswerResponse(BaseModel):
                 """Answer a question using the provided context."""
 
+                model_config = ConfigDict(
+                    extra="forbid"  # Forbid extra attributes as required by OpenAI's strict mode.
+                )
                 answer: str = Field(
                     ...,
                     description="A complete answer to the given question using the provided context.",
-                    min_length=1,
                 )
                 system_prompt: ClassVar[str] = f"""
 You are given a set of contexts extracted from a document.
@@ -152,6 +158,7 @@ The answer MUST satisfy ALL of the following criteria:
                 answer_response = extract_with_llm(
                     AnswerResponse,
                     [str(relevant_chunk) for relevant_chunk in relevant_chunks],
+                    strict=True,
                     config=config,
                 )
             except ValueError:
