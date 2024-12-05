@@ -35,14 +35,13 @@ def extract_with_llm(
     config = config or RAGLiteConfig()
     # Check if the LLM supports the response format.
     llm_provider = "llama-cpp-python" if config.embedder.startswith("llama-cpp") else None
-    supports_response_format = "response_format" in (
+    llm_supports_response_format = "response_format" in (
         get_supported_openai_params(model=config.llm, custom_llm_provider=llm_provider) or []
     )
     # Update the system prompt with the JSON schema of the return type to help the LLM.
-    system_prompt = return_type.system_prompt.strip()  # type: ignore[attr-defined]
-    if not supports_response_format:
+    system_prompt = getattr(return_type, "system_prompt", "").strip()
+    if not llm_supports_response_format or llm_provider == "llama-cpp-python":
         system_prompt += f"\n\nFormat your response according to this JSON schema:\n{return_type.model_json_schema()!s}"
-
     # Constrain the reponse format to the JSON schema if it's supported by the LLM [1]. Strict mode
     # is disabled by default because it only supports a subset of JSON schema features [2].
     # [1] https://docs.litellm.ai/docs/completion/json_mode
@@ -58,7 +57,7 @@ def extract_with_llm(
                 "strict": strict,
             },
         }
-        if supports_response_format
+        if llm_supports_response_format
         else None
     )
     # Concatenate the user prompt if it is a list of strings.
