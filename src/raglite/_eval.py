@@ -42,7 +42,9 @@ The question MUST satisfy ALL of the following criteria:
             """.strip()
 
         class Config:
-            extra = "forbid"  # Ensure no extra fields are allowed as required by OpenAI's strict mode.
+            extra = (
+                "forbid"  # Ensure no extra fields are allowed as required by OpenAI's strict mode.
+            )
 
         @field_validator("question")
         @classmethod
@@ -115,6 +117,7 @@ An example of a context that does NOT contain (a part of) the answer is a table 
 
                 class Config:
                     extra = "forbid"  # Ensure no extra fields are allowed as required by OpenAI API's strict mode.
+
             relevant_chunks = []
             for candidate_chunk in tqdm(
                 candidate_chunks, desc="Evaluating chunks", unit="chunk", dynamic_ncols=True
@@ -152,6 +155,7 @@ The answer MUST satisfy ALL of the following criteria:
 
                 class Config:
                     extra = "forbid"  # Ensure no extra fields are allowed as required by OpenAI API's strict mode.
+
             try:
                 answer_response = extract_with_llm(
                     AnswerResponse,
