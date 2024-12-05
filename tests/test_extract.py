@@ -22,8 +22,7 @@ def llm(request: pytest.FixtureRequest) -> str:
 
 
 @pytest.mark.parametrize(
-    "strict",
-    [pytest.param(False, id="strict=False"), pytest.param(True, id="strict=True")],
+    "strict", [pytest.param(False, id="strict=False"), pytest.param(True, id="strict=True")]
 )
 def test_extract(llm: str, strict: bool) -> None:  # noqa: FBT001
     """Test extracting structured data."""
@@ -32,6 +31,8 @@ def test_extract(llm: str, strict: bool) -> None:  # noqa: FBT001
 
     # Define the JSON schema of the response.
     class LoginResponse(BaseModel):
+        """The response to a login request."""
+
         model_config = ConfigDict(extra="forbid" if strict else "allow")
         username: str = Field(..., description="The username.")
         password: str = Field(..., description="The password.")
