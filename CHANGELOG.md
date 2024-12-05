@@ -1,3 +1,10 @@
+## v0.4.1 (2024-12-05)
+
+### Fix
+
+- add and enable OpenAI strict mode (#55)
+- support embedding with LiteLLM for Ragas (#56)
+
 ## v0.4.0 (2024-12-04)
 
 ### Feat
