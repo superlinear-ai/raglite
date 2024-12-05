@@ -114,8 +114,7 @@ An example of a context that does NOT contain (a part of) the answer is a table 
                     """.strip()
 
                 class Config:
-                    extra = "forbid"  # Ensure no extra fields are allowed as required by OpenAI API json schema.
-
+                    extra = "forbid"  # Ensure no extra fields are allowed as required by OpenAI API's strict mode.
             relevant_chunks = []
             for candidate_chunk in tqdm(
                 candidate_chunks, desc="Evaluating chunks", unit="chunk", dynamic_ncols=True
