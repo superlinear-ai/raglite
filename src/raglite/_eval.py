@@ -5,7 +5,7 @@ from typing import ClassVar
 
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlmodel import Session, func, select
 from tqdm.auto import tqdm, trange
 
@@ -25,6 +25,9 @@ def insert_evals(  # noqa: C901
     class QuestionResponse(BaseModel):
         """A specific question about the content of a set of document contexts."""
 
+        model_config = ConfigDict(
+            extra="forbid"  # Forbid extra attributes as required by OpenAI's strict mode.
+        )
         question: str = Field(
             ..., description="A specific question about the content of a set of document contexts."
         )
@@ -40,11 +43,6 @@ The question MUST satisfy ALL of the following criteria:
 - The question MUST NOT reference the existence of the context, directly or indirectly.
 - The question MUST treat the context as if its contents are entirely part of your working memory.
             """.strip()
-
-        class Config:
-            extra = (
-                "forbid"  # Ensure no extra fields are allowed as required by OpenAI's strict mode.
-            )
 
         @field_validator("question")
         @classmethod
@@ -88,7 +86,7 @@ The question MUST satisfy ALL of the following criteria:
             # Extract a question from the seed chunk's related chunks.
             try:
                 question_response = extract_with_llm(
-                    QuestionResponse, related_chunks, config=config
+                    QuestionResponse, related_chunks, strict=True, config=config
                 )
             except ValueError:
                 continue
@@ -104,6 +102,9 @@ The question MUST satisfy ALL of the following criteria:
             class ContextEvalResponse(BaseModel):
                 """Indicate whether the provided context can be used to answer a given question."""
 
+                model_config = ConfigDict(
+                    extra="forbid"  # Forbid extra attributes as required by OpenAI's strict mode.
+                )
                 hit: bool = Field(
                     ...,
                     description="True if the provided context contains (a part of) the answer to the given question, false otherwise.",
@@ -115,16 +116,13 @@ Your task is to answer whether the provided context contains (a part of) the ans
 An example of a context that does NOT contain (a part of) the answer is a table of contents.
                     """.strip()
 
-                class Config:
-                    extra = "forbid"  # Ensure no extra fields are allowed as required by OpenAI API's strict mode.
-
             relevant_chunks = []
             for candidate_chunk in tqdm(
                 candidate_chunks, desc="Evaluating chunks", unit="chunk", dynamic_ncols=True
             ):
                 try:
                     context_eval_response = extract_with_llm(
-                        ContextEvalResponse, str(candidate_chunk), config=config
+                        ContextEvalResponse, str(candidate_chunk), strict=True, config=config
                     )
                 except ValueError:  # noqa: PERF203
                     pass
@@ -138,6 +136,9 @@ An example of a context that does NOT contain (a part of) the answer is a table 
             class AnswerResponse(BaseModel):
                 """Answer a question using the provided context."""
 
+                model_config = ConfigDict(
+                    extra="forbid"  # Forbid extra attributes as required by OpenAI's strict mode.
+                )
                 answer: str = Field(
                     ...,
                     description="A complete answer to the given question using the provided context.",
@@ -153,13 +154,11 @@ The answer MUST satisfy ALL of the following criteria:
 - The answer MUST treat the context as if its contents are entirely part of your working memory.
                     """.strip()
 
-                class Config:
-                    extra = "forbid"  # Ensure no extra fields are allowed as required by OpenAI API's strict mode.
-
             try:
                 answer_response = extract_with_llm(
                     AnswerResponse,
                     [str(relevant_chunk) for relevant_chunk in relevant_chunks],
+                    strict=True,
                     config=config,
                 )
             except ValueError:

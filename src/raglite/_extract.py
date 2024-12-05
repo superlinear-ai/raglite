@@ -2,7 +2,6 @@
 
 from typing import Any, TypeVar
 
-import litellm
 from litellm import completion, get_supported_openai_params  # type: ignore[attr-defined]
 from pydantic import BaseModel, ValidationError
 
@@ -14,6 +13,7 @@ T = TypeVar("T", bound=BaseModel)
 def extract_with_llm(
     return_type: type[T],
     user_prompt: str | list[str],
+    strict: bool = False,  # noqa: FBT001,FBT002
     config: RAGLiteConfig | None = None,
     **kwargs: Any,
 ) -> T:
@@ -41,8 +41,10 @@ def extract_with_llm(
             str(return_type.model_json_schema()),
         )
     )
-    # Constrain the reponse format to the JSON schema if it's supported by the LLM [1].
+    # Constrain the reponse format to the JSON schema if it's supported by the LLM [1]. Strict mode
+    # is disabled by default because it only supports a subset of JSON schema features [2].
     # [1] https://docs.litellm.ai/docs/completion/json_mode
+    # [2] https://platform.openai.com/docs/guides/structured-outputs#some-type-specific-keywords-are-not-yet-supported
     # TODO: Fall back to {"type": "json_object"} if JSON schema is not supported by the LLM.
     llm_provider = "llama-cpp-python" if config.embedder.startswith("llama-cpp") else None
     response_format: dict[str, Any] | None = (
@@ -52,6 +54,7 @@ def extract_with_llm(
                 "name": return_type.__name__,
                 "description": return_type.__doc__ or "",
                 "schema": return_type.model_json_schema(),
+                "strict": strict,
             },
         }
         if "response_format"
@@ -64,9 +67,6 @@ def extract_with_llm(
             f'<context index="{i + 1}">\n{chunk.strip()}\n</context>'
             for i, chunk in enumerate(user_prompt)
         )
-    # Enable JSON schema validation.
-    enable_json_schema_validation = litellm.enable_json_schema_validation
-    litellm.enable_json_schema_validation = True
     # Extract structured data from the unstructured input.
     for _ in range(config.llm_max_tries):
         response = completion(
@@ -89,6 +89,4 @@ def extract_with_llm(
     else:
         error_message = f"Failed to extract {return_type} from input {user_prompt}."
         raise ValueError(error_message) from last_exception
-    # Restore the previous JSON schema validation setting.
-    litellm.enable_json_schema_validation = enable_json_schema_validation
     return instance
