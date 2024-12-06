@@ -30,10 +30,11 @@ from llama_cpp import (  # type: ignore[attr-defined]
 
 from raglite._config import RAGLiteConfig
 
-# Reduce the logging level for LiteLLM and flashrank.
+# Reduce the logging level for LiteLLM, flashrank, and httpx.
 os.environ["LITELLM_LOG"] = "WARNING"
 logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 logging.getLogger("flashrank").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 class LlamaCppPythonLLM(CustomLLM):
