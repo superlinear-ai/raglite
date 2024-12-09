@@ -29,7 +29,7 @@ def test_extract(llm: str, strict: bool) -> None:  # noqa: FBT001
     # Extract structured data.
     username, password = "cypher", "steak"
     login_response = extract_with_llm(
-        LoginResponse, f"{username} // {password}", strict=strict, config=config
+        LoginResponse, f"username: {username}\npassword: {password}", strict=strict, config=config
     )
     # Validate the response.
     assert isinstance(login_response, LoginResponse)

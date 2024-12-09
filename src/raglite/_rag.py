@@ -104,7 +104,7 @@ def _get_tools(
         {
             "skip": {
                 "type": "boolean",
-                "description": "True if a satisfactory answer can be provided without the knowledge base, false otherwise.",
+                "description": "True if a satisfactory answer can be provided without searching the knowledge base, false otherwise.",
             }
         }
         if llm_provider == "llama-cpp-python"
@@ -125,11 +125,10 @@ def _get_tools(
                                 "type": ["string", "null"],
                                 "description": "\n".join(  # noqa: FLY002
                                     [
-                                        "The query string to search the knowledge base with.",
+                                        "The query string to search the knowledge base with, or `null` if `skip` is `true`.",
                                         "The query string MUST satisfy ALL of the following criteria:"
                                         "- The query string MUST be a precise question in the user's language.",
                                         "- The query string MUST resolve all pronouns to explicit nouns from the conversation history.",
-                                        "- The query string MUST be `null` if `skip` is `true`.",
                                     ]
                                 ),
                             },
@@ -195,7 +194,10 @@ def rag(messages: list[dict[str, str]], *, config: RAGLiteConfig) -> Iterator[st
     if tools and config.llm.startswith("llama-cpp-python"):
         # Help llama.cpp LLMs plan their response by providing a JSON schema for the tool call.
         clipped_messages[-1]["content"] += (
-            f"\n\nDecide whether to use or skip these tools in your response:\n{json.dumps(tools)}"
+            "\n\n<tools>\n"
+            f"Available tools:\n```\n{json.dumps(tools)}\n```\n"
+            "IMPORTANT: You MUST set skip=true and query=null if you can provide a satisfactory answer without searching the knowledge base.\n"
+            "</tools>"
         )
     stream = completion(
         model=config.llm,
@@ -238,7 +240,10 @@ async def async_rag(messages: list[dict[str, str]], *, config: RAGLiteConfig) ->
     if tools and config.llm.startswith("llama-cpp-python"):
         # Help llama.cpp LLMs plan their response by providing a JSON schema for the tool call.
         clipped_messages[-1]["content"] += (
-            f"\n\nDecide whether to use or skip these tools in your response:\n{json.dumps(tools)}"
+            "\n\n<tools>\n"
+            f"Available tools:\n```\n{json.dumps(tools)}\n```\n"
+            "IMPORTANT: You MUST set skip=true and query=null if you can provide a satisfactory response without searching the knowledge base.\n"
+            "</tools>"
         )
     async_stream = await acompletion(
         model=config.llm,

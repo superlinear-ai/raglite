@@ -44,7 +44,7 @@ def test_rag_auto_with_retrieval(raglite_test_config: RAGLiteConfig) -> None:
 def test_rag_auto_without_retrieval(raglite_test_config: RAGLiteConfig) -> None:
     """Test Retrieval-Augmented Generation with automatic retrieval."""
     # Answer a question that does not require RAG.
-    user_prompt = "Is 7 a prime number?"
+    user_prompt = "Yes or no: is 'Veni, vidi, vici' a Latin phrase?"
     messages = [{"role": "user", "content": user_prompt}]
     stream = rag(messages, config=raglite_test_config)
     answer = ""
