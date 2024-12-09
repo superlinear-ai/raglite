@@ -19,11 +19,9 @@ from raglite._typing import SearchMethod
         pytest.param(keyword_search, id="keyword_search"),
         pytest.param(vector_search, id="vector_search"),
         pytest.param(hybrid_search, id="hybrid_search"),
-    ],
+    ]
 )
-def search_method(
-    request: pytest.FixtureRequest,
-) -> SearchMethod:
+def search_method(request: pytest.FixtureRequest) -> SearchMethod:
     """Get a search method to test RAGLite with."""
     search_method: SearchMethod = request.param
     return search_method
@@ -45,10 +43,10 @@ def test_search(raglite_test_config: RAGLiteConfig, search_method: SearchMethod)
     assert any("Definition of Simultaneity" in str(chunk) for chunk in chunks)
     assert all(isinstance(chunk.document, Document) for chunk in chunks)
     # Extend the chunks with their neighbours and group them into contiguous segments.
-    chunk_spans = retrieve_chunk_spans(chunk_ids, neighbors=(-1, 1), config=raglite_test_config)
+    chunk_spans = retrieve_chunk_spans(chunk_ids, config=raglite_test_config)
     assert all(isinstance(chunk_span, ChunkSpan) for chunk_span in chunk_spans)
     assert all(isinstance(chunk_span.document, Document) for chunk_span in chunk_spans)
-    chunk_spans = retrieve_chunk_spans(chunks, neighbors=(-1, 1), config=raglite_test_config)
+    chunk_spans = retrieve_chunk_spans(chunks, config=raglite_test_config)
     assert all(isinstance(chunk_span, ChunkSpan) for chunk_span in chunk_spans)
     assert all(isinstance(chunk_span.document, Document) for chunk_span in chunk_spans)
 

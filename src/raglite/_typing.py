@@ -24,7 +24,7 @@ IntVector = np.ndarray[tuple[int], np.dtype[np.intp]]
 
 class SearchMethod(Protocol):
     def __call__(
-        self, query: str, *, num_results: int = 3, config: RAGLiteConfig | None = None
+        self, query: str, *, config: RAGLiteConfig | None = None, **kwargs: Any
     ) -> tuple[list[str], list[float]]: ...
 
 

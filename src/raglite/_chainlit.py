@@ -97,7 +97,7 @@ async def handle_message(user_message: cl.Message) -> None:
     # Search for relevant contexts for RAG.
     async with cl.Step(name="search", type="retrieval") as step:
         step.input = user_message.content
-        chunk_ids, _ = await async_hybrid_search(query=user_prompt, num_results=10, config=config)
+        chunk_ids, _ = await async_hybrid_search(query=user_prompt, config=config)
         chunks = await async_retrieve_chunks(chunk_ids=chunk_ids, config=config)
         step.output = chunks
         step.elements = [  # Show the top chunks inline.
@@ -116,8 +116,11 @@ async def handle_message(user_message: cl.Message) -> None:
         await step.update()  # TODO: Workaround for https://github.com/Chainlit/chainlit/issues/602.
     # Stream the LLM response.
     assistant_message = cl.Message(content="")
-    messages: list[dict[str, str]] = cl.chat_context.to_openai()[:-1]  # type: ignore[no-untyped-call]
-    messages.append(create_rag_instruction(user_prompt=user_prompt, context=chunk_spans))
+    messages: list[dict[str, str]] = [
+        *([{"role": "system", "content": config.system_prompt}] if config.system_prompt else []),
+        *(cl.chat_context.to_openai()[:-1]),  # type: ignore[no-untyped-call]
+        create_rag_instruction(user_prompt=user_prompt, context=chunk_spans, config=config),
+    ]
     async for token in async_rag(messages, config=config):
         await assistant_message.stream_token(token)
     await assistant_message.update()  # type: ignore[no-untyped-call]
