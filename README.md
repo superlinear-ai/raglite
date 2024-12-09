@@ -159,9 +159,36 @@ insert_document(Path("Special Relativity.pdf"), config=my_config)
 
 ### 3. Searching and Retrieval-Augmented Generation (RAG)
 
-#### 3.1 Simple RAG pipeline
+#### 3.1 Minimal RAG pipeline
 
-Now you can run a simple but powerful RAG pipeline that consists of retrieving the most relevant chunk spans (each of which is a list of consecutive chunks) with hybrid search and reranking, converting the user prompt to a RAG instruction and appending it to the message history, and finally generating the RAG response:
+Now you can run a minimal RAG pipeline that consists of adding the user prompt to the message history and streaming the LLM response. Depending on the user prompt, the LLM may choose to retrieve context using RAGLite by invoking it as a tool. If retrieval is necessary, the LLM determines the search query and RAGLite applies hybrid search with reranking to retrieve the most relevant chunk spans. The retrieval results are appended to the message history as a tool output. Finally, the LLM response given the RAG context is streamed and the message history is updated with the response:
+
+```python
+from raglite import rag
+
+# Create a user message:
+messages = []  # Or start with an existing message history.
+messages.append({
+    "role": "user",
+    "content": "How is intelligence measured?"
+})
+
+# Let the LLM decide whether to search the database by providing a search method as a tool to the LLM.
+# If requested, RAGLite then uses hybrid search and reranking to append RAG context to the message history.
+# Finally, LLM response is streamed and appended to the message history.
+stream = rag(messages, config=my_config)
+for update in stream:
+    print(update, end="")
+
+# Access the RAG context appended to the message history:
+import json
+
+context = [json.loads(message["content"]) for message in messages if message["role"] == "tool"]
+```
+
+#### 3.2 Basic RAG pipeline
+
+If you want control over the RAG pipeline, you can run a basic but powerful pipeline that consists of retrieving the most relevant chunk spans (each of which is a list of consecutive chunks) with hybrid search and reranking, converting the user prompt to a RAG instruction and appending it to the message history, and finally generating the RAG response:
 
 ```python
 from raglite import create_rag_instruction, rag, retrieve_rag_context
@@ -179,16 +206,16 @@ stream = rag(messages, config=my_config)
 for update in stream:
     print(update, end="")
 
-# Access the documents cited in the RAG response:
+# Access the documents referenced in the RAG context:
 documents = [chunk_span.document for chunk_span in chunk_spans]
 ```
 
-#### 3.2 Advanced RAG pipeline
+#### 3.3 Advanced RAG pipeline
 
 > [!TIP]
 > 🥇 Reranking can significantly improve the output quality of a RAG application. To add reranking to your application: first search for a larger set of 20 relevant chunks, then rerank them with a [rerankers](https://github.com/AnswerDotAI/rerankers) reranker, and finally keep the top 5 chunks.
 
-In addition to the simple RAG pipeline, RAGLite also offers more advanced control over the individual steps of the pipeline. A full pipeline consists of several steps:
+In addition to the basic RAG pipeline, RAGLite also offers more advanced control over the pipeline. A full pipeline consists of several steps:
 
 1. Searching for relevant chunks with keyword, vector, or hybrid search
 2. Retrieving the chunks from the database
@@ -236,7 +263,7 @@ stream = rag(messages, config=my_config)
 for update in stream:
     print(update, end="")
 
-# Access the documents cited in the RAG response:
+# Access the documents referenced in the RAG context:
 documents = [chunk_span.document for chunk_span in chunk_spans]
 ```
 

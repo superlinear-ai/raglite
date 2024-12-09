@@ -13,6 +13,8 @@ from typing import Any, ClassVar, cast
 import httpx
 import litellm
 from litellm import (  # type: ignore[attr-defined]
+    ChatCompletionToolCallChunk,
+    ChatCompletionToolCallFunctionChunk,
     CustomLLM,
     GenericStreamingChunk,
     ModelResponse,
@@ -112,6 +114,8 @@ class LlamaCppPythonLLM(CustomLLM):
                 n_ctx=n_ctx,
                 n_gpu_layers=-1,
                 verbose=False,
+                # Enable function calling.
+                chat_format="chatml-function-calling",
                 # Workaround to enable long context embedding models [1].
                 # [1] https://github.com/abetlen/llama-cpp-python/issues/1762
                 n_batch=n_ctx if n_ctx > 0 else 1024,
@@ -218,24 +222,40 @@ class LlamaCppPythonLLM(CustomLLM):
             llm.create_chat_completion(messages=messages, **llama_cpp_python_params, stream=True),
         )
         for chunk in stream:
-            choices = chunk.get("choices", [])
-            for choice in choices:
-                text = choice.get("delta", {}).get("content", None)
-                finish_reason = choice.get("finish_reason")
-                litellm_generic_streaming_chunk = GenericStreamingChunk(
-                    text=text,  # type: ignore[typeddict-item]
-                    is_finished=bool(finish_reason),
-                    finish_reason=finish_reason,  # type: ignore[typeddict-item]
-                    usage=None,
-                    index=choice.get("index"),  # type: ignore[typeddict-item]
-                    provider_specific_fields={
-                        "id": chunk.get("id"),
-                        "model": chunk.get("model"),
-                        "created": chunk.get("created"),
-                        "object": chunk.get("object"),
-                    },
+            choices = chunk.get("choices")
+            if not choices:
+                continue
+            text = choices[0].get("delta", {}).get("content", None)
+            tool_calls = choices[0].get("delta", {}).get("tool_calls", None)
+            tool_use = (
+                ChatCompletionToolCallChunk(
+                    id=tool_calls[0]["id"],  # type: ignore[index]
+                    type="function",
+                    function=ChatCompletionToolCallFunctionChunk(
+                        name=tool_calls[0]["function"]["name"],  # type: ignore[index]
+                        arguments=tool_calls[0]["function"]["arguments"],  # type: ignore[index]
+                    ),
+                    index=tool_calls[0]["index"],  # type: ignore[index]
                 )
-                yield litellm_generic_streaming_chunk
+                if tool_calls
+                else None
+            )
+            finish_reason = choices[0].get("finish_reason")
+            litellm_generic_streaming_chunk = GenericStreamingChunk(
+                text=text,  # type: ignore[typeddict-item]
+                tool_use=tool_use,
+                is_finished=bool(finish_reason),
+                finish_reason=finish_reason,  # type: ignore[typeddict-item]
+                usage=None,
+                index=choices[0].get("index"),  # type: ignore[typeddict-item]
+                provider_specific_fields={
+                    "id": chunk.get("id"),
+                    "model": chunk.get("model"),
+                    "created": chunk.get("created"),
+                    "object": chunk.get("object"),
+                },
+            )
+            yield litellm_generic_streaming_chunk
 
     async def astreaming(  # type: ignore[misc,override]  # noqa: PLR0913
         self,

@@ -7,6 +7,7 @@ from collections.abc import Generator
 from pathlib import Path
 
 import pytest
+from llama_cpp import llama_supports_gpu_offload
 from sqlalchemy import create_engine, text
 
 from raglite import RAGLiteConfig, insert_document
@@ -21,6 +22,11 @@ def is_postgres_running() -> bool:
             return True
     except OSError:
         return False
+
+
+def is_accelerator_available() -> bool:
+    """Check if an accelerator is available."""
+    return llama_supports_gpu_offload() or (os.cpu_count() or 1) >= 8  # noqa: PLR2004
 
 
 def is_openai_available() -> bool:
@@ -69,24 +75,57 @@ def database(request: pytest.FixtureRequest) -> str:
     scope="session",
     params=[
         pytest.param(
-            "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@1024",  # More context degrades performance.
-            id="bge_m3",
+            (
+                "llama-cpp-python/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/*Q4_K_M.gguf@4096",
+                "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@1024",  # More context degrades performance.
+            ),
+            id="llama31_8B-bge_m3",
+            marks=pytest.mark.skipif(
+                not is_accelerator_available(), reason="No accelerator available"
+            ),
         ),
         pytest.param(
-            "text-embedding-3-small",
-            id="openai_text_embedding_3_small",
+            (
+                "gpt-4o-mini",
+                "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@1024",  # More context degrades performance.
+            ),
+            id="gpt_4o_mini-bge_m3",
+            marks=pytest.mark.skipif(
+                not is_openai_available() or is_accelerator_available(),
+                reason="OpenAI API key is not set"
+                if not is_openai_available()
+                else "Local LLM available",
+            ),
+        ),
+        pytest.param(
+            ("gpt-4o-mini", "text-embedding-3-small"),
+            id="gpt_4o_mini-text_embedding_3_small",
             marks=pytest.mark.skipif(not is_openai_available(), reason="OpenAI API key is not set"),
         ),
     ],
 )
-def embedder(request: pytest.FixtureRequest) -> str:
-    """Get an embedder model URL to test RAGLite with."""
-    embedder: str = request.param
+def llm_embedder(request: pytest.FixtureRequest) -> str:
+    """Get an LLM and embedder pair to test RAGLite with."""
+    llm_embedder: str = request.param
+    return llm_embedder
+
+
+@pytest.fixture(scope="session")
+def llm(llm_embedder: tuple[str, str]) -> str:
+    """Get an LLM to test RAGLite with."""
+    llm, _ = llm_embedder
+    return llm
+
+
+@pytest.fixture(scope="session")
+def embedder(llm_embedder: tuple[str, str]) -> str:
+    """Get an embedder to test RAGLite with."""
+    _, embedder = llm_embedder
     return embedder
 
 
 @pytest.fixture(scope="session")
-def raglite_test_config(database: str, embedder: str) -> RAGLiteConfig:
+def raglite_test_config(database: str, llm: str, embedder: str) -> RAGLiteConfig:
     """Create a lightweight in-memory config for testing SQLite and PostgreSQL."""
     # Select the database based on the embedder.
     variant = "local" if embedder.startswith("llama-cpp-python") else "remote"
@@ -95,7 +134,7 @@ def raglite_test_config(database: str, embedder: str) -> RAGLiteConfig:
     elif "sqlite" in database:
         database = database.replace(".sqlite", f"_{variant}.sqlite")
     # Create a RAGLite config for the given database and embedder.
-    db_config = RAGLiteConfig(db_url=database, embedder=embedder)
+    db_config = RAGLiteConfig(db_url=database, llm=llm, embedder=embedder)
     # Insert a document and update the index.
     doc_path = Path(__file__).parent / "specrel.pdf"  # Einstein's special relativity paper.
     insert_document(doc_path, config=db_config)

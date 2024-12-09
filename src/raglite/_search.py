@@ -1,5 +1,6 @@
 """Search and retrieve chunks."""
 
+import contextlib
 import re
 import string
 from collections import defaultdict
@@ -8,7 +9,7 @@ from itertools import groupby
 from typing import cast
 
 import numpy as np
-from langdetect import detect
+from langdetect import LangDetectException, detect
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import joinedload
 from sqlmodel import Session, and_, col, or_, select, text
@@ -212,8 +213,9 @@ def rerank_chunks(
     # Select the reranker.
     if isinstance(config.reranker, Sequence):
         # Detect the languages of the chunks and queries.
-        langs = {detect(str(chunk)) for chunk in chunks}
-        langs.add(detect(query))
+        with contextlib.suppress(LangDetectException):
+            langs = {detect(str(chunk)) for chunk in chunks}
+            langs.add(detect(query))
         # If all chunks and the query are in the same language, use a language-specific reranker.
         rerankers = dict(config.reranker)
         if len(langs) == 1 and (lang := next(iter(langs))) in rerankers:
