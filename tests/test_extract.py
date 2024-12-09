@@ -9,18 +9,6 @@ from raglite import RAGLiteConfig
 from raglite._extract import extract_with_llm
 
 
-@pytest.fixture(
-    params=[
-        pytest.param(RAGLiteConfig().llm, id="llama_cpp_python"),
-        pytest.param("gpt-4o-mini", id="openai"),
-    ]
-)
-def llm(request: pytest.FixtureRequest) -> str:
-    """Get an LLM to test RAGLite with."""
-    llm: str = request.param
-    return llm
-
-
 @pytest.mark.parametrize(
     "strict", [pytest.param(False, id="strict=False"), pytest.param(True, id="strict=True")]
 )
