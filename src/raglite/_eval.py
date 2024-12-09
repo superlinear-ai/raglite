@@ -1,7 +1,8 @@
 """Generation and evaluation of evals."""
 
+from collections.abc import Sequence
 from random import randint
-from typing import ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 import pandas as pd
@@ -9,16 +10,22 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlmodel import Session, func, select
 from tqdm.auto import tqdm, trange
 
-from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, Document, Eval, create_database_engine
 from raglite._extract import extract_with_llm
-from raglite._rag import create_rag_instruction, rag, retrieve_rag_context
-from raglite._search import hybrid_search, retrieve_chunk_spans, vector_search
-from raglite._typing import SearchMethod
+from raglite._rag import compose_rag_messages, rag
+from raglite._search import retrieve_chunk_spans, vector_search
+from raglite._typing import ChunkSpanSearchMethod
+
+if TYPE_CHECKING:
+    from raglite._config import RAGLiteConfig
 
 
 def insert_evals(  # noqa: C901
-    *, num_evals: int = 100, max_contexts_per_eval: int = 20, config: RAGLiteConfig | None = None
+    *,
+    search_method: ChunkSpanSearchMethod,
+    num_evals: int = 100,
+    max_contexts_per_eval: int = 20,
+    config: "RAGLiteConfig",
 ) -> None:
     """Generate and insert evals into the database."""
 
@@ -55,7 +62,6 @@ The question MUST satisfy ALL of the following criteria:
                 raise ValueError
             return value
 
-    config = config or RAGLiteConfig()
     engine = create_database_engine(config)
     with Session(engine) as session:
         for _ in trange(num_evals, desc="Generating evals", unit="eval", dynamic_ncols=True):
@@ -76,7 +82,7 @@ The question MUST satisfy ALL of the following criteria:
             # Expand the seed chunk into a set of related chunks.
             related_chunk_ids, _ = vector_search(
                 query=np.mean(seed_chunk.embedding_matrix, axis=0, keepdims=True),
-                num_results=randint(2, max_contexts_per_eval // 2),  # noqa: S311
+                max_chunks=randint(2, max_contexts_per_eval // 2),  # noqa: S311
                 config=config,
             )
             related_chunks = [
@@ -92,11 +98,8 @@ The question MUST satisfy ALL of the following criteria:
                 continue
             else:
                 question = question_response.question
-            # Search for candidate chunks to answer the generated question.
-            candidate_chunk_ids, _ = hybrid_search(
-                query=question, num_results=max_contexts_per_eval, config=config
-            )
-            candidate_chunks = [session.get(Chunk, chunk_id) for chunk_id in candidate_chunk_ids]
+            # Search for candidate spans to answer the generated question.
+            spans = search_method(query=question, config=config)
 
             # Determine which candidate chunks are relevant to answer the generated question.
             class ContextEvalResponse(BaseModel):
@@ -116,20 +119,18 @@ Your task is to answer whether the provided context contains (a part of) the ans
 An example of a context that does NOT contain (a part of) the answer is a table of contents.
                     """.strip()
 
-            relevant_chunks = []
-            for candidate_chunk in tqdm(
-                candidate_chunks, desc="Evaluating chunks", unit="chunk", dynamic_ncols=True
-            ):
+            relevant_spans = []
+            for span in tqdm(spans, desc="Evaluating span", unit="span", dynamic_ncols=True):
                 try:
                     context_eval_response = extract_with_llm(
-                        ContextEvalResponse, str(candidate_chunk), strict=True, config=config
+                        ContextEvalResponse, str(span), strict=True, config=config
                     )
                 except ValueError:  # noqa: PERF203
                     pass
                 else:
                     if context_eval_response.hit:
-                        relevant_chunks.append(candidate_chunk)
-            if not relevant_chunks:
+                        relevant_spans.append(span)
+            if not relevant_spans:
                 continue
 
             # Answer the question using the relevant chunks.
@@ -157,7 +158,7 @@ The answer MUST satisfy ALL of the following criteria:
             try:
                 answer_response = extract_with_llm(
                     AnswerResponse,
-                    [str(relevant_chunk) for relevant_chunk in relevant_chunks],
+                    [str(relevant_span) for relevant_span in relevant_spans],
                     strict=True,
                     config=config,
                 )
@@ -166,8 +167,11 @@ The answer MUST satisfy ALL of the following criteria:
             else:
                 answer = answer_response.answer
             # Store the eval in the database.
-            eval_ = Eval.from_chunks(
-                question=question, contexts=relevant_chunks, ground_truth=answer
+
+            eval_ = Eval.from_contexts(
+                question=question,
+                contexts=relevant_spans,
+                ground_truth=answer,
             )
             session.add(eval_)
             session.commit()
@@ -175,13 +179,14 @@ The answer MUST satisfy ALL of the following criteria:
 
 def answer_evals(
     num_evals: int = 100,
-    search: SearchMethod = hybrid_search,
     *,
-    config: RAGLiteConfig | None = None,
+    search_method: ChunkSpanSearchMethod,
+    system_prompt: str | None,
+    rag_instruction_template: str | None,
+    config: "RAGLiteConfig",
 ) -> pd.DataFrame:
     """Read evals from the database and answer them with RAG."""
     # Read evals from the database.
-    config = config or RAGLiteConfig()
     engine = create_database_engine(config)
     with Session(engine) as session:
         evals = session.exec(select(Eval).limit(num_evals)).all()
@@ -189,15 +194,17 @@ def answer_evals(
     answers: list[str] = []
     contexts: list[list[str]] = []
     for eval_ in tqdm(evals, desc="Answering evals", unit="eval", dynamic_ncols=True):
-        chunk_spans = retrieve_rag_context(query=eval_.question, search=search, config=config)
-        messages = [create_rag_instruction(user_prompt=eval_.question, context=chunk_spans)]
+        chunk_spans = search_method(query=eval_.question, config=config)
+        messages = compose_rag_messages(
+            user_prompt=eval_.question,
+            context=chunk_spans,
+            system_prompt=system_prompt,
+            rag_instruction_template=rag_instruction_template,
+        )
         response = rag(messages, config=config)
         answer = "".join(response)
         answers.append(answer)
-        chunk_ids, _ = search(query=eval_.question, config=config)
-        contexts.append(
-            [str(chunk_span) for chunk_span in retrieve_chunk_spans(chunk_ids, config=config)]
-        )
+        contexts.append([str(span) for span in chunk_spans])
     # Collect the answered evals.
     answered_evals: dict[str, list[str] | list[list[str]]] = {
         "question": [eval_.question for eval_ in evals],
@@ -211,7 +218,10 @@ def answer_evals(
 
 
 def evaluate(
-    answered_evals: pd.DataFrame | int = 100, config: RAGLiteConfig | None = None
+    answered_evals_df: pd.DataFrame,
+    *,
+    metrics: Sequence[Any] | None,
+    config: "RAGLiteConfig",
 ) -> pd.DataFrame:
     """Evaluate the performance of a set of answered evals with Ragas."""
     try:
@@ -222,7 +232,6 @@ def evaluate(
         from ragas import evaluate as ragas_evaluate
         from ragas.embeddings import BaseRagasEmbeddings
 
-        from raglite._config import RAGLiteConfig
         from raglite._embed import embed_sentences
         from raglite._litellm import LlamaCppPythonLLM
     except ImportError as import_error:
@@ -232,8 +241,8 @@ def evaluate(
     class RAGLiteRagasEmbeddings(BaseRagasEmbeddings):
         """A RAGLite embedder for Ragas."""
 
-        def __init__(self, config: RAGLiteConfig | None = None):
-            self.config = config or RAGLiteConfig()
+        def __init__(self, config: "RAGLiteConfig"):
+            self.config = config
 
         def embed_query(self, text: str) -> list[float]:
             # Embed the input text with RAGLite's embedding function.
@@ -245,13 +254,6 @@ def evaluate(
             embeddings = embed_sentences(texts, config=self.config)
             return embeddings.tolist()  # type: ignore[no-any-return]
 
-    # Create a set of answered evals if not provided.
-    config = config or RAGLiteConfig()
-    answered_evals_df = (
-        answered_evals
-        if isinstance(answered_evals, pd.DataFrame)
-        else answer_evals(num_evals=answered_evals, config=config)
-    )
     # Load the LLM.
     if config.llm.startswith("llama-cpp-python"):
         llm = LlamaCppPythonLLM().llm(model=config.llm)
@@ -269,6 +271,7 @@ def evaluate(
     evaluation_df = ragas_evaluate(
         dataset=Dataset.from_pandas(answered_evals_df),
         llm=lc_llm,
+        metrics=metrics,
         embeddings=embedder,
         run_config=RunConfig(max_workers=1),
     ).to_pandas()

@@ -1,20 +1,22 @@
 """String embedder."""
 
 from functools import partial
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from litellm import embedding
 from llama_cpp import LLAMA_POOLING_TYPE_NONE, Llama
 from tqdm.auto import tqdm, trange
 
-from raglite._config import RAGLiteConfig
 from raglite._litellm import LlamaCppPythonLLM
 from raglite._typing import FloatMatrix, IntVector
 
+if TYPE_CHECKING:
+    from raglite._config import RAGLiteConfig
+
 
 def _embed_sentences_with_late_chunking(  # noqa: PLR0915
-    sentences: list[str], *, config: RAGLiteConfig | None = None
+    sentences: list[str], *, config: "RAGLiteConfig"
 ) -> FloatMatrix:
     """Embed a document's sentences with late chunking."""
 
@@ -59,7 +61,6 @@ def _embed_sentences_with_late_chunking(  # noqa: PLR0915
 
     # Assert that we're using a llama-cpp-python model, since API-based embedding models don't
     # support outputting token-level embeddings.
-    config = config or RAGLiteConfig()
     assert config.embedder.startswith("llama-cpp-python")
     embedder = LlamaCppPythonLLM.llm(
         config.embedder, embedding=True, pooling_type=LLAMA_POOLING_TYPE_NONE
@@ -138,11 +139,11 @@ def _embed_sentences_with_late_chunking(  # noqa: PLR0915
 
 
 def _embed_sentences_with_windowing(
-    sentences: list[str], *, config: RAGLiteConfig | None = None
+    sentences: list[str], *, config: "RAGLiteConfig"
 ) -> FloatMatrix:
     """Embed a document's sentences with windowing."""
 
-    def _embed_string_batch(string_batch: list[str], *, config: RAGLiteConfig) -> FloatMatrix:
+    def _embed_string_batch(string_batch: list[str], *, config: "RAGLiteConfig") -> FloatMatrix:
         # Embed the batch of strings.
         if config.embedder.startswith("llama-cpp-python"):
             # LiteLLM doesn't yet support registering a custom embedder, so we handle it here.
@@ -164,7 +165,6 @@ def _embed_sentences_with_windowing(
         return embeddings
 
     # Window the sentences with a lookback of `config.embedder_sentence_window_size - 1` sentences.
-    config = config or RAGLiteConfig()
     sentence_windows = [
         "".join(sentences[max(0, i - (config.embedder_sentence_window_size - 1)) : i + 1])
         for i in range(len(sentences))
@@ -186,16 +186,14 @@ def _embed_sentences_with_windowing(
 
 def sentence_embedding_type(
     *,
-    config: RAGLiteConfig | None = None,
+    config: "RAGLiteConfig",
 ) -> Literal["late_chunking", "windowing"]:
     """Return the type of sentence embeddings."""
-    config = config or RAGLiteConfig()
     return "late_chunking" if config.embedder.startswith("llama-cpp-python") else "windowing"
 
 
-def embed_sentences(sentences: list[str], *, config: RAGLiteConfig | None = None) -> FloatMatrix:
+def embed_sentences(sentences: list[str], *, config: "RAGLiteConfig") -> FloatMatrix:
     """Embed the sentences of a document as a NumPy matrix with one row per sentence."""
-    config = config or RAGLiteConfig()
     if sentence_embedding_type(config=config) == "late_chunking":
         sentence_embeddings = _embed_sentences_with_late_chunking(sentences, config=config)
     else:

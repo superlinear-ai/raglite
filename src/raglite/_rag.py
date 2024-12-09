@@ -2,7 +2,7 @@
 
 import json
 from collections.abc import AsyncIterator, Callable, Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any, Optional
 
 import numpy as np
 from litellm import (  # type: ignore[attr-defined]
@@ -13,52 +13,41 @@ from litellm import (  # type: ignore[attr-defined]
     supports_function_calling,
 )
 
-from raglite._config import RAGLiteConfig
 from raglite._database import ChunkSpan
 from raglite._litellm import get_context_size
-from raglite._search import hybrid_search, rerank_chunks, retrieve_chunk_spans
-from raglite._typing import SearchMethod
+from raglite._prompts import DEFAULT_RAG_INSTRUCTION_TEMPLATE
+from raglite._search import retrieve_chunk_spans, retrieve_chunks
 
-# The default RAG instruction template follows Anthropic's best practices [1].
-# [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
-RAG_INSTRUCTION_TEMPLATE = """
-You are a friendly and knowledgeable assistant that provides complete and insightful answers.
-Whenever possible, use only the provided context to respond to the question at the end.
-When responding, you MUST NOT reference the existence of the context, directly or indirectly.
-Instead, you MUST treat the context as if its contents are entirely part of your working memory.
-
-{context}
-
-{user_prompt}
-""".strip()
+if TYPE_CHECKING:
+    from raglite._config import RAGLiteConfig
+    from raglite._typing import ChunkRerankingMethod, ChunkSearchMethod
 
 
-def retrieve_rag_context(
+def retrieve_rag_context(  # noqa: PLR0913
     query: str,
     *,
-    num_chunks: int = 5,
-    chunk_neighbors: tuple[int, ...] | None = (-1, 1),
-    search: SearchMethod = hybrid_search,
-    config: RAGLiteConfig | None = None,
+    search: "ChunkSearchMethod",
+    rerank: Optional["ChunkRerankingMethod"] = None,
+    max_chunk_spans: int | None = None,
+    chunk_neighbors: tuple[int, ...] = (-1, 1),
+    config: "RAGLiteConfig",
 ) -> list[ChunkSpan]:
     """Retrieve context for RAG."""
-    # If the user has configured a reranker, we retrieve extra contexts to rerank.
-    config = config or RAGLiteConfig()
-    extra_chunks = 3 * num_chunks if config.reranker else 0
-    # Search for relevant chunks.
-    chunk_ids, _ = search(query, num_results=num_chunks + extra_chunks, config=config)
+    chunk_ids, _ = search(query, config=config)
     # Rerank the chunks from most to least relevant.
-    chunks = rerank_chunks(query, chunk_ids=chunk_ids, config=config)
-    # Extend the top contexts with their neighbors and group chunks into contiguous segments.
-    context = retrieve_chunk_spans(chunks[:num_chunks], neighbors=chunk_neighbors, config=config)
-    return context
+    if rerank:
+        chunks = rerank(query, chunk_ids=chunk_ids, config=config)
+    else:
+        chunks = retrieve_chunks(chunk_ids, config=config)
+    context = retrieve_chunk_spans(chunks, chunk_neighbors=chunk_neighbors, config=config)
+    return context[:max_chunk_spans]
 
 
 def create_rag_instruction(
     user_prompt: str,
     context: list[ChunkSpan],
     *,
-    rag_instruction_template: str = RAG_INSTRUCTION_TEMPLATE,
+    rag_instruction_template: str,
 ) -> dict[str, str]:
     """Convert a user prompt to a RAG instruction.
 
@@ -76,6 +65,27 @@ def create_rag_instruction(
         ),
     }
     return message
+
+
+def compose_rag_messages(
+    user_prompt: str,
+    *,
+    context: list[ChunkSpan] | None = None,
+    history: list[dict[str, str]] | None = None,
+    system_prompt: str | None = None,
+    rag_instruction_template: str | None = None,
+) -> list[dict[str, str]]:
+    """Compose a list of messages to generate a response."""
+    messages = [
+        *([{"role": "system", "content": system_prompt}] if system_prompt else []),
+        *(history or []),
+        create_rag_instruction(
+            user_prompt=user_prompt,
+            context=context if context else [],
+            rag_instruction_template=rag_instruction_template or DEFAULT_RAG_INSTRUCTION_TEMPLATE,
+        ),
+    ]
+    return messages
 
 
 def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str]]:
@@ -241,7 +251,7 @@ async def async_rag(
     messages: list[dict[str, str]],
     *,
     on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
-    config: RAGLiteConfig,
+    config: "RAGLiteConfig",
 ) -> AsyncIterator[str]:
     # If the final message does not contain RAG context, get a tool to search the knowledge base.
     max_tokens = get_context_size(config)

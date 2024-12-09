@@ -23,7 +23,7 @@ def test_extract(llm: str, strict: bool) -> None:  # noqa: FBT001
 
         model_config = ConfigDict(extra="forbid" if strict else "allow")
         username: str = Field(..., description="The username.")
-        password: str = Field(..., description="The password.")
+        password: str = Field(..., description="The password. Redacted with '***'.")
         system_prompt: ClassVar[str] = "Extract the username and password from the input."
 
     # Extract structured data.
@@ -34,4 +34,4 @@ def test_extract(llm: str, strict: bool) -> None:  # noqa: FBT001
     # Validate the response.
     assert isinstance(login_response, LoginResponse)
     assert login_response.username == username
-    assert login_response.password == password
+    assert login_response.password == "***"  # noqa: S105

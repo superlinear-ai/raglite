@@ -5,8 +5,9 @@ import re
 import string
 from collections import defaultdict
 from collections.abc import Sequence
+from functools import partial
 from itertools import groupby
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from langdetect import LangDetectException, detect
@@ -14,7 +15,6 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import joinedload
 from sqlmodel import Session, and_, col, or_, select, text
 
-from raglite._config import RAGLiteConfig
 from raglite._database import (
     Chunk,
     ChunkEmbedding,
@@ -23,19 +23,20 @@ from raglite._database import (
     create_database_engine,
 )
 from raglite._embed import embed_sentences
-from raglite._typing import ChunkId, FloatMatrix
+from raglite._typing import ChunkId, ChunkSearchMethod, FloatMatrix
+
+if TYPE_CHECKING:
+    from raglite._config import RAGLiteConfig
 
 
 def vector_search(
     query: str | FloatMatrix,
     *,
-    num_results: int = 3,
+    max_chunks: int = 10,
     oversample: int = 8,
-    config: RAGLiteConfig | None = None,
+    config: "RAGLiteConfig",
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks using ANN vector search."""
-    # Read the config.
-    config = config or RAGLiteConfig()
     db_backend = make_url(config.db_url).get_backend_name()
     # Get the index metadata (including the query adapter, and in the case of SQLite, the index).
     index_metadata = IndexMetadata.get("default", config=config)
@@ -64,7 +65,7 @@ def vector_search(
             results = session.exec(
                 select(ChunkEmbedding.chunk_id, distance)
                 .order_by(distance)
-                .limit(oversample * num_results)
+                .limit(max_chunks * oversample)
             )
             chunk_ids_, distance = zip(*results, strict=True)
             chunk_ids, similarity = np.asarray(chunk_ids_), 1.0 - np.asarray(distance)
@@ -77,7 +78,7 @@ def vector_search(
         from pynndescent import NNDescent
 
         multi_vector_indices, distance = cast(NNDescent, index).query(
-            query_embedding[np.newaxis, :], k=oversample * num_results
+            query_embedding[np.newaxis, :], k=max_chunks * oversample
         )
         similarity = 1 - distance[0, :]
         # Transform the multi-vector indices into chunk indices, and then to chunk ids.
@@ -94,17 +95,15 @@ def vector_search(
     pooled_similarity = np.mean(score, axis=1)
     # Sort the chunk ids by their adjusted similarity.
     sorted_indices = np.argsort(pooled_similarity)[::-1]
-    unique_chunk_ids = unique_chunk_ids[sorted_indices][:num_results]
-    pooled_similarity = pooled_similarity[sorted_indices][:num_results]
+    unique_chunk_ids = unique_chunk_ids[sorted_indices][:max_chunks]
+    pooled_similarity = pooled_similarity[sorted_indices][:max_chunks]
     return unique_chunk_ids.tolist(), pooled_similarity.tolist()
 
 
 def keyword_search(
-    query: str, *, num_results: int = 3, config: RAGLiteConfig | None = None
+    query: str, *, max_chunks: int = 10, config: "RAGLiteConfig"
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks using BM25 keyword search."""
-    # Read the config.
-    config = config or RAGLiteConfig()
     db_backend = make_url(config.db_url).get_backend_name()
     # Connect to the database.
     engine = create_database_engine(config)
@@ -115,14 +114,16 @@ def keyword_search(
             query_escaped = re.sub(f"[{re.escape(string.punctuation)}]", " ", query)
             tsv_query = " | ".join(query_escaped.split())
             # Perform keyword search with tsvector.
-            statement = text("""
+            statement = text(
+                """
                 SELECT id as chunk_id, ts_rank(to_tsvector('simple', body), to_tsquery('simple', :query)) AS score
                 FROM chunk
                 WHERE to_tsvector('simple', body) @@ to_tsquery('simple', :query)
                 ORDER BY score DESC
                 LIMIT :limit;
-                """)
-            results = session.execute(statement, params={"query": tsv_query, "limit": num_results})
+                """
+            )
+            results = session.execute(statement, params={"query": tsv_query, "limit": max_chunks})
         elif db_backend == "sqlite":
             # Convert the query to an FTS5 query [1].
             # [1] https://www.sqlite.org/fts5.html#full_text_query_syntax
@@ -131,14 +132,16 @@ def keyword_search(
             # Perform keyword search with FTS5. In FTS5, BM25 scores are negative [1], so we
             # negate them to make them positive.
             # [1] https://www.sqlite.org/fts5.html#the_bm25_function
-            statement = text("""
+            statement = text(
+                """
                 SELECT chunk.id as chunk_id, -bm25(keyword_search_chunk_index) as score
                 FROM chunk JOIN keyword_search_chunk_index ON chunk.rowid = keyword_search_chunk_index.rowid
                 WHERE keyword_search_chunk_index MATCH :match
                 ORDER BY score DESC
                 LIMIT :limit;
-                """)
-            results = session.execute(statement, params={"match": fts5_query, "limit": num_results})
+                """
+            )
+            results = session.execute(statement, params={"match": fts5_query, "limit": max_chunks})
         # Unpack the results.
         results = list(results)  # type: ignore[assignment]
         chunk_ids = [result.chunk_id for result in results]
@@ -164,24 +167,40 @@ def reciprocal_rank_fusion(
     return list(rrf_chunk_ids), list(rrf_score)
 
 
-def hybrid_search(
-    query: str, *, num_results: int = 3, oversample: int = 4, config: RAGLiteConfig | None = None
+def multi_search(
+    query: str,
+    *,
+    subsearches: list[ChunkSearchMethod],
+    max_chunks: int = 10,
+    config: "RAGLiteConfig",
 ) -> tuple[list[ChunkId], list[float]]:
-    """Search chunks by combining ANN vector search with BM25 keyword search."""
-    # Run both searches.
-    vs_chunk_ids, _ = vector_search(query, num_results=oversample * num_results, config=config)
-    ks_chunk_ids, _ = keyword_search(query, num_results=oversample * num_results, config=config)
+    """Search chunks by combining several search methods."""
+    rankings = [subsearch(query, config=config)[0] for subsearch in subsearches]
     # Combine the results with Reciprocal Rank Fusion (RRF).
-    chunk_ids, hybrid_score = reciprocal_rank_fusion([vs_chunk_ids, ks_chunk_ids])
-    chunk_ids, hybrid_score = chunk_ids[:num_results], hybrid_score[:num_results]
-    return chunk_ids, hybrid_score
+    chunk_ids, hybrid_score = reciprocal_rank_fusion(rankings)
+    return chunk_ids[:max_chunks], hybrid_score[:max_chunks]
 
 
-def retrieve_chunks(
-    chunk_ids: list[ChunkId], *, config: RAGLiteConfig | None = None
-) -> list[Chunk]:
+def hybrid_search(
+    query: str,
+    *,
+    max_chunks: int = 10,
+    oversample: int = 4,
+    config: "RAGLiteConfig",
+) -> tuple[list[ChunkId], list[float]]:
+    """Search chunks by combining vector and keyword search."""
+    subsearches: list[ChunkSearchMethod] = [
+        partial(keyword_search, max_chunks=oversample * max_chunks),
+        partial(vector_search, max_chunks=oversample * max_chunks),
+    ]
+    chunk_ids, hybrid_score = multi_search(
+        query, subsearches=subsearches, max_chunks=max_chunks, config=config
+    )
+    return chunk_ids[:max_chunks], hybrid_score[:max_chunks]
+
+
+def retrieve_chunks(chunk_ids: list[ChunkId], *, config: "RAGLiteConfig") -> list[Chunk]:
     """Retrieve chunks by their ids."""
-    config = config or RAGLiteConfig()
     engine = create_database_engine(config)
     with Session(engine) as session:
         chunks = list(
@@ -197,11 +216,10 @@ def retrieve_chunks(
 
 
 def rerank_chunks(
-    query: str, chunk_ids: list[ChunkId] | list[Chunk], *, config: RAGLiteConfig | None = None
+    query: str, chunk_ids: list[ChunkId] | list[Chunk], *, config: "RAGLiteConfig"
 ) -> list[Chunk]:
     """Rerank chunks according to their relevance to a given query."""
     # Retrieve the chunks.
-    config = config or RAGLiteConfig()
     chunks: list[Chunk] = (
         retrieve_chunks(chunk_ids, config=config)  # type: ignore[arg-type,assignment]
         if all(isinstance(chunk_id, ChunkId) for chunk_id in chunk_ids)
@@ -235,16 +253,14 @@ def rerank_chunks(
 def retrieve_chunk_spans(
     chunk_ids: list[ChunkId] | list[Chunk],
     *,
-    neighbors: tuple[int, ...] | None = (-1, 1),
-    config: RAGLiteConfig | None = None,
+    chunk_neighbors: tuple[int, ...] | None = (-1, 1),
+    config: "RAGLiteConfig",
 ) -> list[ChunkSpan]:
     """Group chunks into contiguous chunk spans and retrieve them.
 
     Chunk spans are ordered according to the aggregate relevance of their underlying chunks, as
     determined by the order in which they are provided to this function.
     """
-    # Retrieve the chunks.
-    config = config or RAGLiteConfig()
     chunks: list[Chunk] = (
         retrieve_chunks(chunk_ids, config=config)  # type: ignore[arg-type,assignment]
         if all(isinstance(chunk_id, ChunkId) for chunk_id in chunk_ids)
@@ -255,11 +271,11 @@ def retrieve_chunk_spans(
     # Extend the chunks with their neighbouring chunks.
     engine = create_database_engine(config)
     with Session(engine) as session:
-        if neighbors:
+        if chunk_neighbors:
             neighbor_conditions = [
                 and_(Chunk.document_id == chunk.document_id, Chunk.index == chunk.index + offset)
                 for chunk in chunks
-                for offset in neighbors
+                for offset in chunk_neighbors
             ]
             chunks += list(
                 session.exec(

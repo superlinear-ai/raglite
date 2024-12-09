@@ -6,12 +6,18 @@ from pathlib import Path
 import chainlit as cl
 from chainlit.input_widget import Switch, TextInput
 
-from raglite import RAGLiteConfig, async_rag, hybrid_search, insert_document, rerank_chunks
+from raglite import (
+    RAGLiteConfig,
+    async_rag,
+    hybrid_search,
+    insert_document,
+    rerank_chunks,
+    retrieve_rag_context,
+)
 from raglite._markdown import document_to_markdown
+from raglite._rag import compose_rag_messages
 
 async_insert_document = cl.make_async(insert_document)
-async_hybrid_search = cl.make_async(hybrid_search)
-async_rerank_chunks = cl.make_async(rerank_chunks)
 
 
 @cl.on_chat_start
@@ -53,8 +59,8 @@ async def update_config(settings: cl.ChatSettings) -> None:
     if str(config.db_url).startswith("sqlite") or config.embedder.startswith("llama-cpp-python"):
         # async with cl.Step(name="initialize", type="retrieval"):
         query = "Hello world"
-        chunk_ids, _ = await async_hybrid_search(query=query, config=config)
-        _ = await async_rerank_chunks(query=query, chunk_ids=chunk_ids, config=config)
+        # TODO: Compare with previous commit (async and rerank)
+        hybrid_search(query=query, config=config)
 
 
 @cl.on_message
@@ -82,27 +88,54 @@ async def handle_message(user_message: cl.Message) -> None:
             for i, attachment in enumerate(inline_attachments)
         )
         + f"\n\n{user_message.content}"
-    ).strip()
+    )
+
+    # Retrieve the context for RAG.
+    async with cl.Step(name="retrieval", type="retrieval") as step:
+        step.input = user_message.content
+        async_retrieve_rag_context = cl.make_async(retrieve_rag_context)
+        chunk_spans = await async_retrieve_rag_context(
+            query=user_prompt,
+            search=hybrid_search,
+            rerank=rerank_chunks,
+            max_chunk_spans=5,
+            config=config,
+        )
+        step.output = chunk_spans
+        step.elements = [  # Show the top chunk spans inline.
+            cl.Text(content=str(chunk_span), display="inline") for chunk_span in chunk_spans
+        ]
+        await step.update()  # TODO: Workaround for https://github.com/Chainlit/chainlit/issues/602.
     # Stream the LLM response.
     assistant_message = cl.Message(content="")
-    chunk_spans = []
-    messages: list[dict[str, str]] = cl.chat_context.to_openai()[:-1]  # type: ignore[no-untyped-call]
-    messages.append({"role": "user", "content": user_prompt})
-    async for token in async_rag(
-        messages, on_retrieval=lambda x: chunk_spans.extend(x), config=config
-    ):
+    messages = compose_rag_messages(
+        user_prompt=user_prompt,
+        context=chunk_spans,
+        history=cl.chat_context.to_openai()[:-1],  # type: ignore[no-untyped-call]
+        system_prompt=None,
+    )
+    async for token in async_rag(messages, config=config):
         await assistant_message.stream_token(token)
-    # Append RAG sources, if any.
-    if chunk_spans:
-        rag_sources: dict[str, list[str]] = {}
-        for chunk_span in chunk_spans:
-            rag_sources.setdefault(chunk_span.document.id, [])
-            rag_sources[chunk_span.document.id].append(str(chunk_span))
-        assistant_message.content += "\n\nSources: " + ", ".join(  # Rendered as hyperlinks.
-            f"[{i + 1}]" for i in range(len(rag_sources))
-        )
-        assistant_message.elements = [  # Markdown content is rendered in sidebar.
-            cl.Text(name=f"[{i + 1}]", content="\n\n---\n\n".join(content), display="side")  # type: ignore[misc]
-            for i, (_, content) in enumerate(rag_sources.items())
-        ]
+
+    # assistant_message = cl.Message(content="")
+    # chunk_spans = []
+    # messages: list[dict[str, str]] = cl.chat_context.to_openai()[:-1]  # type: ignore[no-untyped-call]
+    # messages.append({"role": "user", "content": user_prompt})
+    # async for token in async_rag(
+    #     messages, on_retrieval=lambda x: chunk_spans.extend(x), config=config
+    # ):
+    #     await assistant_message.stream_token(token)
+    # # Append RAG sources, if any.
+    # if chunk_spans:
+    #     rag_sources: dict[str, list[str]] = {}
+    #     for chunk_span in chunk_spans:
+    #         rag_sources.setdefault(chunk_span.document.id, [])
+    #         rag_sources[chunk_span.document.id].append(str(chunk_span))
+    #     assistant_message.content += "\n\nSources: " + ", ".join(  # Rendered as hyperlinks.
+    #         f"[{i + 1}]" for i in range(len(rag_sources))
+    #     )
+    #     assistant_message.elements = [  # Markdown content is rendered in sidebar.
+    #         cl.Text(name=f"[{i + 1}]", content="\n\n---\n\n".join(content), display="side")  # type: ignore[misc]
+    #         for i, (_, content) in enumerate(rag_sources.items())
+    #     ]
     await assistant_message.update()  # type: ignore[no-untyped-call]
