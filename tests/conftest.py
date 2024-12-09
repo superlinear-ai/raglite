@@ -76,25 +76,19 @@ def database(request: pytest.FixtureRequest) -> str:
     params=[
         pytest.param(
             (
+                "llama-cpp-python/bartowski/Llama-3.2-3B-Instruct-GGUF/*Q4_K_M.gguf@4096",
+                "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@1024",  # More context degrades performance.
+            ),
+            id="llama32_3B-bge_m3",
+        ),
+        pytest.param(
+            (
                 "llama-cpp-python/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/*Q4_K_M.gguf@4096",
                 "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@1024",  # More context degrades performance.
             ),
             id="llama31_8B-bge_m3",
             marks=pytest.mark.skipif(
                 not is_accelerator_available(), reason="No accelerator available"
-            ),
-        ),
-        pytest.param(
-            (
-                "gpt-4o-mini",
-                "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@1024",  # More context degrades performance.
-            ),
-            id="gpt_4o_mini-bge_m3",
-            marks=pytest.mark.skipif(
-                not is_openai_available() or is_accelerator_available(),
-                reason="OpenAI API key is not set"
-                if not is_openai_available()
-                else "Local LLM available",
             ),
         ),
         pytest.param(
