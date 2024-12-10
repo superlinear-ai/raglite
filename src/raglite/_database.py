@@ -169,18 +169,41 @@ class ChunkSpan:
         if not self.chunks:
             return ""
         index_attribute = f' index="{index}"' if index is not None else ""
-        xml = "\n".join(
+        xml_document = "\n".join(
             [
                 f'<document{index_attribute} id="{self.document.id}">',
                 f"<source>{self.document.url if self.document.url else self.document.filename}</source>",
-                f'<span from_chunk_id="{self.chunks[0].id}" to_chunk_id="{self.chunks[0].id}">',
-                f"<heading>\n{escape(self.chunks[0].headings.strip())}\n</heading>",
+                f'<span from_chunk_id="{self.chunks[0].id}" to_chunk_id="{self.chunks[-1].id}">',
+                f"<headings>\n{escape(self.chunks[0].headings.strip())}\n</headings>",
                 f"<content>\n{escape(''.join(chunk.body for chunk in self.chunks).strip())}\n</content>",
                 "</span>",
                 "</document>",
             ]
         )
-        return xml
+        return xml_document
+
+    def to_json(self, index: int | None = None) -> str:
+        """Convert this chunk span to a JSON representation.
+
+        The JSON representation follows Anthropic's best practices [1].
+
+        [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
+        """
+        if not self.chunks:
+            return "{}"
+        index_attribute = {"index": index} if index is not None else {}
+        json_document = {
+            **index_attribute,
+            "id": self.document.id,
+            "source": self.document.url if self.document.url else self.document.filename,
+            "span": {
+                "from_chunk_id": self.chunks[0].id,
+                "to_chunk_id": self.chunks[-1].id,
+                "headings": self.chunks[0].headings.strip(),
+                "content": "".join(chunk.body for chunk in self.chunks).strip(),
+            },
+        }
+        return json.dumps(json_document)
 
     @property
     def content(self) -> str:

@@ -34,13 +34,12 @@ def extract_with_llm(
     # Load the default config if not provided.
     config = config or RAGLiteConfig()
     # Check if the LLM supports the response format.
-    llm_provider = "llama-cpp-python" if config.embedder.startswith("llama-cpp") else None
     llm_supports_response_format = "response_format" in (
-        get_supported_openai_params(model=config.llm, custom_llm_provider=llm_provider) or []
+        get_supported_openai_params(model=config.llm) or []
     )
     # Update the system prompt with the JSON schema of the return type to help the LLM.
     system_prompt = getattr(return_type, "system_prompt", "").strip()
-    if not llm_supports_response_format or llm_provider == "llama-cpp-python":
+    if not llm_supports_response_format or config.llm.startswith("llama-cpp-python"):
         system_prompt += f"\n\nFormat your response according to this JSON schema:\n{return_type.model_json_schema()!s}"
     # Constrain the reponse format to the JSON schema if it's supported by the LLM [1]. Strict mode
     # is disabled by default because it only supports a subset of JSON schema features [2].
