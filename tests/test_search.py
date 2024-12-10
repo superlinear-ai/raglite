@@ -1,5 +1,7 @@
 """Test RAGLite's search functionality."""
 
+from dataclasses import replace
+
 import pytest
 
 from raglite import (
@@ -32,7 +34,9 @@ def test_search(raglite_test_config: RAGLiteConfig, search_method: SearchMethod)
     # Search for a query.
     query = "What does it mean for two events to be simultaneous?"
     num_results = 5
-    chunk_ids, scores = search_method(query, num_results=num_results, config=raglite_test_config)
+    chunk_ids, scores = search_method(
+        query, config=replace(raglite_test_config, num_chunks=num_results)
+    )
     assert len(chunk_ids) == len(scores) == num_results
     assert all(isinstance(chunk_id, str) for chunk_id in chunk_ids)
     assert all(isinstance(score, float) for score in scores)
@@ -55,7 +59,9 @@ def test_search_no_results(raglite_test_config: RAGLiteConfig, search_method: Se
     """Test searching for a query with no keyword search results."""
     query = "supercalifragilisticexpialidocious"
     num_results = 5
-    chunk_ids, scores = search_method(query, num_results=num_results, config=raglite_test_config)
+    chunk_ids, scores = search_method(
+        query, config=replace(raglite_test_config, num_chunks=num_results)
+    )
     num_results_expected = 0 if search_method == keyword_search else num_results
     assert len(chunk_ids) == len(scores) == num_results_expected
     assert all(isinstance(chunk_id, str) for chunk_id in chunk_ids)
