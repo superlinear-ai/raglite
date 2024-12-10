@@ -31,7 +31,7 @@ def kendall_tau(a: list[T], b: list[T]) -> float:
             ),
             id="flashrank_multilingual",
         ),
-    ],
+    ]
 )
 def reranker(
     request: pytest.FixtureRequest,
@@ -48,11 +48,14 @@ def test_reranker(
     """Test inserting a document, updating the indexes, and searching for a query."""
     # Update the config with the reranker.
     raglite_test_config = RAGLiteConfig(
-        db_url=raglite_test_config.db_url, embedder=raglite_test_config.embedder, reranker=reranker
+        db_url=raglite_test_config.db_url,
+        embedder=raglite_test_config.embedder,
+        reranker=reranker,
+        num_chunks=20,
     )
     # Search for a query.
     query = "What does it mean for two events to be simultaneous?"
-    chunk_ids, _ = hybrid_search(query, num_results=20, config=raglite_test_config)
+    chunk_ids, _ = hybrid_search(query, config=raglite_test_config)
     # Retrieve the chunks.
     chunks = retrieve_chunks(chunk_ids, config=raglite_test_config)
     assert all(isinstance(chunk, Chunk) for chunk in chunks)
@@ -67,4 +70,7 @@ def test_reranker(
             τ_search = kendall_tau(chunks, reranked_chunks)  # noqa: PLC2401
             τ_inverse = kendall_tau(chunks[::-1], reranked_chunks)  # noqa: PLC2401
             τ_random = kendall_tau(chunks_random, reranked_chunks)  # noqa: PLC2401
-            assert τ_search >= τ_random >= τ_inverse
+            assert τ_search >= τ_random >= τ_inverse, (
+                f"Reranker {reranker} failed: "
+                f"τ_search={τ_search}, τ_random={τ_random}, τ_inverse={τ_inverse}"
+            )
