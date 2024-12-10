@@ -175,7 +175,7 @@ def reciprocal_rank_fusion(
 
 
 def hybrid_search(
-    query: str, *, oversample: int = 1, config: RAGLiteConfig | None = None
+    query: str, *, oversample: int = 4, config: RAGLiteConfig | None = None
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks by combining ANN vector search with BM25 keyword search."""
     config = config or RAGLiteConfig()
