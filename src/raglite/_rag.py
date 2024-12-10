@@ -1,7 +1,7 @@
 """Retrieval-augmented generation."""
 
 import json
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Any
 
 import numpy as np
@@ -152,7 +152,9 @@ def _get_tools(
 
 
 def _run_tools(
-    tool_calls: list[ChatCompletionMessageToolCall], config: RAGLiteConfig
+    tool_calls: list[ChatCompletionMessageToolCall],
+    on_retrieval: Callable[[list[ChunkSpan]], None] | None,
+    config: RAGLiteConfig,
 ) -> list[dict[str, Any]]:
     """Run tools to search the knowledge base for RAG context."""
     tool_messages: list[dict[str, Any]] = []
@@ -161,13 +163,14 @@ def _run_tools(
             kwargs = json.loads(tool_call.function.arguments)
             kwargs["config"] = config
             skip = not kwargs.pop("expert", True)
+            chunk_spans = retrieve_rag_context(**kwargs) if not skip and kwargs["query"] else None
             tool_messages.append(
                 {
                     "role": "tool",
                     "content": '{{"documents": [{elements}]}}'.format(
                         elements=", ".join(
                             chunk_span.to_json(index=i + 1)
-                            for i, chunk_span in enumerate(retrieve_rag_context(**kwargs))
+                            for i, chunk_span in enumerate(chunk_spans)  # type: ignore[arg-type]
                         )
                     )
                     if not skip and kwargs["query"]
@@ -175,13 +178,20 @@ def _run_tools(
                     "tool_call_id": tool_call.id,
                 }
             )
+            if chunk_spans and callable(on_retrieval):
+                on_retrieval(chunk_spans)
         else:
             error_message = f"Unknown function `{tool_call.function.name}`."
             raise ValueError(error_message)
     return tool_messages
 
 
-def rag(messages: list[dict[str, str]], *, config: RAGLiteConfig) -> Iterator[str]:
+def rag(
+    messages: list[dict[str, str]],
+    *,
+    on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
+    config: RAGLiteConfig,
+) -> Iterator[str]:
     # If the final message does not contain RAG context, get a tool to search the knowledge base.
     max_tokens = get_context_size(config)
     tools, tool_choice = _get_tools(messages, config)
@@ -214,7 +224,7 @@ def rag(messages: list[dict[str, str]], *, config: RAGLiteConfig) -> Iterator[st
         # Add the tool call request to the message array.
         messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
         # Run the tool calls to retrieve the RAG context and append the output to the message array.
-        messages.extend(_run_tools(tool_calls, config))
+        messages.extend(_run_tools(tool_calls, on_retrieval, config))
         # Stream the assistant response.
         chunks = []
         stream = completion(model=config.llm, messages=_clip(messages, max_tokens), stream=True)
@@ -227,7 +237,12 @@ def rag(messages: list[dict[str, str]], *, config: RAGLiteConfig) -> Iterator[st
     messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
 
 
-async def async_rag(messages: list[dict[str, str]], *, config: RAGLiteConfig) -> AsyncIterator[str]:
+async def async_rag(
+    messages: list[dict[str, str]],
+    *,
+    on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
+    config: RAGLiteConfig,
+) -> AsyncIterator[str]:
     # If the final message does not contain RAG context, get a tool to search the knowledge base.
     max_tokens = get_context_size(config)
     tools, tool_choice = _get_tools(messages, config)
@@ -261,7 +276,7 @@ async def async_rag(messages: list[dict[str, str]], *, config: RAGLiteConfig) ->
         messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
         # Run the tool calls to retrieve the RAG context and append the output to the message array.
         # TODO: Make this async.
-        messages.extend(_run_tools(tool_calls, config))
+        messages.extend(_run_tools(tool_calls, on_retrieval, config))
         # Asynchronously stream the assistant response.
         chunks = []
         async_stream = await acompletion(

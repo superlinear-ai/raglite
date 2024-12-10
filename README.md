@@ -161,7 +161,7 @@ insert_document(Path("Special Relativity.pdf"), config=my_config)
 
 #### 3.1 Minimal RAG pipeline
 
-Now you can run a minimal RAG pipeline that consists of adding the user prompt to the message history and streaming the LLM response. Depending on the user prompt, the LLM may choose to retrieve context using RAGLite by invoking it as a tool. If retrieval is necessary, the LLM determines the search query and RAGLite applies hybrid search with reranking to retrieve the most relevant chunk spans. The retrieval results are appended to the message history as a tool output. Finally, the LLM response given the RAG context is streamed and the message history is updated with the response:
+Now you can run a minimal RAG pipeline that consists of adding the user prompt to the message history and streaming the LLM response. Depending on the user prompt, the LLM may choose to retrieve context using RAGLite by invoking it as a tool. If retrieval is necessary, the LLM determines the search query and RAGLite applies hybrid search with reranking to retrieve the most relevant chunk spans (each of which is a list of consecutive chunks). The retrieval results are received by the `on_retrieval` callback, and are also appended to the message history as a tool output. Finally, the LLM response given the RAG context is streamed and the message history is updated with the response:
 
 ```python
 from raglite import rag
@@ -176,19 +176,18 @@ messages.append({
 # Let the LLM decide whether to search the database by providing a search method as a tool to the LLM.
 # If requested, RAGLite then uses hybrid search and reranking to append RAG context to the message history.
 # Finally, LLM response is streamed and appended to the message history.
-stream = rag(messages, config=my_config)
+chunk_spans = []
+stream = rag(messages, on_retrieval=lambda x: chunk_spans.extend(x), config=my_config)
 for update in stream:
     print(update, end="")
 
-# Access the RAG context appended to the message history:
-import json
-
-context = [json.loads(message["content"]) for message in messages if message["role"] == "tool"]
+# Access the documents referenced in the RAG context:
+documents = [chunk_span.document for chunk_span in chunk_spans]
 ```
 
 #### 3.2 Basic RAG pipeline
 
-If you want control over the RAG pipeline, you can run a basic but powerful pipeline that consists of retrieving the most relevant chunk spans (each of which is a list of consecutive chunks) with hybrid search and reranking, converting the user prompt to a RAG instruction and appending it to the message history, and finally generating the RAG response:
+If you want control over the RAG pipeline, you can run a basic but powerful pipeline that consists of retrieving the most relevant chunk spans with hybrid search and reranking, converting the user prompt to a RAG instruction and appending it to the message history, and finally generating the RAG response:
 
 ```python
 from raglite import create_rag_instruction, rag, retrieve_rag_context
