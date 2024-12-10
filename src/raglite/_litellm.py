@@ -128,7 +128,7 @@ class LlamaCppPythonLLM(CustomLLM):
         llm.set_cache(LlamaRAMCache())
         # Register the model info with LiteLLM.
         model_info = {
-            model: {
+            repo_id_filename: {
                 "max_tokens": llm.n_ctx(),
                 "max_input_tokens": llm.n_ctx(),
                 "max_output_tokens": None,
@@ -319,8 +319,7 @@ def get_context_size(config: RAGLiteConfig, *, fallback: int = 2048) -> int:
     if config.llm.startswith("llama-cpp-python"):
         _ = LlamaCppPythonLLM.llm(config.llm)
     # Attempt to read the context size from LiteLLM's model info.
-    llm_provider = "llama-cpp-python" if config.llm.startswith("llama-cpp") else None
-    model_info = get_model_info(config.llm, custom_llm_provider=llm_provider)
+    model_info = get_model_info(config.llm)
     max_tokens = model_info.get("max_tokens")
     if isinstance(max_tokens, int) and max_tokens > 0:
         return max_tokens
@@ -343,8 +342,7 @@ def get_embedding_dim(config: RAGLiteConfig, *, fallback: bool = True) -> int:
     if config.embedder.startswith("llama-cpp-python"):
         _ = LlamaCppPythonLLM.llm(config.embedder, embedding=True)
     # Attempt to read the embedding dimension from LiteLLM's model info.
-    llm_provider = "llama-cpp-python" if config.embedder.startswith("llama-cpp") else None
-    model_info = get_model_info(config.embedder, custom_llm_provider=llm_provider)
+    model_info = get_model_info(config.embedder)
     embedding_dim = model_info.get("output_vector_size")
     if isinstance(embedding_dim, int) and embedding_dim > 0:
         return embedding_dim

@@ -92,8 +92,7 @@ def _get_tools(
     # Check if messages already contain RAG context or if the LLM supports tool use.
     final_message = messages[-1].get("content", "")
     messages_contain_rag_context = any(s in final_message for s in ("</document>", "from_chunk_id"))
-    llm_provider = "llama-cpp-python" if config.llm.startswith("llama-cpp") else None
-    llm_supports_function_calling = supports_function_calling(config.llm, llm_provider)
+    llm_supports_function_calling = supports_function_calling(config.llm)
     if not messages_contain_rag_context and not llm_supports_function_calling:
         error_message = "You must either explicitly provide RAG context in the last message, or use an LLM that supports function calling."
         raise ValueError(error_message)
@@ -107,7 +106,7 @@ def _get_tools(
                 "description": "The `expert` boolean MUST be true if the question requires domain-specific or expert-level knowledge to answer, and false otherwise.",
             }
         }
-        if llm_provider == "llama-cpp-python"
+        if config.llm.startswith("llama-cpp-python")
         else {}
     )
     tools: list[dict[str, Any]] | None = (
