@@ -1,6 +1,5 @@
 """Chainlit frontend for RAGLite."""
 
-import json
 import os
 from pathlib import Path
 
@@ -86,18 +85,19 @@ async def handle_message(user_message: cl.Message) -> None:
     ).strip()
     # Stream the LLM response.
     assistant_message = cl.Message(content="")
+    chunk_spans = []
     messages: list[dict[str, str]] = cl.chat_context.to_openai()[:-1]  # type: ignore[no-untyped-call]
     messages.append({"role": "user", "content": user_prompt})
-    async for token in async_rag(messages, config=config):
+    async for token in async_rag(
+        messages, on_retrieval=lambda x: chunk_spans.extend(x), config=config
+    ):
         await assistant_message.stream_token(token)
-    # Append RAG sources if any.
-    if messages[-2]["role"] == "tool" and (rag_context := json.loads(messages[-2]["content"])):
+    # Append RAG sources, if any.
+    if chunk_spans:
         rag_sources: dict[str, list[str]] = {}
-        for document in rag_context["documents"]:
-            rag_sources.setdefault(document["source"], [])
-            rag_sources[document["source"]].append(
-                document["span"]["headings"] + "\n" + document["span"]["content"]
-            )
+        for chunk_span in chunk_spans:
+            rag_sources.setdefault(chunk_span.document.id, [])
+            rag_sources[chunk_span.document.id].append(str(chunk_span))
         assistant_message.content += "\n\nSources: " + ", ".join(  # Rendered as hyperlinks.
             f"[{i + 1}]" for i in range(len(rag_sources))
         )
