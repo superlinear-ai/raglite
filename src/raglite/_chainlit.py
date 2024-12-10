@@ -91,8 +91,7 @@ async def handle_message(user_message: cl.Message) -> None:
     async for token in async_rag(messages, config=config):
         await assistant_message.stream_token(token)
     # Append RAG sources if any.
-    if messages[-2]["role"] == "tool":
-        rag_context = json.loads(messages[-2]["content"])
+    if messages[-2]["role"] == "tool" and (rag_context := json.loads(messages[-2]["content"])):
         rag_sources: dict[str, list[str]] = {}
         for document in rag_context["documents"]:
             rag_sources.setdefault(document["source"], [])

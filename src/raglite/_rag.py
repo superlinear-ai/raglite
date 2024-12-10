@@ -102,9 +102,9 @@ def _get_tools(
     # to use a tool, but allows it to skip the search.
     auto_tool_use_workaround = (
         {
-            "skip": {
+            "expert": {
                 "type": "boolean",
-                "description": "True if a satisfactory answer can be provided without searching the knowledge base, false otherwise.",
+                "description": "The `expert` boolean MUST be true if the question requires domain-specific or expert-level knowledge to answer, and false otherwise.",
             }
         }
         if llm_provider == "llama-cpp-python"
@@ -116,20 +116,18 @@ def _get_tools(
                 "type": "function",
                 "function": {
                     "name": "search_knowledge_base",
-                    "description": "Search the knowledge base. Note: only use this tool if not enough information is available to provide an answer.",
+                    "description": "Search the knowledge base. IMPORTANT: Only use this tool if a well-rounded non-expert would need to look up information to answer the question.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             **auto_tool_use_workaround,
                             "query": {
-                                "type": ["string", "null"],
-                                "description": "\n".join(  # noqa: FLY002
-                                    [
-                                        "The query string to search the knowledge base with, or `null` if `skip` is `true`.",
-                                        "The query string MUST satisfy ALL of the following criteria:"
-                                        "- The query string MUST be a precise question in the user's language.",
-                                        "- The query string MUST resolve all pronouns to explicit nouns from the conversation history.",
-                                    ]
+                                "type": "string",
+                                "description": (
+                                    "The `query` string to search the knowledge base with.\n"
+                                    "The `query` string MUST satisfy ALL of the following criteria:\n"
+                                    "- The `query` string MUST be a precise question in the user's language.\n"
+                                    "- The `query` string MUST resolve all pronouns to explicit nouns from the conversation history."
                                 ),
                             },
                         },
@@ -163,7 +161,7 @@ def _run_tools(
         if tool_call.function.name == "search_knowledge_base":
             kwargs = json.loads(tool_call.function.arguments)
             kwargs["config"] = config
-            skip = kwargs.pop("skip", False)
+            skip = not kwargs.pop("expert", True)
             tool_messages.append(
                 {
                     "role": "tool",
@@ -196,7 +194,7 @@ def rag(messages: list[dict[str, str]], *, config: RAGLiteConfig) -> Iterator[st
         clipped_messages[-1]["content"] += (
             "\n\n<tools>\n"
             f"Available tools:\n```\n{json.dumps(tools)}\n```\n"
-            "IMPORTANT: You MUST set skip=true and query=null if you can provide a satisfactory answer without searching the knowledge base.\n"
+            "IMPORTANT: The `expert` boolean MUST be true if the question requires domain-specific or expert-level knowledge to answer, and false otherwise.\n"
             "</tools>"
         )
     stream = completion(
@@ -242,7 +240,7 @@ async def async_rag(messages: list[dict[str, str]], *, config: RAGLiteConfig) ->
         clipped_messages[-1]["content"] += (
             "\n\n<tools>\n"
             f"Available tools:\n```\n{json.dumps(tools)}\n```\n"
-            "IMPORTANT: You MUST set skip=true and query=null if you can provide a satisfactory response without searching the knowledge base.\n"
+            "IMPORTANT: The `expert` boolean MUST be true if the question requires domain-specific or expert-level knowledge to answer, and false otherwise.\n"
             "</tools>"
         )
     async_stream = await acompletion(

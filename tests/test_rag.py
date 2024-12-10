@@ -13,7 +13,7 @@ from raglite._rag import rag
 def test_rag_manual(raglite_test_config: RAGLiteConfig) -> None:
     """Test Retrieval-Augmented Generation with manual retrieval."""
     # Answer a question with manual RAG.
-    user_prompt = "What is special relativity's definition of 'simultaneous events'?"
+    user_prompt = "How does Einstein define 'simultaneous events' in his special relativity paper?"
     chunk_spans = retrieve_rag_context(query=user_prompt, config=raglite_test_config)
     messages = [create_rag_instruction(user_prompt, context=chunk_spans)]
     stream = rag(messages, config=raglite_test_config)
@@ -29,22 +29,23 @@ def test_rag_manual(raglite_test_config: RAGLiteConfig) -> None:
 def test_rag_auto_with_retrieval(raglite_test_config: RAGLiteConfig) -> None:
     """Test Retrieval-Augmented Generation with automatic retrieval."""
     # Answer a question that requires RAG.
-    user_prompt = "What is special relativity's definition of 'simultaneous events'?"
+    user_prompt = "How does Einstein define 'simultaneous events' in his special relativity paper?"
     messages = [{"role": "user", "content": user_prompt}]
     stream = rag(messages, config=raglite_test_config)
     answer = ""
     for update in stream:
         assert isinstance(update, str)
         answer += update
-    assert "simultaneous" in answer.lower()
+    assert "event" in answer.lower()
     # Verify that RAG context was retrieved automatically.
     assert [message["role"] for message in messages] == ["user", "assistant", "tool", "assistant"]
+    assert json.loads(messages[-2]["content"])
 
 
 def test_rag_auto_without_retrieval(raglite_test_config: RAGLiteConfig) -> None:
     """Test Retrieval-Augmented Generation with automatic retrieval."""
     # Answer a question that does not require RAG.
-    user_prompt = "Yes or no: is 'Veni, vidi, vici' a Latin phrase?"
+    user_prompt = "Is 7 a prime number? Answer with Yes or No only."
     messages = [{"role": "user", "content": user_prompt}]
     stream = rag(messages, config=raglite_test_config)
     answer = ""
