@@ -312,15 +312,14 @@ class Eval(SQLModel, table=True):
 
 
 @lru_cache(maxsize=1)
-def _get_pgvector_version(session: Session) -> str | None:
-    """Get pgvector version.
-
-    Returns
-    -------
-        str | None: Version string if pgvector is installed, None otherwise
-    """
-    result = session.execute(text("SELECT extversion FROM pg_extension WHERE extname = 'vector'"))
-    return result.scalar()
+def _pgvector_version(session: Session) -> Version:
+    try:
+        result = session.execute(text("SELECT extversion FROM pg_extension WHERE extname = 'vector'"))
+        pgvector_version = version.parse(result.scalar())
+    except Exception as e:
+        error_message = "Unable to parse pgvector version, is pgvector installed?"
+        raise ValueError(error_message) from e
+    return pgvector_version
 
 
 @lru_cache(maxsize=1)
