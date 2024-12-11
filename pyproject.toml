@@ -52,6 +52,8 @@ ragas = { version = ">=0.1.12", optional = true }
 typer = ">=0.12.5"
 # Frontend:
 chainlit = { version = ">=1.2.0", optional = true }
+# Utilities:
+packaging = ">=23.0"
 
 [tool.poetry.extras] # https://python-poetry.org/docs/pyproject/#extras
 chainlit = ["chainlit"]

@@ -6,12 +6,13 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from xml.sax.saxutils import escape
 
 import numpy as np
 from markdown_it import MarkdownIt
 from packaging import version
+from packaging.version import Version
 from pydantic import ConfigDict
 from sqlalchemy.engine import Engine, make_url
 from sqlmodel import JSON, Column, Field, Relationship, Session, SQLModel, create_engine, text
@@ -314,8 +315,10 @@ class Eval(SQLModel, table=True):
 @lru_cache(maxsize=1)
 def _pgvector_version(session: Session) -> Version:
     try:
-        result = session.execute(text("SELECT extversion FROM pg_extension WHERE extname = 'vector'"))
-        pgvector_version = version.parse(result.scalar())
+        result = session.execute(
+            text("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+        )
+        pgvector_version = version.parse(cast(str, result.scalar_one()))
     except Exception as e:
         error_message = "Unable to parse pgvector version, is pgvector installed?"
         raise ValueError(error_message) from e
@@ -372,7 +375,7 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
                     """
                 )
             )
-            base_sql = f"""
+            create_vector_index_sql = f"""
                 CREATE INDEX IF NOT EXISTS vector_search_chunk_index ON chunk_embedding
                 USING hnsw (
                     (embedding::halfvec({embedding_dim}))
@@ -381,14 +384,10 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
                 SET hnsw.ef_search = {20 * 4 * 8};
             """
             # Add iterative scan if version >= 0.8.0
-            pgvector_version = _get_pgvector_version(session)
-            if pgvector_version and version.parse(pgvector_version) >= version.parse("0.8.0"):
-                sql = f"""{base_sql};
-                    SET hnsw.iterative_scan = {'relaxed_order' if config.reranker else 'strict_order'};
-                    """
-            else:
-                sql = f"{base_sql};"
-            session.execute(text(sql))
+            pgvector_version = _pgvector_version(session)
+            if pgvector_version and pgvector_version >= version.parse("0.8.0"):
+                create_vector_index_sql += f"\nSET hnsw.iterative_scan = {'relaxed_order' if config.reranker else 'strict_order'};"
+            session.execute(text(create_vector_index_sql))
             session.commit()
     elif db_backend == "sqlite":
         # Create a virtual table for keyword search on the chunk table.
@@ -396,39 +395,31 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
         # [1] https://www.sqlite.org/fts5.html#external_content_tables
         with Session(engine) as session:
             session.execute(
-                text(
-                    """
+                text("""
                 CREATE VIRTUAL TABLE IF NOT EXISTS keyword_search_chunk_index USING fts5(body, content='chunk', content_rowid='rowid');
-                """
-                )
+                """)
             )
             session.execute(
-                text(
-                    """
+                text("""
                 CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_insert AFTER INSERT ON chunk BEGIN
                     INSERT INTO keyword_search_chunk_index(rowid, body) VALUES (new.rowid, new.body);
                 END;
-                """
-                )
+                """)
             )
             session.execute(
-                text(
-                    """
+                text("""
                 CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_delete AFTER DELETE ON chunk BEGIN
                     INSERT INTO keyword_search_chunk_index(keyword_search_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
                 END;
-                """
-                )
+                """)
             )
             session.execute(
-                text(
-                    """
+                text("""
                 CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_update AFTER UPDATE ON chunk BEGIN
                     INSERT INTO keyword_search_chunk_index(keyword_search_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
                     INSERT INTO keyword_search_chunk_index(rowid, body) VALUES (new.rowid, new.body);
                 END;
-                """
-                )
+                """)
             )
             session.commit()
     return engine
