@@ -8,7 +8,7 @@ import warnings
 from collections.abc import AsyncIterator, Callable, Iterator
 from functools import cache
 from io import StringIO
-from typing import Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import httpx
 import litellm
@@ -28,7 +28,8 @@ from llama_cpp import (  # type: ignore[attr-defined]
     LlamaRAMCache,
 )
 
-from raglite._config import RAGLiteConfig
+if TYPE_CHECKING:
+    from raglite._config import RAGLiteConfig
 
 # Reduce the logging level for LiteLLM, flashrank, and httpx.
 os.environ["LITELLM_LOG"] = "WARNING"
@@ -291,7 +292,7 @@ if not any(provider["provider"] == "llama-cpp-python" for provider in litellm.cu
 
 
 @cache
-def get_context_size(config: RAGLiteConfig, *, fallback: int = 2048) -> int:
+def get_context_size(config: "RAGLiteConfig", *, fallback: int = 2048) -> int:
     """Get the context size for the configured LLM."""
     # If the user has configured a llama-cpp-python model, we ensure that LiteLLM's model info is up
     # to date by loading that LLM.
@@ -315,7 +316,7 @@ def get_context_size(config: RAGLiteConfig, *, fallback: int = 2048) -> int:
 
 
 @cache
-def get_embedding_dim(config: RAGLiteConfig, *, fallback: bool = True) -> int:
+def get_embedding_dim(config: "RAGLiteConfig", *, fallback: bool = True) -> int:
     """Get the embedding dimension for the configured embedder."""
     # If the user has configured a llama-cpp-python model, we ensure that LiteLLM's model info is up
     # to date by loading that LLM.

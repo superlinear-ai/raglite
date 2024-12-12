@@ -1,35 +1,42 @@
 """Retrieval-augmented generation."""
 
 from collections.abc import AsyncIterator, Iterator
-from dataclasses import replace
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 from litellm import acompletion, completion
 
-from raglite._config import RAGLiteConfig
 from raglite._database import ChunkSpan
 from raglite._litellm import get_context_size
-from raglite._search import rerank_chunks, retrieve_chunk_spans, search
+from raglite._search import retrieve_chunk_spans, retrieve_chunks
+
+if TYPE_CHECKING:
+    from raglite._config import RAGLiteConfig
+    from raglite._typing import ChunkRerankingMethod, ChunkSearchMethod
 
 
-def retrieve_rag_context(query: str, *, config: RAGLiteConfig | None = None) -> list[ChunkSpan]:
+def retrieve_rag_context(  # noqa: PLR0913
+    query: str,
+    *,
+    search: "ChunkSearchMethod",
+    rerank: Optional["ChunkRerankingMethod"] = None,
+    max_chunk_spans: int | None = None,
+    chunk_neighbors: tuple[int, ...] = (-1, 1),
+    config: "RAGLiteConfig",
+) -> list[ChunkSpan]:
     """Retrieve context for RAG."""
-    # If the user has configured a reranker, we retrieve extra contexts to rerank.
-    config = config or RAGLiteConfig()
-    oversampled_num_chunks = (
-        config.reranker_oversample * config.num_chunks if config.reranker else config.num_chunks
-    )
-    # Search for relevant chunks.
-    chunk_ids, _ = search(query, config=replace(config, num_chunks=oversampled_num_chunks))
+    chunk_ids, _ = search(query, config=config)
     # Rerank the chunks from most to least relevant.
-    chunks = rerank_chunks(query, chunk_ids=chunk_ids, config=config)
-    # Extend the top contexts with their neighbors and group chunks into contiguous segments.
-    context = retrieve_chunk_spans(chunks[: config.num_chunks], config=config)
-    return context
+    if rerank:
+        chunks = rerank(query, chunk_ids=chunk_ids, config=config)
+    else:
+        chunks = retrieve_chunks(chunk_ids, config=config)
+    context = retrieve_chunk_spans(chunks, chunk_neighbors=chunk_neighbors, config=config)
+    return context[:max_chunk_spans]
 
 
 def create_rag_instruction(
-    user_prompt: str, context: list[ChunkSpan], *, config: RAGLiteConfig | None = None
+    user_prompt: str, context: list[ChunkSpan], *, config: "RAGLiteConfig"
 ) -> dict[str, str]:
     """Convert a user prompt to a RAG instruction.
 
@@ -37,7 +44,6 @@ def create_rag_instruction(
 
     [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
     """
-    config = config or RAGLiteConfig()
     message = {
         "role": "user",
         "content": config.rag_instruction_template.format(
@@ -50,7 +56,7 @@ def create_rag_instruction(
     return message
 
 
-def rag(messages: list[dict[str, str]], *, config: RAGLiteConfig) -> Iterator[str]:
+def rag(messages: list[dict[str, str]], *, config: "RAGLiteConfig") -> Iterator[str]:
     # Truncate the oldest messages so we don't hit the context limit.
     max_tokens = get_context_size(config)
     cum_tokens = np.cumsum([len(message.get("content", "")) // 3 for message in messages][::-1])
@@ -62,7 +68,9 @@ def rag(messages: list[dict[str, str]], *, config: RAGLiteConfig) -> Iterator[st
         yield token
 
 
-async def async_rag(messages: list[dict[str, str]], *, config: RAGLiteConfig) -> AsyncIterator[str]:
+async def async_rag(
+    messages: list[dict[str, str]], *, config: "RAGLiteConfig"
+) -> AsyncIterator[str]:
     # Truncate the oldest messages so we don't hit the context limit.
     max_tokens = get_context_size(config)
     cum_tokens = np.cumsum([len(message.get("content", "")) // 3 for message in messages][::-1])

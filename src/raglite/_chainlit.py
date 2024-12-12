@@ -64,8 +64,7 @@ async def update_config(settings: cl.ChatSettings) -> None:
     if str(config.db_url).startswith("sqlite") or config.embedder.startswith("llama-cpp-python"):
         # async with cl.Step(name="initialize", type="retrieval"):
         query = "Hello world"
-        chunk_ids, _ = await async_hybrid_search(query=query, config=config)
-        _ = await async_rerank_chunks(query=query, chunk_ids=chunk_ids, config=config)
+        config.retrieval(query=query, config=config)
 
 
 @cl.on_message
@@ -94,21 +93,12 @@ async def handle_message(user_message: cl.Message) -> None:
         )
         + f"\n\n{user_message.content}"
     )
-    # Search for relevant contexts for RAG.
-    async with cl.Step(name="search", type="retrieval") as step:
+
+    # Retrieve the context for RAG.
+    async with cl.Step(name="retrieval", type="retrieval") as step:
         step.input = user_message.content
-        chunk_ids, _ = await async_hybrid_search(query=user_prompt, config=config)
-        chunks = await async_retrieve_chunks(chunk_ids=chunk_ids, config=config)
-        step.output = chunks
-        step.elements = [  # Show the top chunks inline.
-            cl.Text(content=str(chunk), display="inline") for chunk in chunks[:5]
-        ]
-        await step.update()  # TODO: Workaround for https://github.com/Chainlit/chainlit/issues/602.
-    # Rerank the chunks and group them into chunk spans.
-    async with cl.Step(name="rerank", type="rerank") as step:
-        step.input = chunks
-        chunks = await async_rerank_chunks(query=user_prompt, chunk_ids=chunks, config=config)
-        chunk_spans = await async_retrieve_chunk_spans(chunks[:5], config=config)
+        retrieval = cl.make_async(config.retrieval)
+        chunk_spans = await retrieval(query=user_prompt, config=config)
         step.output = chunk_spans
         step.elements = [  # Show the top chunk spans inline.
             cl.Text(content=str(chunk_span), display="inline") for chunk_span in chunk_spans

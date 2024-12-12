@@ -8,7 +8,6 @@ from llama_cpp import llama_supports_gpu_offload
 from raglite import (
     RAGLiteConfig,
     create_rag_instruction,
-    retrieve_rag_context,
 )
 from raglite._rag import rag
 
@@ -23,8 +22,13 @@ def test_rag(raglite_test_config: RAGLiteConfig) -> None:
     """Test Retrieval-Augmented Generation."""
     # Answer a question with RAG.
     user_prompt = "What does it mean for two events to be simultaneous?"
-    chunk_spans = retrieve_rag_context(query=user_prompt, config=raglite_test_config)
-    messages = [create_rag_instruction(user_prompt, context=chunk_spans)]
+    chunk_spans = raglite_test_config.retrieval(
+        query=user_prompt,
+        config=raglite_test_config,
+    )
+    messages = [
+        create_rag_instruction(user_prompt, context=chunk_spans, config=raglite_test_config)
+    ]
     stream = rag(messages, config=raglite_test_config)
     answer = ""
     for update in stream:

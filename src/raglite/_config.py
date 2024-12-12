@@ -11,9 +11,16 @@ from llama_cpp import llama_supports_gpu_offload
 from sqlalchemy.engine import URL
 
 from raglite._prompts import RAG_INSTRUCTION_TEMPLATE
+from raglite._rag import retrieve_rag_context
+from raglite._search import (
+    hybrid_search,
+    keyword_search,
+    rerank_chunks,
+    vector_search,
+)
 
 if TYPE_CHECKING:
-    from raglite._typing import SearchMethod
+    from raglite._typing import ChunkSpanSearchMethod
 
 # Suppress rerankers output on import until [1] is fixed.
 # [1] https://github.com/AnswerDotAI/rerankers/issues/36
@@ -22,11 +29,20 @@ with contextlib.redirect_stdout(StringIO()):
     from rerankers.models.ranker import BaseRanker
 
 
-def _default_search_method() -> "SearchMethod":
-    """Get the default search method."""
-    from raglite._search import hybrid_search
-
-    return partial(hybrid_search, oversample=4)
+default_retrieval: "ChunkSpanSearchMethod" = partial(
+    retrieve_rag_context,
+    max_chunk_spans=5,
+    search=partial(
+        hybrid_search,
+        subsearches=[
+            partial(keyword_search, max_chunks=20),
+            partial(vector_search, max_chunks=20),
+        ],
+        max_chunks=20,
+    ),
+    rerank=rerank_chunks,
+    chunk_neighbors=(-1, 1),
+)
 
 
 @dataclass(frozen=True)
@@ -67,12 +83,9 @@ class RAGLiteConfig:
         ),
         compare=False,  # Exclude the reranker from comparison to avoid lru_cache misses.
     )
-    search_method: "SearchMethod" = field(default_factory=_default_search_method, compare=False)
+    retrieval: "ChunkSpanSearchMethod" = default_retrieval
     system_prompt: str | None = None
     rag_instruction_template: str = RAG_INSTRUCTION_TEMPLATE
-    num_chunks: int = 5
-    chunk_neighbors: tuple[int, ...] | None = (-1, 1)  # Neighbors to include in the context.
-    reranker_oversample: int = 4  # How many extra chunks to retrieve for reranking (multiplied).
 
     def __post_init__(self) -> None:
         # Late chunking with llama-cpp-python does not apply sentence windowing.

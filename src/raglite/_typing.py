@@ -3,14 +3,16 @@
 import io
 import pickle
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 from sqlalchemy.engine import Dialect
 from sqlalchemy.sql.operators import Operators
 from sqlalchemy.types import Float, LargeBinary, TypeDecorator, TypeEngine, UserDefinedType
 
-from raglite._config import RAGLiteConfig
+if TYPE_CHECKING:
+    from raglite._config import RAGLiteConfig
+    from raglite._database import Chunk, ChunkSpan
 
 ChunkId = str
 DocumentId = str
@@ -24,8 +26,30 @@ IntVector = np.ndarray[tuple[int], np.dtype[np.intp]]
 
 class SearchMethod(Protocol):
     def __call__(
-        self, query: str, *, config: RAGLiteConfig | None = None, **kwargs: Any
+        self, query: str, *, max_chunks: int, config: "RAGLiteConfig"
     ) -> tuple[list[str], list[float]]: ...
+
+
+class ChunkRerankingMethod(Protocol):
+    def __call__(
+        self,
+        query: str,
+        chunk_ids: list[ChunkId] | list["Chunk"],
+        *,
+        config: "RAGLiteConfig",
+    ) -> list["Chunk"]: ...
+
+
+class ChunkSearchMethod(Protocol):
+    def __call__(
+        self, query: str, *, max_chunks: int = 10, config: "RAGLiteConfig"
+    ) -> tuple[list[ChunkId], list[float]]: ...
+
+
+class ChunkSpanSearchMethod(Protocol):
+    def __call__(
+        self, query: str, *, max_chunk_spans: int | None = None, config: "RAGLiteConfig"
+    ) -> list["ChunkSpan"]: ...
 
 
 class NumpyArray(TypeDecorator[np.ndarray[Any, np.dtype[np.floating[Any]]]]):

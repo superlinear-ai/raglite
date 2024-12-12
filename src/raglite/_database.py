@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from xml.sax.saxutils import escape
 
 import numpy as np
@@ -16,7 +16,6 @@ from pydantic import ConfigDict
 from sqlalchemy.engine import Engine, make_url
 from sqlmodel import JSON, Column, Field, Relationship, Session, SQLModel, create_engine, text
 
-from raglite._config import RAGLiteConfig
 from raglite._litellm import get_embedding_dim
 from raglite._typing import (
     ChunkId,
@@ -28,6 +27,9 @@ from raglite._typing import (
     IndexId,
     PickledObject,
 )
+
+if TYPE_CHECKING:
+    from raglite._config import RAGLiteConfig
 
 
 def hash_bytes(data: bytes, max_len: int = 16) -> str:
@@ -236,7 +238,7 @@ class IndexMetadata(SQLModel, table=True):
 
     @staticmethod
     @lru_cache(maxsize=4)
-    def _get(id_: str, *, config: RAGLiteConfig | None = None) -> dict[str, Any] | None:
+    def _get(id_: str, *, config: "RAGLiteConfig") -> dict[str, Any] | None:
         engine = create_database_engine(config)
         with Session(engine) as session:
             index_metadata_record = session.get(IndexMetadata, id_)
@@ -245,7 +247,7 @@ class IndexMetadata(SQLModel, table=True):
         return index_metadata_record.metadata_
 
     @staticmethod
-    def get(id_: str = "default", *, config: RAGLiteConfig | None = None) -> dict[str, Any]:
+    def get(id_: str = "default", *, config: "RAGLiteConfig") -> dict[str, Any]:
         metadata = IndexMetadata._get(id_, config=config) or {}
         return metadata
 
@@ -271,18 +273,20 @@ class Eval(SQLModel, table=True):
     document: Document = Relationship(back_populates="evals")
 
     @staticmethod
-    def from_chunks(
-        question: str, contexts: list[Chunk], ground_truth: str, **kwargs: Any
+    def from_contexts(
+        question: str, contexts: list[ChunkSpan], ground_truth: str, **kwargs: Any
     ) -> "Eval":
         """Create a chunk from Markdown."""
-        document_id = contexts[0].document_id
-        chunk_ids = [context.id for context in contexts]
+        document_id = contexts[0].document.id
+        chunk_ids = [
+            chunk.id for span in contexts for chunk in span.chunks
+        ]  # Should we take out the neighbors?
         return Eval(
             id=hash_bytes(f"{document_id}-{chunk_ids}-{question}".encode()),
             document_id=document_id,
             chunk_ids=chunk_ids,
             question=question,
-            contexts=[str(context) for context in contexts],
+            contexts=contexts,
             ground_truth=ground_truth,
             metadata_=kwargs,
         )
@@ -301,10 +305,9 @@ def _get_pgvector_version(session: Session) -> str | None:
 
 
 @lru_cache(maxsize=1)
-def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
+def create_database_engine(config: "RAGLiteConfig") -> Engine:
     """Create a database engine and initialize it."""
     # Parse the database URL and validate that the database backend is supported.
-    config = config or RAGLiteConfig()
     db_url = make_url(config.db_url)
     db_backend = db_url.get_backend_name()
     # Update database configuration.

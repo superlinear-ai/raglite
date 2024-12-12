@@ -18,7 +18,7 @@ def update_query_adapter(  # noqa: PLR0915, C901
     max_triplets: int = 4096,
     max_triplets_per_eval: int = 64,
     optimize_top_k: int = 40,
-    config: RAGLiteConfig | None = None,
+    config: "RAGLiteConfig",
 ) -> None:
     """Compute an optimal query adapter and update the database with it.
 
@@ -66,9 +66,7 @@ def update_query_adapter(  # noqa: PLR0915, C901
     C := 5% * A, the optimal α is then given by αA + (1 - α)B = C => α = (B - C) / (B - A).
     """
     config = config or RAGLiteConfig()
-    config_no_query_adapter = replace(
-        config, vector_search_query_adapter=False, num_chunks=optimize_top_k
-    )
+    config_no_query_adapter = replace(config, vector_search_query_adapter=False)
     engine = create_database_engine(config)
     with Session(engine) as session:
         # Get random evals from the database.
@@ -92,7 +90,9 @@ def update_query_adapter(  # noqa: PLR0915, C901
             # Embed the question.
             question_embedding = embed_sentences([eval_.question], config=config)
             # Retrieve chunks that would be used to answer the question.
-            chunk_ids, _ = vector_search(question_embedding, config=config_no_query_adapter)
+            chunk_ids, _ = vector_search(
+                question_embedding, max_chunks=optimize_top_k, config=config_no_query_adapter
+            )
             retrieved_chunks = session.exec(select(Chunk).where(col(Chunk.id).in_(chunk_ids))).all()
             # Extract (q, p, n) triplets by comparing the retrieved chunks with the eval.
             num_triplets = 0
