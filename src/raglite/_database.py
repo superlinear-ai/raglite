@@ -312,7 +312,6 @@ class Eval(SQLModel, table=True):
         )
 
 
-@lru_cache(maxsize=1)
 def _pgvector_version(session: Session) -> Version:
     try:
         result = session.execute(
