@@ -14,9 +14,7 @@ from raglite._prompts import RAG_INSTRUCTION_TEMPLATE
 from raglite._rag import retrieve_rag_context
 from raglite._search import (
     hybrid_search,
-    keyword_search,
     rerank_chunks,
-    vector_search,
 )
 
 if TYPE_CHECKING:
@@ -34,10 +32,6 @@ default_retrieval: "ChunkSpanSearchMethod" = partial(
     max_chunk_spans=5,
     search=partial(
         hybrid_search,
-        subsearches=[
-            partial(keyword_search, max_chunks=20),
-            partial(vector_search, max_chunks=20),
-        ],
         max_chunks=20,
     ),
     rerank=rerank_chunks,

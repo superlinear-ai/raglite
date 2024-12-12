@@ -10,19 +10,11 @@ from raglite import (
     RAGLiteConfig,
     async_rag,
     create_rag_instruction,
-    hybrid_search,
     insert_document,
-    rerank_chunks,
-    retrieve_chunk_spans,
-    retrieve_chunks,
 )
 from raglite._markdown import document_to_markdown
 
 async_insert_document = cl.make_async(insert_document)
-async_hybrid_search = cl.make_async(hybrid_search)
-async_retrieve_chunks = cl.make_async(retrieve_chunks)
-async_retrieve_chunk_spans = cl.make_async(retrieve_chunk_spans)
-async_rerank_chunks = cl.make_async(rerank_chunks)
 
 
 @cl.on_chat_start

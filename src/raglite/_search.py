@@ -4,6 +4,7 @@ import re
 import string
 from collections import defaultdict
 from collections.abc import Sequence
+from functools import partial
 from itertools import groupby
 from typing import TYPE_CHECKING, cast
 
@@ -165,7 +166,7 @@ def reciprocal_rank_fusion(
     return list(rrf_chunk_ids), list(rrf_score)
 
 
-def hybrid_search(
+def multi_search(
     query: str,
     *,
     subsearches: list[ChunkSearchMethod],
@@ -176,6 +177,24 @@ def hybrid_search(
     rankings = [subsearch(query, config=config)[0] for subsearch in subsearches]
     # Combine the results with Reciprocal Rank Fusion (RRF).
     chunk_ids, hybrid_score = reciprocal_rank_fusion(rankings)
+    return chunk_ids[:max_chunks], hybrid_score[:max_chunks]
+
+
+def hybrid_search(
+    query: str,
+    *,
+    max_chunks: int = 10,
+    oversample: int = 4,
+    config: "RAGLiteConfig",
+) -> tuple[list[ChunkId], list[float]]:
+    """Search chunks by combining vector and keyword search."""
+    subsearches: list[ChunkSearchMethod] = [
+        partial(keyword_search, max_chunks=oversample * max_chunks),
+        partial(vector_search, max_chunks=oversample * max_chunks),
+    ]
+    chunk_ids, hybrid_score = multi_search(
+        query, subsearches=subsearches, max_chunks=max_chunks, config=config
+    )
     return chunk_ids[:max_chunks], hybrid_score[:max_chunks]
 
 
