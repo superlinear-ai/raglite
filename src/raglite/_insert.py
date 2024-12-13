@@ -65,7 +65,7 @@ def _create_chunk_records(
     return chunk_records, chunk_embedding_records
 
 
-def insert_document(doc_path: Path, *, config: RAGLiteConfig | None = None) -> None:  # noqa: PLR0915
+def insert_document(doc_path: Path, *, config: "RAGLiteConfig") -> None:  # noqa: PLR0915
     """Insert a document into the database and update the index."""
     # Use the default config if not provided.
     config = config or RAGLiteConfig()

@@ -1,5 +1,7 @@
 """Compute and update an optimal query adapter."""
 
+from dataclasses import replace
+
 import numpy as np
 from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import Session, col, select
@@ -16,7 +18,7 @@ def update_query_adapter(  # noqa: PLR0915, C901
     max_triplets: int = 4096,
     max_triplets_per_eval: int = 64,
     optimize_top_k: int = 40,
-    config: RAGLiteConfig | None = None,
+    config: "RAGLiteConfig",
 ) -> None:
     """Compute an optimal query adapter and update the database with it.
 
@@ -64,9 +66,7 @@ def update_query_adapter(  # noqa: PLR0915, C901
     C := 5% * A, the optimal α is then given by αA + (1 - α)B = C => α = (B - C) / (B - A).
     """
     config = config or RAGLiteConfig()
-    config_no_query_adapter = RAGLiteConfig(
-        **{**config.__dict__, "vector_search_query_adapter": False}
-    )
+    config_no_query_adapter = replace(config, vector_search_query_adapter=False)
     engine = create_database_engine(config)
     with Session(engine) as session:
         # Get random evals from the database.
@@ -91,7 +91,7 @@ def update_query_adapter(  # noqa: PLR0915, C901
             question_embedding = embed_sentences([eval_.question], config=config)
             # Retrieve chunks that would be used to answer the question.
             chunk_ids, _ = vector_search(
-                question_embedding, num_results=optimize_top_k, config=config_no_query_adapter
+                question_embedding, max_chunks=optimize_top_k, config=config_no_query_adapter
             )
             retrieved_chunks = session.exec(select(Chunk).where(col(Chunk.id).in_(chunk_ids))).all()
             # Extract (q, p, n) triplets by comparing the retrieved chunks with the eval.
@@ -131,7 +131,11 @@ def update_query_adapter(  # noqa: PLR0915, C901
                         break
             # Check if we have sufficient triplets to compute the query adapter.
             if Q.shape[0] > max_triplets:
-                Q, P, N = Q[:max_triplets, :], P[:max_triplets, :], N[:max_triplets, :]  # noqa: N806
+                Q, P, N = (  # noqa: N806
+                    Q[:max_triplets, :],
+                    P[:max_triplets, :],
+                    N[:max_triplets, :],
+                )
                 break
         # Normalise the rows of Q, P, N.
         Q /= np.linalg.norm(Q, axis=1, keepdims=True)  # noqa: N806
