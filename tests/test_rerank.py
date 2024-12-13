@@ -1,7 +1,6 @@
 """Test RAGLite's reranking functionality."""
 
 import random
-from functools import partial
 from typing import TypeVar
 
 import pytest
@@ -12,10 +11,8 @@ from scipy.stats import kendalltau
 from raglite import (
     RAGLiteConfig,
     hybrid_search,
-    keyword_search,
     rerank_chunks,
     retrieve_chunks,
-    vector_search,
 )
 from raglite._database import Chunk
 
@@ -65,10 +62,6 @@ def test_reranker(
     chunk_ids, _ = hybrid_search(
         query,
         config=raglite_test_config,
-        subsearches=[
-            partial(vector_search, max_chunks=40, config=raglite_test_config),
-            partial(keyword_search, max_chunks=40, config=raglite_test_config),
-        ],
         max_chunks=20,
     )
     # Retrieve the chunks.
