@@ -6,11 +6,13 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from xml.sax.saxutils import escape
 
 import numpy as np
 from markdown_it import MarkdownIt
+from packaging import version
+from packaging.version import Version
 from pydantic import ConfigDict
 from sqlalchemy.engine import Engine, make_url
 from sqlmodel import JSON, Column, Field, Relationship, Session, SQLModel, create_engine, text
@@ -310,6 +312,18 @@ class Eval(SQLModel, table=True):
         )
 
 
+def _pgvector_version(session: Session) -> Version:
+    try:
+        result = session.execute(
+            text("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+        )
+        pgvector_version = version.parse(cast(str, result.scalar_one()))
+    except Exception as e:
+        error_message = "Unable to parse pgvector version, is pgvector installed?"
+        raise ValueError(error_message) from e
+    return pgvector_version
+
+
 @lru_cache(maxsize=1)
 def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
     """Create a database engine and initialize it."""
@@ -358,17 +372,19 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
                 CREATE INDEX IF NOT EXISTS keyword_search_chunk_index ON chunk USING GIN (to_tsvector('simple', body));
                 """)
             )
-            session.execute(
-                text(f"""
+            create_vector_index_sql = f"""
                 CREATE INDEX IF NOT EXISTS vector_search_chunk_index ON chunk_embedding
                 USING hnsw (
                     (embedding::halfvec({embedding_dim}))
                     halfvec_{metrics[config.vector_search_index_metric]}_ops
                 );
                 SET hnsw.ef_search = {20 * 4 * 8};
-                SET hnsw.iterative_scan = {'relaxed_order' if config.reranker else 'strict_order'};
-                """)
-            )
+            """
+            # Enable iterative scan for pgvector v0.8.0 and up.
+            pgvector_version = _pgvector_version(session)
+            if pgvector_version and pgvector_version >= version.parse("0.8.0"):
+                create_vector_index_sql += f"\nSET hnsw.iterative_scan = {'relaxed_order' if config.reranker else 'strict_order'};"
+            session.execute(text(create_vector_index_sql))
             session.commit()
     elif db_backend == "sqlite":
         # Create a virtual table for keyword search on the chunk table.
