@@ -13,6 +13,8 @@ from typing import Any, ClassVar, cast
 import httpx
 import litellm
 from litellm import (  # type: ignore[attr-defined]
+    ChatCompletionToolCallChunk,
+    ChatCompletionToolCallFunctionChunk,
     CustomLLM,
     GenericStreamingChunk,
     ModelResponse,
@@ -20,6 +22,7 @@ from litellm import (  # type: ignore[attr-defined]
     get_model_info,
 )
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
+from litellm.utils import custom_llm_setup
 from llama_cpp import (  # type: ignore[attr-defined]
     ChatCompletionRequestMessage,
     CreateChatCompletionResponse,
@@ -31,6 +34,7 @@ from llama_cpp import (  # type: ignore[attr-defined]
 from raglite._config import RAGLiteConfig
 
 # Reduce the logging level for LiteLLM, flashrank, and httpx.
+litellm.suppress_debug_info = True
 os.environ["LITELLM_LOG"] = "WARNING"
 logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 logging.getLogger("flashrank").setLevel(logging.WARNING)
@@ -112,6 +116,8 @@ class LlamaCppPythonLLM(CustomLLM):
                 n_ctx=n_ctx,
                 n_gpu_layers=-1,
                 verbose=False,
+                # Enable function calling.
+                chat_format="chatml-function-calling",
                 # Workaround to enable long context embedding models [1].
                 # [1] https://github.com/abetlen/llama-cpp-python/issues/1762
                 n_batch=n_ctx if n_ctx > 0 else 1024,
@@ -121,24 +127,23 @@ class LlamaCppPythonLLM(CustomLLM):
         # Enable caching.
         llm.set_cache(LlamaRAMCache())
         # Register the model info with LiteLLM.
-        litellm.register_model(  # type: ignore[attr-defined]
-            {
-                model: {
-                    "max_tokens": llm.n_ctx(),
-                    "max_input_tokens": llm.n_ctx(),
-                    "max_output_tokens": None,
-                    "input_cost_per_token": 0.0,
-                    "output_cost_per_token": 0.0,
-                    "output_vector_size": llm.n_embd() if kwargs.get("embedding") else None,
-                    "litellm_provider": "llama-cpp-python",
-                    "mode": "embedding" if kwargs.get("embedding") else "completion",
-                    "supported_openai_params": LlamaCppPythonLLM.supported_openai_params,
-                    "supports_function_calling": True,
-                    "supports_parallel_function_calling": True,
-                    "supports_vision": False,
-                }
+        model_info = {
+            repo_id_filename: {
+                "max_tokens": llm.n_ctx(),
+                "max_input_tokens": llm.n_ctx(),
+                "max_output_tokens": None,
+                "input_cost_per_token": 0.0,
+                "output_cost_per_token": 0.0,
+                "output_vector_size": llm.n_embd() if kwargs.get("embedding") else None,
+                "litellm_provider": "llama-cpp-python",
+                "mode": "embedding" if kwargs.get("embedding") else "completion",
+                "supported_openai_params": LlamaCppPythonLLM.supported_openai_params,
+                "supports_function_calling": True,
+                "supports_parallel_function_calling": True,
+                "supports_vision": False,
             }
-        )
+        }
+        litellm.register_model(model_info)  # type: ignore[attr-defined]
         return llm
 
     def _translate_openai_params(self, optional_params: dict[str, Any]) -> dict[str, Any]:
@@ -218,24 +223,40 @@ class LlamaCppPythonLLM(CustomLLM):
             llm.create_chat_completion(messages=messages, **llama_cpp_python_params, stream=True),
         )
         for chunk in stream:
-            choices = chunk.get("choices", [])
-            for choice in choices:
-                text = choice.get("delta", {}).get("content", None)
-                finish_reason = choice.get("finish_reason")
-                litellm_generic_streaming_chunk = GenericStreamingChunk(
-                    text=text,  # type: ignore[typeddict-item]
-                    is_finished=bool(finish_reason),
-                    finish_reason=finish_reason,  # type: ignore[typeddict-item]
-                    usage=None,
-                    index=choice.get("index"),  # type: ignore[typeddict-item]
-                    provider_specific_fields={
-                        "id": chunk.get("id"),
-                        "model": chunk.get("model"),
-                        "created": chunk.get("created"),
-                        "object": chunk.get("object"),
-                    },
+            choices = chunk.get("choices")
+            if not choices:
+                continue
+            text = choices[0].get("delta", {}).get("content", None)
+            tool_calls = choices[0].get("delta", {}).get("tool_calls", None)
+            tool_use = (
+                ChatCompletionToolCallChunk(
+                    id=tool_calls[0]["id"],  # type: ignore[index]
+                    type="function",
+                    function=ChatCompletionToolCallFunctionChunk(
+                        name=tool_calls[0]["function"]["name"],  # type: ignore[index]
+                        arguments=tool_calls[0]["function"]["arguments"],  # type: ignore[index]
+                    ),
+                    index=tool_calls[0]["index"],  # type: ignore[index]
                 )
-                yield litellm_generic_streaming_chunk
+                if tool_calls
+                else None
+            )
+            finish_reason = choices[0].get("finish_reason")
+            litellm_generic_streaming_chunk = GenericStreamingChunk(
+                text=text,  # type: ignore[typeddict-item]
+                tool_use=tool_use,
+                is_finished=bool(finish_reason),
+                finish_reason=finish_reason,  # type: ignore[typeddict-item]
+                usage=None,
+                index=choices[0].get("index"),  # type: ignore[typeddict-item]
+                provider_specific_fields={
+                    "id": chunk.get("id"),
+                    "model": chunk.get("model"),
+                    "created": chunk.get("created"),
+                    "object": chunk.get("object"),
+                },
+            )
+            yield litellm_generic_streaming_chunk
 
     async def astreaming(  # type: ignore[misc,override]  # noqa: PLR0913
         self,
@@ -287,7 +308,7 @@ if not any(provider["provider"] == "llama-cpp-python" for provider in litellm.cu
     litellm.custom_provider_map.append(
         {"provider": "llama-cpp-python", "custom_handler": LlamaCppPythonLLM()}
     )
-    litellm.suppress_debug_info = True
+    custom_llm_setup()  # type: ignore[no-untyped-call]
 
 
 @cache
@@ -298,8 +319,7 @@ def get_context_size(config: RAGLiteConfig, *, fallback: int = 2048) -> int:
     if config.llm.startswith("llama-cpp-python"):
         _ = LlamaCppPythonLLM.llm(config.llm)
     # Attempt to read the context size from LiteLLM's model info.
-    llm_provider = "llama-cpp-python" if config.llm.startswith("llama-cpp") else None
-    model_info = get_model_info(config.llm, custom_llm_provider=llm_provider)
+    model_info = get_model_info(config.llm)
     max_tokens = model_info.get("max_tokens")
     if isinstance(max_tokens, int) and max_tokens > 0:
         return max_tokens
@@ -322,8 +342,7 @@ def get_embedding_dim(config: RAGLiteConfig, *, fallback: bool = True) -> int:
     if config.embedder.startswith("llama-cpp-python"):
         _ = LlamaCppPythonLLM.llm(config.embedder, embedding=True)
     # Attempt to read the embedding dimension from LiteLLM's model info.
-    llm_provider = "llama-cpp-python" if config.embedder.startswith("llama-cpp") else None
-    model_info = get_model_info(config.embedder, custom_llm_provider=llm_provider)
+    model_info = get_model_info(config.embedder)
     embedding_dim = model_info.get("output_vector_size")
     if isinstance(embedding_dim, int) and embedding_dim > 0:
         return embedding_dim
