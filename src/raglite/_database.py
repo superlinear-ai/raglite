@@ -368,11 +368,9 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
         with Session(engine) as session:
             metrics = {"cosine": "cosine", "dot": "ip", "euclidean": "l2", "l1": "l1", "l2": "l2"}
             session.execute(
-                text(
-                    """
-                    CREATE INDEX IF NOT EXISTS keyword_search_chunk_index ON chunk USING GIN (to_tsvector('simple', body));
-                    """
-                )
+                text("""
+                CREATE INDEX IF NOT EXISTS keyword_search_chunk_index ON chunk USING GIN (to_tsvector('simple', body));
+                """)
             )
             create_vector_index_sql = f"""
                 CREATE INDEX IF NOT EXISTS vector_search_chunk_index ON chunk_embedding
@@ -382,7 +380,7 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
                 );
                 SET hnsw.ef_search = {20 * 4 * 8};
             """
-            # Add iterative scan if version >= 0.8.0
+            # Enable iterative scan for pgvector v0.8.0 and up.
             pgvector_version = _pgvector_version(session)
             if pgvector_version and pgvector_version >= version.parse("0.8.0"):
                 create_vector_index_sql += f"\nSET hnsw.iterative_scan = {'relaxed_order' if config.reranker else 'strict_order'};"
