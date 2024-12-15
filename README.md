@@ -388,3 +388,13 @@ The following development environments are supported:
 - Run `cz bump` to bump the package's version, update the `CHANGELOG.md`, and create a git tag.
 
 </details>
+
+## Star History
+
+<a href="https://star-history.com/#superlinear-ai/raglite&Timeline">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=superlinear-ai/raglite&type=Timeline&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=superlinear-ai/raglite&type=Timeline" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=superlinear-ai/raglite&type=Timeline" />
+ </picture>
+</a>
