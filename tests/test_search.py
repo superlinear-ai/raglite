@@ -11,7 +11,7 @@ from raglite import (
     vector_search,
 )
 from raglite._database import Chunk, ChunkSpan, Document
-from raglite._typing import SearchMethod
+from raglite._typing import ChunkSearchMethod
 
 
 @pytest.fixture(
@@ -21,13 +21,13 @@ from raglite._typing import SearchMethod
         pytest.param(hybrid_search, id="hybrid_search"),
     ]
 )
-def search_method(request: pytest.FixtureRequest) -> SearchMethod:
+def search_method(request: pytest.FixtureRequest) -> ChunkSearchMethod:
     """Get a search method to test RAGLite with."""
-    search_method: SearchMethod = request.param
+    search_method: ChunkSearchMethod = request.param
     return search_method
 
 
-def test_search(raglite_test_config: RAGLiteConfig, search_method: SearchMethod) -> None:
+def test_search(raglite_test_config: RAGLiteConfig, search_method: ChunkSearchMethod) -> None:
     """Test searching for a query."""
     # Search for a query.
     query = "What does it mean for two events to be simultaneous?"
@@ -51,7 +51,9 @@ def test_search(raglite_test_config: RAGLiteConfig, search_method: SearchMethod)
     assert all(isinstance(chunk_span.document, Document) for chunk_span in chunk_spans)
 
 
-def test_search_no_results(raglite_test_config: RAGLiteConfig, search_method: SearchMethod) -> None:
+def test_search_no_results(
+    raglite_test_config: RAGLiteConfig, search_method: ChunkSearchMethod
+) -> None:
     """Test searching for a query with no keyword search results."""
     query = "supercalifragilisticexpialidocious"
     num_results = 5

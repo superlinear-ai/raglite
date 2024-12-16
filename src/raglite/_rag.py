@@ -8,6 +8,7 @@ from litellm import acompletion, completion
 
 from raglite._database import ChunkSpan
 from raglite._litellm import get_context_size
+from raglite._prompts import DEFAULT_RAG_INSTRUCTION_TEMPLATE
 from raglite._search import retrieve_chunk_spans, retrieve_chunks
 
 if TYPE_CHECKING:
@@ -36,7 +37,10 @@ def retrieve_rag_context(  # noqa: PLR0913
 
 
 def create_rag_instruction(
-    user_prompt: str, context: list[ChunkSpan], *, config: "RAGLiteConfig"
+    user_prompt: str,
+    context: list[ChunkSpan],
+    *,
+    rag_instruction_template: str,
 ) -> dict[str, str]:
     """Convert a user prompt to a RAG instruction.
 
@@ -46,7 +50,7 @@ def create_rag_instruction(
     """
     message = {
         "role": "user",
-        "content": config.rag_instruction_template.format(
+        "content": rag_instruction_template.format(
             user_prompt=user_prompt.strip(),
             context="\n".join(
                 chunk_span.to_xml(index=i + 1) for i, chunk_span in enumerate(context)
@@ -54,6 +58,27 @@ def create_rag_instruction(
         ),
     }
     return message
+
+
+def compose_rag_messages(
+    user_prompt: str,
+    *,
+    context: list[ChunkSpan] | None = None,
+    history: list[dict[str, str]] | None = None,
+    system_prompt: str | None = None,
+    rag_instruction_template: str | None = None,
+) -> list[dict[str, str]]:
+    """Compose a list of messages to generate a response."""
+    messages = [
+        *([{"role": "system", "content": system_prompt}] if system_prompt else []),
+        *(history or []),
+        create_rag_instruction(
+            user_prompt=user_prompt,
+            context=context if context else [],
+            rag_instruction_template=rag_instruction_template or DEFAULT_RAG_INSTRUCTION_TEMPLATE,
+        ),
+    ]
+    return messages
 
 
 def rag(messages: list[dict[str, str]], *, config: "RAGLiteConfig") -> Iterator[str]:

@@ -1,7 +1,8 @@
 """Generation and evaluation of evals."""
 
+from collections.abc import Sequence
 from random import randint
-from typing import ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 import pandas as pd
@@ -9,15 +10,22 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlmodel import Session, func, select
 from tqdm.auto import tqdm, trange
 
-from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, Document, Eval, create_database_engine
 from raglite._extract import extract_with_llm
-from raglite._rag import create_rag_instruction, rag
+from raglite._rag import compose_rag_messages, rag
 from raglite._search import retrieve_chunk_spans, vector_search
+from raglite._typing import ChunkSpanSearchMethod
+
+if TYPE_CHECKING:
+    from raglite._config import RAGLiteConfig
 
 
 def insert_evals(  # noqa: C901
-    *, num_evals: int = 100, max_contexts_per_eval: int = 20, config: "RAGLiteConfig"
+    *,
+    search_method: ChunkSpanSearchMethod,
+    num_evals: int = 100,
+    max_contexts_per_eval: int = 20,
+    config: "RAGLiteConfig",
 ) -> None:
     """Generate and insert evals into the database."""
 
@@ -90,8 +98,8 @@ The question MUST satisfy ALL of the following criteria:
                 continue
             else:
                 question = question_response.question
-            # Search for candidate chunks to answer the generated question.
-            spans = config.retrieval(query=question, config=config)
+            # Search for candidate spans to answer the generated question.
+            spans = search_method(query=question, config=config)
 
             # Determine which candidate chunks are relevant to answer the generated question.
             class ContextEvalResponse(BaseModel):
@@ -169,10 +177,16 @@ The answer MUST satisfy ALL of the following criteria:
             session.commit()
 
 
-def answer_evals(num_evals: int = 100, *, config: "RAGLiteConfig") -> pd.DataFrame:
+def answer_evals(
+    num_evals: int = 100,
+    *,
+    search_method: ChunkSpanSearchMethod,
+    system_prompt: str | None,
+    rag_instruction_template: str | None,
+    config: "RAGLiteConfig",
+) -> pd.DataFrame:
     """Read evals from the database and answer them with RAG."""
     # Read evals from the database.
-    config = config or RAGLiteConfig()
     engine = create_database_engine(config)
     with Session(engine) as session:
         evals = session.exec(select(Eval).limit(num_evals)).all()
@@ -180,20 +194,17 @@ def answer_evals(num_evals: int = 100, *, config: "RAGLiteConfig") -> pd.DataFra
     answers: list[str] = []
     contexts: list[list[str]] = []
     for eval_ in tqdm(evals, desc="Answering evals", unit="eval", dynamic_ncols=True):
-        chunk_spans = config.retrieval(query=eval_.question, config=config)
-        messages = [
-            *(
-                [{"role": "system", "content": config.system_prompt}]
-                if config.system_prompt
-                else []
-            ),
-            create_rag_instruction(user_prompt=eval_.question, context=chunk_spans, config=config),
-        ]
+        chunk_spans = search_method(query=eval_.question, config=config)
+        messages = compose_rag_messages(
+            user_prompt=eval_.question,
+            context=chunk_spans,
+            system_prompt=system_prompt,
+            rag_instruction_template=rag_instruction_template,
+        )
         response = rag(messages, config=config)
         answer = "".join(response)
         answers.append(answer)
-        spans = config.retrieval(query=eval_.question, config=config)
-        contexts.append([str(span) for span in spans])
+        contexts.append([str(span) for span in chunk_spans])
     # Collect the answered evals.
     answered_evals: dict[str, list[str] | list[list[str]]] = {
         "question": [eval_.question for eval_ in evals],
@@ -206,7 +217,12 @@ def answer_evals(num_evals: int = 100, *, config: "RAGLiteConfig") -> pd.DataFra
     return answered_evals_df
 
 
-def evaluate(answered_evals: pd.DataFrame | int = 100, *, config: "RAGLiteConfig") -> pd.DataFrame:
+def evaluate(
+    answered_evals_df: pd.DataFrame,
+    *,
+    metrics: Sequence[Any] | None,
+    config: "RAGLiteConfig",
+) -> pd.DataFrame:
     """Evaluate the performance of a set of answered evals with Ragas."""
     try:
         from datasets import Dataset
@@ -216,7 +232,6 @@ def evaluate(answered_evals: pd.DataFrame | int = 100, *, config: "RAGLiteConfig
         from ragas import evaluate as ragas_evaluate
         from ragas.embeddings import BaseRagasEmbeddings
 
-        from raglite._config import RAGLiteConfig
         from raglite._embed import embed_sentences
         from raglite._litellm import LlamaCppPythonLLM
     except ImportError as import_error:
@@ -227,7 +242,7 @@ def evaluate(answered_evals: pd.DataFrame | int = 100, *, config: "RAGLiteConfig
         """A RAGLite embedder for Ragas."""
 
         def __init__(self, config: "RAGLiteConfig"):
-            self.config = config or RAGLiteConfig()
+            self.config = config
 
         def embed_query(self, text: str) -> list[float]:
             # Embed the input text with RAGLite's embedding function.
@@ -239,13 +254,6 @@ def evaluate(answered_evals: pd.DataFrame | int = 100, *, config: "RAGLiteConfig
             embeddings = embed_sentences(texts, config=self.config)
             return embeddings.tolist()  # type: ignore[no-any-return]
 
-    # Create a set of answered evals if not provided.
-    config = config or RAGLiteConfig()
-    answered_evals_df = (
-        answered_evals
-        if isinstance(answered_evals, pd.DataFrame)
-        else answer_evals(num_evals=answered_evals, config=config)
-    )
     # Load the LLM.
     if config.llm.startswith("llama-cpp-python"):
         llm = LlamaCppPythonLLM().llm(model=config.llm)
@@ -263,6 +271,7 @@ def evaluate(answered_evals: pd.DataFrame | int = 100, *, config: "RAGLiteConfig
     evaluation_df = ragas_evaluate(
         dataset=Dataset.from_pandas(answered_evals_df),
         llm=lc_llm,
+        metrics=metrics,
         embeddings=embedder,
         run_config=RunConfig(max_workers=1),
     ).to_pandas()

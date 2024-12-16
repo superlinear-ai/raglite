@@ -3,40 +3,16 @@
 import contextlib
 import os
 from dataclasses import dataclass, field
-from functools import partial
 from io import StringIO
-from typing import TYPE_CHECKING
 
 from llama_cpp import llama_supports_gpu_offload
 from sqlalchemy.engine import URL
-
-from raglite._prompts import RAG_INSTRUCTION_TEMPLATE
-from raglite._rag import retrieve_rag_context
-from raglite._search import (
-    hybrid_search,
-    rerank_chunks,
-)
-
-if TYPE_CHECKING:
-    from raglite._typing import ChunkSpanSearchMethod
 
 # Suppress rerankers output on import until [1] is fixed.
 # [1] https://github.com/AnswerDotAI/rerankers/issues/36
 with contextlib.redirect_stdout(StringIO()):
     from rerankers.models.flashrank_ranker import FlashRankRanker
     from rerankers.models.ranker import BaseRanker
-
-
-default_retrieval: "ChunkSpanSearchMethod" = partial(
-    retrieve_rag_context,
-    max_chunk_spans=5,
-    search=partial(
-        hybrid_search,
-        max_chunks=20,
-    ),
-    rerank=rerank_chunks,
-    chunk_neighbors=(-1, 1),
-)
 
 
 @dataclass(frozen=True)
@@ -77,9 +53,6 @@ class RAGLiteConfig:
         ),
         compare=False,  # Exclude the reranker from comparison to avoid lru_cache misses.
     )
-    retrieval: "ChunkSpanSearchMethod" = default_retrieval
-    system_prompt: str | None = None
-    rag_instruction_template: str = RAG_INSTRUCTION_TEMPLATE
 
     def __post_init__(self) -> None:
         # Late chunking with llama-cpp-python does not apply sentence windowing.

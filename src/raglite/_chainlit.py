@@ -9,10 +9,13 @@ from chainlit.input_widget import Switch, TextInput
 from raglite import (
     RAGLiteConfig,
     async_rag,
-    create_rag_instruction,
+    hybrid_search,
     insert_document,
+    rerank_chunks,
+    retrieve_rag_context,
 )
 from raglite._markdown import document_to_markdown
+from raglite._rag import compose_rag_messages
 
 async_insert_document = cl.make_async(insert_document)
 
@@ -56,7 +59,7 @@ async def update_config(settings: cl.ChatSettings) -> None:
     if str(config.db_url).startswith("sqlite") or config.embedder.startswith("llama-cpp-python"):
         # async with cl.Step(name="initialize", type="retrieval"):
         query = "Hello world"
-        config.retrieval(query=query, config=config)
+        hybrid_search(query=query, config=config)
 
 
 @cl.on_message
@@ -89,8 +92,14 @@ async def handle_message(user_message: cl.Message) -> None:
     # Retrieve the context for RAG.
     async with cl.Step(name="retrieval", type="retrieval") as step:
         step.input = user_message.content
-        retrieval = cl.make_async(config.retrieval)
-        chunk_spans = await retrieval(query=user_prompt, config=config)
+        async_retrieve_rag_context = cl.make_async(retrieve_rag_context)
+        chunk_spans = await async_retrieve_rag_context(
+            query=user_prompt,
+            search=hybrid_search,
+            rerank=rerank_chunks,
+            max_chunk_spans=5,
+            config=config,
+        )
         step.output = chunk_spans
         step.elements = [  # Show the top chunk spans inline.
             cl.Text(content=str(chunk_span), display="inline") for chunk_span in chunk_spans
@@ -98,11 +107,12 @@ async def handle_message(user_message: cl.Message) -> None:
         await step.update()  # TODO: Workaround for https://github.com/Chainlit/chainlit/issues/602.
     # Stream the LLM response.
     assistant_message = cl.Message(content="")
-    messages: list[dict[str, str]] = [
-        *([{"role": "system", "content": config.system_prompt}] if config.system_prompt else []),
-        *(cl.chat_context.to_openai()[:-1]),  # type: ignore[no-untyped-call]
-        create_rag_instruction(user_prompt=user_prompt, context=chunk_spans, config=config),
-    ]
+    messages = compose_rag_messages(
+        user_prompt=user_prompt,
+        context=chunk_spans,
+        history=cl.chat_context.to_openai()[:-1],  # type: ignore[no-untyped-call]
+        system_prompt=None,
+    )
     async for token in async_rag(messages, config=config):
         await assistant_message.stream_token(token)
     await assistant_message.update()  # type: ignore[no-untyped-call]
