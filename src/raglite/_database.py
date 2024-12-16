@@ -1,5 +1,6 @@
 """PostgreSQL or SQLite database tables for RAGLite."""
 
+import contextlib
 import datetime
 import json
 from dataclasses import dataclass, field
@@ -347,6 +348,9 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
         # Optimize SQLite performance.
         pragmas = {"journal_mode": "WAL", "synchronous": "NORMAL"}
         db_url = db_url.update_query_dict(pragmas, append=True)
+        # Create the database path if it doesn't exist.
+        with contextlib.suppress(Exception):
+            Path(db_url.database).parent.mkdir(parents=True, exist_ok=True)  # type: ignore[arg-type]
     else:
         error_message = "RAGLite only supports PostgreSQL and SQLite."
         raise ValueError(error_message)

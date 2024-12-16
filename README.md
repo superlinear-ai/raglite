@@ -29,6 +29,7 @@ RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with Postgr
 
 ##### Extensible
 
+- 🔌 A built-in [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that any MCP client like [Claude desktop](https://claude.ai/download) can connect with
 - 💬 Optional customizable ChatGPT-like frontend for [web](https://docs.chainlit.io/deploy/copilot), [Slack](https://docs.chainlit.io/deploy/slack), and [Teams](https://docs.chainlit.io/deploy/teams) with [Chainlit](https://github.com/Chainlit/chainlit)
 - ✍️ Optional conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
 - ✅ Optional evaluation of retrieval and generation performance with [Ragas](https://github.com/explodinggradients/ragas)
@@ -87,10 +88,11 @@ pip install raglite[ragas]
 
 1. [Configuring RAGLite](#1-configuring-raglite)
 2. [Inserting documents](#2-inserting-documents)
-3. [Searching and Retrieval-Augmented Generation (RAG)](#3-searching-and-retrieval-augmented-generation-rag)
+3. [Retrieval-Augmented Generation (RAG)](#3-retrieval-augmented-generation-rag)
 4. [Computing and using an optimal query adapter](#4-computing-and-using-an-optimal-query-adapter)
 5. [Evaluation of retrieval and generation](#5-evaluation-of-retrieval-and-generation)
-6. [Serving a customizable ChatGPT-like frontend](#6-serving-a-customizable-chatgpt-like-frontend)
+6. [Running a Model Context Protocol (MCP) server](#6-running-a-model-context-protocol-mcp-server)
+7. [Serving a customizable ChatGPT-like frontend](#7-serving-a-customizable-chatgpt-like-frontend)
 
 ### 1. Configuring RAGLite
 
@@ -114,7 +116,7 @@ my_config = RAGLiteConfig(
 
 # Example 'local' config with a SQLite database and a llama.cpp LLM:
 my_config = RAGLiteConfig(
-    db_url="sqlite:///raglite.sqlite",
+    db_url="sqlite:///raglite.db",
     llm="llama-cpp-python/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/*Q4_K_M.gguf@8192",
     embedder="llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024",  # A context size of 1024 tokens is the sweet spot for bge-m3.
 )
@@ -133,7 +135,7 @@ my_config = RAGLiteConfig(
 
 # Example local cross-encoder reranker per language (this is the default):
 my_config = RAGLiteConfig(
-    db_url="sqlite:///raglite.sqlite",
+    db_url="sqlite:///raglite.db",
     reranker=(
         ("en", Reranker("ms-marco-MiniLM-L-12-v2", model_type="flashrank")),  # English
         ("other", Reranker("ms-marco-MultiBERT-L-12", model_type="flashrank")),  # Other languages
@@ -157,7 +159,7 @@ insert_document(Path("On the Measure of Intelligence.pdf"), config=my_config)
 insert_document(Path("Special Relativity.pdf"), config=my_config)
 ```
 
-### 3. Searching and Retrieval-Augmented Generation (RAG)
+### 3. Retrieval-Augmented Generation (RAG)
 
 #### 3.1 Dynamically routed RAG
 
@@ -289,7 +291,33 @@ answered_evals_df = answer_evals(num_evals=10, config=my_config)
 evaluation_df = evaluate(answered_evals_df, config=my_config)
 ```
 
-### 6. Serving a customizable ChatGPT-like frontend
+### 6. Running a Model Context Protocol (MCP) server
+
+RAGLite comes with an [MCP server](https://modelcontextprotocol.io) implemented with [FastMCP](https://github.com/jlowin/fastmcp). To use the server:
+
+1. Install [Claude desktop](https://claude.ai/download)
+2. Install [uv](https://docs.astral.sh/uv/getting-started/installation/) so that Claude desktop can start the server
+3. Configure Claude desktop to use `uv` to start the MCP server with:
+
+```
+raglite \
+    --db_url sqlite:///raglite.db \
+    --llm llama-cpp-python/bartowski/Llama-3.2-3B-Instruct-GGUF/*Q4_K_M.gguf@4096 \
+    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024 \
+    mcp install
+```
+
+To use an API-based LLM, make sure to include your credentials in a `.env` file or supply them inline:
+
+```sh
+OPENAI_API_KEY=sk-... raglite --llm gpt-4o-mini --embedder text-embedding-3-large mcp install
+```
+
+Now, when you start Claude desktop you should see a 🔨 icon at the bottom right of your prompt indicating that the Claude has successfully connected with the MCP server.
+
+When relevant, Claude will suggest to use the `search_knowledge_base` tool that the MCP server provides. You can also explicitly ask Claude to search the knowledge base if you want to be certain that it does.
+
+### 7. Serving a customizable ChatGPT-like frontend
 
 If you installed the `chainlit` extra, you can serve a customizable ChatGPT-like frontend with:
 
@@ -302,16 +330,17 @@ The application is also deployable to [web](https://docs.chainlit.io/deploy/copi
 You can specify the database URL, LLM, and embedder directly in the Chainlit frontend, or with the CLI as follows:
 
 ```sh
-raglite chainlit \
-    --db_url sqlite:///raglite.sqlite \
+raglite \
+    --db_url sqlite:///raglite.db \
     --llm llama-cpp-python/bartowski/Llama-3.2-3B-Instruct-GGUF/*Q4_K_M.gguf@4096 \
-    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024
+    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024 \
+    chainlit
 ```
 
 To use an API-based LLM, make sure to include your credentials in a `.env` file or supply them inline:
 
 ```sh
-OPENAI_API_KEY=sk-... raglite chainlit --llm gpt-4o-mini --embedder text-embedding-3-large
+OPENAI_API_KEY=sk-... raglite --llm gpt-4o-mini --embedder text-embedding-3-large chainlit
 ```
 
 <div align="center"><video src="https://github.com/user-attachments/assets/01cf98d3-6ddd-45bb-8617-cf290c09f187" /></div>

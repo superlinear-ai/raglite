@@ -146,25 +146,25 @@ files = [
 
 [[package]]
 name = "anyio"
-version = "4.4.0"
+version = "4.7.0"
 description = "High level compatibility layer for multiple asynchronous event loop implementations"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 files = [
-    {file = "anyio-4.4.0-py3-none-any.whl", hash = "sha256:c1b2d8f46a8a812513012e1107cb0e68c17159a7a594208005a57dc776e1bdc7"},
-    {file = "anyio-4.4.0.tar.gz", hash = "sha256:5aadc6a1bbb7cdb0bede386cac5e2940f5e2ff3aa20277e991cf028e0585ce94"},
+    {file = "anyio-4.7.0-py3-none-any.whl", hash = "sha256:ea60c3723ab42ba6fff7e8ccb0488c898ec538ff4df1f1d5e642c3601d07e352"},
+    {file = "anyio-4.7.0.tar.gz", hash = "sha256:2f834749c602966b7d456a7567cafcb309f96482b5081d14ac93ccd457f9dd48"},
 ]
 
 [package.dependencies]
 exceptiongroup = {version = ">=1.0.2", markers = "python_version < \"3.11\""}
 idna = ">=2.8"
 sniffio = ">=1.1"
-typing-extensions = {version = ">=4.1", markers = "python_version < \"3.11\""}
+typing_extensions = {version = ">=4.5", markers = "python_version < \"3.13\""}
 
 [package.extras]
-doc = ["Sphinx (>=7)", "packaging", "sphinx-autodoc-typehints (>=1.2.0)", "sphinx-rtd-theme"]
-test = ["anyio[trio]", "coverage[toml] (>=7)", "exceptiongroup (>=1.2.0)", "hypothesis (>=4.0)", "psutil (>=5.9)", "pytest (>=7.0)", "pytest-mock (>=3.6.1)", "trustme", "uvloop (>=0.17)"]
-trio = ["trio (>=0.23)"]
+doc = ["Sphinx (>=7.4,<8.0)", "packaging", "sphinx-autodoc-typehints (>=1.2.0)", "sphinx_rtd_theme"]
+test = ["anyio[trio]", "coverage[toml] (>=7)", "exceptiongroup (>=1.2.0)", "hypothesis (>=4.0)", "psutil (>=5.9)", "pytest (>=7.0)", "pytest-mock (>=3.6.1)", "trustme", "truststore (>=0.9.1)", "uvloop (>=0.21)"]
+trio = ["trio (>=0.26.1)"]
 
 [[package]]
 name = "appdirs"
@@ -1309,6 +1309,29 @@ all = ["email-validator (>=2.0.0)", "fastapi-cli[standard] (>=0.0.5)", "httpx (>
 standard = ["email-validator (>=2.0.0)", "fastapi-cli[standard] (>=0.0.5)", "httpx (>=0.23.0)", "jinja2 (>=2.11.2)", "python-multipart (>=0.0.7)", "uvicorn[standard] (>=0.12.0)"]
 
 [[package]]
+name = "fastmcp"
+version = "0.4.1"
+description = "A more ergonomic interface for MCP servers"
+optional = false
+python-versions = ">=3.10"
+files = [
+    {file = "fastmcp-0.4.1-py3-none-any.whl", hash = "sha256:664b42c376fb89ec90a50c9433f5a1f4d24f36696d6c41b024b427ae545f9619"},
+    {file = "fastmcp-0.4.1.tar.gz", hash = "sha256:713ad3b8e4e04841c9e2f3ca022b053adb89a286ceffad0d69ae7b56f31cbe64"},
+]
+
+[package.dependencies]
+httpx = ">=0.26.0"
+mcp = ">=1.0.0,<2.0.0"
+pydantic = ">=2.5.3,<3.0.0"
+pydantic-settings = ">=2.6.1"
+python-dotenv = ">=1.0.1"
+typer = ">=0.9.0"
+
+[package.extras]
+dev = ["copychat (>=0.5.2)", "ipython (>=8.12.3)", "pdbpp (>=0.10.3)", "pre-commit", "pyright (>=1.1.389)", "pytest (>=8.3.3)", "pytest-asyncio (>=0.23.5)", "pytest-flakefinder", "pytest-xdist (>=3.6.1)", "ruff"]
+tests = ["pre-commit", "pyright (>=1.1.389)", "pytest (>=8.3.3)", "pytest-asyncio (>=0.23.5)", "pytest-flakefinder", "pytest-xdist (>=3.6.1)", "ruff"]
+
+[[package]]
 name = "filelock"
 version = "3.15.4"
 description = "A platform independent file lock."
@@ -1802,6 +1825,17 @@ brotli = ["brotli", "brotlicffi"]
 cli = ["click (==8.*)", "pygments (==2.*)", "rich (>=10,<14)"]
 http2 = ["h2 (>=3,<5)"]
 socks = ["socksio (==1.*)"]
+
+[[package]]
+name = "httpx-sse"
+version = "0.4.0"
+description = "Consume Server-Sent Event (SSE) messages with HTTPX."
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "httpx-sse-0.4.0.tar.gz", hash = "sha256:1e81a3a3070ce322add1d3529ed42eb5f70817f45ed6ec915ab753f961139721"},
+    {file = "httpx_sse-0.4.0-py3-none-any.whl", hash = "sha256:f329af6eae57eaa2bdfd962b42524764af68075ea87370a2de920af5341e318f"},
+]
 
 [[package]]
 name = "huggingface-hub"
@@ -2933,6 +2967,25 @@ files = [
 
 [package.dependencies]
 traitlets = "*"
+
+[[package]]
+name = "mcp"
+version = "1.1.2"
+description = "Model Context Protocol SDK"
+optional = false
+python-versions = ">=3.10"
+files = [
+    {file = "mcp-1.1.2-py3-none-any.whl", hash = "sha256:a4d32d60fd80a1702440ba4751b847a8a88957a1f7b059880953143e9759965a"},
+    {file = "mcp-1.1.2.tar.gz", hash = "sha256:694aa9df7a8641b24953c935eb72c63136dc948981021525a0add199bdfee402"},
+]
+
+[package.dependencies]
+anyio = ">=4.5"
+httpx = ">=0.27"
+httpx-sse = ">=0.4"
+pydantic = ">=2.7.2"
+sse-starlette = ">=1.6.1"
+starlette = ">=0.27"
 
 [[package]]
 name = "mdformat"
@@ -4305,13 +4358,13 @@ typing-extensions = ">=4.6.0,<4.7.0 || >4.7.0"
 
 [[package]]
 name = "pydantic-settings"
-version = "2.4.0"
+version = "2.7.0"
 description = "Settings management using Pydantic"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "pydantic_settings-2.4.0-py3-none-any.whl", hash = "sha256:bb6849dc067f1687574c12a639e231f3a6feeed0a12d710c1382045c5db1c315"},
-    {file = "pydantic_settings-2.4.0.tar.gz", hash = "sha256:ed81c3a0f46392b4d7c0a565c05884e6e54b3456e6f0fe4d8814981172dc9a88"},
+    {file = "pydantic_settings-2.7.0-py3-none-any.whl", hash = "sha256:e00c05d5fa6cbbb227c84bd7487c5c1065084119b750df7c8c1a554aed236eb5"},
+    {file = "pydantic_settings-2.7.0.tar.gz", hash = "sha256:ac4bfd4a36831a48dbf8b2d9325425b549a0a6f18cea118436d728eb4f1c4d66"},
 ]
 
 [package.dependencies]
@@ -5751,6 +5804,25 @@ files = [
 catalogue = ">=2.0.3,<2.1.0"
 
 [[package]]
+name = "sse-starlette"
+version = "2.1.3"
+description = "SSE plugin for Starlette"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "sse_starlette-2.1.3-py3-none-any.whl", hash = "sha256:8ec846438b4665b9e8c560fcdea6bc8081a3abf7942faa95e5a744999d219772"},
+    {file = "sse_starlette-2.1.3.tar.gz", hash = "sha256:9cd27eb35319e1414e3d2558ee7414487f9529ce3b3cf9b21434fd110e017169"},
+]
+
+[package.dependencies]
+anyio = "*"
+starlette = "*"
+uvicorn = "*"
+
+[package.extras]
+examples = ["fastapi"]
+
+[[package]]
 name = "stack-data"
 version = "0.6.3"
 description = "Extract data from python stack frames and tracebacks for informative displays"
@@ -5773,7 +5845,7 @@ tests = ["cython", "littleutils", "pygments", "pytest", "typeguard"]
 name = "starlette"
 version = "0.37.2"
 description = "The little ASGI library that shines."
-optional = true
+optional = false
 python-versions = ">=3.8"
 files = [
     {file = "starlette-0.37.2-py3-none-any.whl", hash = "sha256:6fe59f29268538e5d0d182f2791a479a0c64638e6935d1c6989e63fb2699c6ee"},
@@ -6314,7 +6386,7 @@ zstd = ["zstandard (>=0.18.0)"]
 name = "uvicorn"
 version = "0.25.0"
 description = "The lightning-fast ASGI server."
-optional = true
+optional = false
 python-versions = ">=3.8"
 files = [
     {file = "uvicorn-0.25.0-py3-none-any.whl", hash = "sha256:ce107f5d9bd02b4636001a77a4e74aab5e1e2b146868ebbad565237145af444c"},
@@ -6813,4 +6885,4 @@ ragas = ["ragas"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<4.0"
-content-hash = "239db3c85866a30b063fa6dfe538bbbe92ba659419e47446d5529fbd5bb3831a"
+content-hash = "19d3a331da5ead94caecf5217b5d4a6d41660a535d6535ddb8996f4eed8a4c90"

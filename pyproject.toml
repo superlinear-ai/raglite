@@ -19,6 +19,8 @@ version_provider = "poetry"
 [tool.poetry.dependencies] # https://python-poetry.org/docs/dependency-specification/
 # Python:
 python = ">=3.10,<4.0"
+# Configuration:
+platformdirs = ">=4.0.0"
 # Markdown conversion:
 pdftext = ">=0.3.13"
 pypandoc-binary = { version = ">=1.13", optional = true }
@@ -52,6 +54,8 @@ ragas = { version = ">=0.1.12", optional = true }
 typer = ">=0.12.5"
 # Frontend:
 chainlit = { version = ">=1.2.0", optional = true }
+# Model Context Protocol:
+fastmcp = ">=0.4.1"
 # Utilities:
 packaging = ">=23.0"
 
@@ -115,7 +119,11 @@ warn_unreachable = true
 
 [tool.pytest.ini_options] # https://docs.pytest.org/en/latest/reference/reference.html#ini-options-ref
 addopts = "--color=yes --exitfirst --failed-first --strict-config --strict-markers --verbosity=2 --junitxml=reports/pytest.xml"
-filterwarnings = ["error", "ignore::DeprecationWarning", "ignore::pytest.PytestUnraisableExceptionWarning"]
+filterwarnings = [
+  "error",
+  "ignore::DeprecationWarning",
+  "ignore::pytest.PytestUnraisableExceptionWarning",
+]
 testpaths = ["src", "tests"]
 xfail_strict = true
 
@@ -126,7 +134,55 @@ src = ["src", "tests"]
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["A", "ASYNC", "B", "BLE", "C4", "C90", "D", "DTZ", "E", "EM", "ERA", "F", "FBT", "FLY", "FURB", "G", "I", "ICN", "INP", "INT", "ISC", "LOG", "N", "NPY", "PERF", "PGH", "PIE", "PL", "PT", "PTH", "PYI", "Q", "RET", "RSE", "RUF", "S", "SIM", "SLF", "SLOT", "T10", "T20", "TCH", "TID", "TRY", "UP", "W", "YTT"]
+select = [
+  "A",
+  "ASYNC",
+  "B",
+  "BLE",
+  "C4",
+  "C90",
+  "D",
+  "DTZ",
+  "E",
+  "EM",
+  "ERA",
+  "F",
+  "FBT",
+  "FLY",
+  "FURB",
+  "G",
+  "I",
+  "ICN",
+  "INP",
+  "INT",
+  "ISC",
+  "LOG",
+  "N",
+  "NPY",
+  "PERF",
+  "PGH",
+  "PIE",
+  "PL",
+  "PT",
+  "PTH",
+  "PYI",
+  "Q",
+  "RET",
+  "RSE",
+  "RUF",
+  "S",
+  "SIM",
+  "SLF",
+  "SLOT",
+  "T10",
+  "T20",
+  "TCH",
+  "TID",
+  "TRY",
+  "UP",
+  "W",
+  "YTT",
+]
 ignore = ["D203", "D213", "E501", "RET504", "RUF002", "S101", "S307"]
 unfixable = ["ERA001", "F401", "F841", "T201", "T203"]
 
