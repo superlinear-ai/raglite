@@ -23,12 +23,14 @@ RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with Postgr
 - 🧬 Multi-vector chunk embedding with [late chunking](https://weaviate.io/blog/late-chunking) and [contextual chunk headings](https://d-star.ai/solving-the-out-of-context-chunk-problem-for-rag)
 - ✂️ Optimal [level 4 semantic chunking](https://medium.com/@anuragmishra_27746/five-levels-of-chunking-strategies-in-rag-notes-from-gregs-video-7b735895694d) by solving a [binary integer programming problem](https://en.wikipedia.org/wiki/Integer_programming)
 - 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) with the database's native keyword & vector search ([tsvector](https://www.postgresql.org/docs/current/datatype-textsearch.html)+[pgvector](https://github.com/pgvector/pgvector), [FTS5](https://www.sqlite.org/fts5.html)+[sqlite-vec](https://github.com/asg017/sqlite-vec)[^1])
+- 💭 [Adaptive retrieval](https://arxiv.org/abs/2403.14403) where the LLM decides whether to and what to retrieve based on the query
 - 💰 Improved cost and latency with a [prompt caching-aware message array structure](https://platform.openai.com/docs/guides/prompt-caching)
 - 🍰 Improved output quality with [Anthropic's long-context prompt format](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips)
 - 🌀 Optimal [closed-form linear query adapter](src/raglite/_query_adapter.py) by solving an [orthogonal Procrustes problem](https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem)
 
 ##### Extensible
 
+- 🔌 A built-in [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that any MCP client like [Claude desktop](https://claude.ai/download) can connect with
 - 💬 Optional customizable ChatGPT-like frontend for [web](https://docs.chainlit.io/deploy/copilot), [Slack](https://docs.chainlit.io/deploy/slack), and [Teams](https://docs.chainlit.io/deploy/teams) with [Chainlit](https://github.com/Chainlit/chainlit)
 - ✍️ Optional conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
 - ✅ Optional evaluation of retrieval and generation performance with [Ragas](https://github.com/explodinggradients/ragas)
@@ -87,10 +89,11 @@ pip install raglite[ragas]
 
 1. [Configuring RAGLite](#1-configuring-raglite)
 2. [Inserting documents](#2-inserting-documents)
-3. [Searching and Retrieval-Augmented Generation (RAG)](#3-searching-and-retrieval-augmented-generation-rag)
+3. [Retrieval-Augmented Generation (RAG)](#3-retrieval-augmented-generation-rag)
 4. [Computing and using an optimal query adapter](#4-computing-and-using-an-optimal-query-adapter)
 5. [Evaluation of retrieval and generation](#5-evaluation-of-retrieval-and-generation)
-6. [Serving a customizable ChatGPT-like frontend](#6-serving-a-customizable-chatgpt-like-frontend)
+6. [Running a Model Context Protocol (MCP) server](#6-running-a-model-context-protocol-mcp-server)
+7. [Serving a customizable ChatGPT-like frontend](#7-serving-a-customizable-chatgpt-like-frontend)
 
 ### 1. Configuring RAGLite
 
@@ -114,7 +117,7 @@ my_config = RAGLiteConfig(
 
 # Example 'local' config with a SQLite database and a llama.cpp LLM:
 my_config = RAGLiteConfig(
-    db_url="sqlite:///raglite.sqlite",
+    db_url="sqlite:///raglite.db",
     llm="llama-cpp-python/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/*Q4_K_M.gguf@8192",
     embedder="llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024",  # A context size of 1024 tokens is the sweet spot for bge-m3.
 )
@@ -133,7 +136,7 @@ my_config = RAGLiteConfig(
 
 # Example local cross-encoder reranker per language (this is the default):
 my_config = RAGLiteConfig(
-    db_url="sqlite:///raglite.sqlite",
+    db_url="sqlite:///raglite.db",
     reranker=(
         ("en", Reranker("ms-marco-MiniLM-L-12-v2", model_type="flashrank")),  # English
         ("other", Reranker("ms-marco-MultiBERT-L-12", model_type="flashrank")),  # Other languages
@@ -157,11 +160,11 @@ insert_document(Path("On the Measure of Intelligence.pdf"), config=my_config)
 insert_document(Path("Special Relativity.pdf"), config=my_config)
 ```
 
-### 3. Searching and Retrieval-Augmented Generation (RAG)
+### 3. Retrieval-Augmented Generation (RAG)
 
-#### 3.1 Dynamically routed RAG
+#### 3.1 Adaptive RAG
 
-Now you can run a dynamically routed RAG pipeline that consists of adding the user prompt to the message history and streaming the LLM response. Depending on the user prompt, the LLM may choose to retrieve context using RAGLite by invoking a retrieval tool. If retrieval is necessary, the LLM determines the search query and RAGLite applies hybrid search with reranking to retrieve the most relevant chunk spans (each of which is a list of consecutive chunks). The retrieval results are sent to the `on_retrieval` callback and are also appended to the message history as a tool output. Finally, the LLM response given the RAG context is streamed and the message history is updated with the assistant response:
+Now you can run an adaptive RAG pipeline that consists of adding the user prompt to the message history and streaming the LLM response:
 
 ```python
 from raglite import rag
@@ -173,9 +176,7 @@ messages.append({
     "content": "How is intelligence measured?"
 })
 
-# Let the LLM decide whether to search the database by providing a retrieval tool to the LLM.
-# If requested, RAGLite then uses hybrid search and reranking to append RAG context to the message history.
-# Finally, assistant response is streamed and appended to the message history.
+# Adaptively decide whether to retrieve and stream the response:
 chunk_spans = []
 stream = rag(messages, on_retrieval=lambda x: chunk_spans.extend(x), config=my_config)
 for update in stream:
@@ -184,6 +185,8 @@ for update in stream:
 # Access the documents referenced in the RAG context:
 documents = [chunk_span.document for chunk_span in chunk_spans]
 ```
+
+The LLM will adaptively decide whether to retrieve information based on the complexity of the user prompt. If retrieval is necessary, the LLM generates the search query and RAGLite applies hybrid search and reranking to retrieve the most relevant chunk spans (each of which is a list of consecutive chunks). The retrieval results are sent to the `on_retrieval` callback and are appended to the message history as a tool output. Finally, the assistant response is streamed and appended to the message history.
 
 #### 3.2 Programmable RAG
 
@@ -221,6 +224,8 @@ RAGLite also offers more advanced control over the individual steps of a full RA
 5. Converting the user prompt to a RAG instruction and appending it to the message history
 6. Streaming an LLM response to the message history
 7. Accessing the cited documents from the chunk spans
+
+A full RAG pipeline is straightforward to implement with RAGLite:
 
 ```python
 # Search for chunks:
@@ -289,7 +294,35 @@ answered_evals_df = answer_evals(num_evals=10, config=my_config)
 evaluation_df = evaluate(answered_evals_df, config=my_config)
 ```
 
-### 6. Serving a customizable ChatGPT-like frontend
+### 6. Running a Model Context Protocol (MCP) server
+
+RAGLite comes with an [MCP server](https://modelcontextprotocol.io) implemented with [FastMCP](https://github.com/jlowin/fastmcp) that exposes a `search_knowledge_base` [tool](https://github.com/jlowin/fastmcp?tab=readme-ov-file#tools). To use the server:
+
+1. Install [Claude desktop](https://claude.ai/download)
+2. Install [uv](https://docs.astral.sh/uv/getting-started/installation/) so that Claude desktop can start the server
+3. Configure Claude desktop to use `uv` to start the MCP server with:
+
+```
+raglite \
+    --db-url sqlite:///raglite.db \
+    --llm llama-cpp-python/bartowski/Llama-3.2-3B-Instruct-GGUF/*Q4_K_M.gguf@4096 \
+    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024 \
+    mcp install
+```
+
+To use an API-based LLM, make sure to include your credentials in a `.env` file or supply them inline:
+
+```sh
+OPENAI_API_KEY=sk-... raglite --llm gpt-4o-mini --embedder text-embedding-3-large mcp install
+```
+
+Now, when you start Claude desktop you should see a 🔨 icon at the bottom right of your prompt indicating that the Claude has successfully connected with the MCP server.
+
+When relevant, Claude will suggest to use the `search_knowledge_base` tool that the MCP server provides. You can also explicitly ask Claude to search the knowledge base if you want to be certain that it does.
+
+<div align="center"><video src="https://github.com/user-attachments/assets/3a597a17-874e-475f-a6dd-cd3ccf360fb9" /></div>
+
+### 7. Serving a customizable ChatGPT-like frontend
 
 If you installed the `chainlit` extra, you can serve a customizable ChatGPT-like frontend with:
 
@@ -302,19 +335,20 @@ The application is also deployable to [web](https://docs.chainlit.io/deploy/copi
 You can specify the database URL, LLM, and embedder directly in the Chainlit frontend, or with the CLI as follows:
 
 ```sh
-raglite chainlit \
-    --db_url sqlite:///raglite.sqlite \
+raglite \
+    --db-url sqlite:///raglite.db \
     --llm llama-cpp-python/bartowski/Llama-3.2-3B-Instruct-GGUF/*Q4_K_M.gguf@4096 \
-    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024
+    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024 \
+    chainlit
 ```
 
 To use an API-based LLM, make sure to include your credentials in a `.env` file or supply them inline:
 
 ```sh
-OPENAI_API_KEY=sk-... raglite chainlit --llm gpt-4o-mini --embedder text-embedding-3-large
+OPENAI_API_KEY=sk-... raglite --llm gpt-4o-mini --embedder text-embedding-3-large chainlit
 ```
 
-<div align="center"><video src="https://github.com/user-attachments/assets/01cf98d3-6ddd-45bb-8617-cf290c09f187" /></div>
+<div align="center"><video src="https://github.com/user-attachments/assets/a303ed4a-54cd-45ea-a2b5-86e086053aed" /></div>
 
 ## Contributing
 

@@ -19,6 +19,8 @@ version_provider = "poetry"
 [tool.poetry.dependencies] # https://python-poetry.org/docs/dependency-specification/
 # Python:
 python = ">=3.10,<4.0"
+# Configuration:
+platformdirs = ">=4.0.0"
 # Markdown conversion:
 pdftext = ">=0.3.13"
 pypandoc-binary = { version = ">=1.13", optional = true }
@@ -52,6 +54,8 @@ ragas = { version = ">=0.1.12", optional = true }
 typer = ">=0.12.5"
 # Frontend:
 chainlit = { version = ">=1.2.0", optional = true }
+# Model Context Protocol:
+fastmcp = ">=0.4.1"
 # Utilities:
 packaging = ">=23.0"
 

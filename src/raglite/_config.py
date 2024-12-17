@@ -4,8 +4,10 @@ import contextlib
 import os
 from dataclasses import dataclass, field
 from io import StringIO
+from pathlib import Path
 
 from llama_cpp import llama_supports_gpu_offload
+from platformdirs import user_data_dir
 from sqlalchemy.engine import URL
 
 # Suppress rerankers output on import until [1] is fixed.
@@ -15,12 +17,15 @@ with contextlib.redirect_stdout(StringIO()):
     from rerankers.models.ranker import BaseRanker
 
 
+cache_path = Path(user_data_dir("raglite", ensure_exists=True))
+
+
 @dataclass(frozen=True)
 class RAGLiteConfig:
-    """Configuration for RAGLite."""
+    """RAGLite config."""
 
     # Database config.
-    db_url: str | URL = "sqlite:///raglite.sqlite"
+    db_url: str | URL = f"sqlite:///{(cache_path / 'raglite.db').as_posix()}"
     # LLM config used for generation.
     llm: str = field(
         default_factory=lambda: (
@@ -48,8 +53,8 @@ class RAGLiteConfig:
     # Reranking config.
     reranker: BaseRanker | tuple[tuple[str, BaseRanker], ...] | None = field(
         default_factory=lambda: (
-            ("en", FlashRankRanker("ms-marco-MiniLM-L-12-v2", verbose=0)),
-            ("other", FlashRankRanker("ms-marco-MultiBERT-L-12", verbose=0)),
+            ("en", FlashRankRanker("ms-marco-MiniLM-L-12-v2", verbose=0, cache_dir=cache_path)),
+            ("other", FlashRankRanker("ms-marco-MultiBERT-L-12", verbose=0, cache_dir=cache_path)),
         ),
         compare=False,  # Exclude the reranker from comparison to avoid lru_cache misses.
     )
