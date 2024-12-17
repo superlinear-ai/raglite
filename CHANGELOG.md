@@ -1,3 +1,14 @@
+## v0.5.0 (2024-12-17)
+
+### Feat
+
+- add MCP server (#67)
+- let LLM choose whether to retrieve context (#62)
+
+### Fix
+
+- support pgvector v0.7.0+ (#63)
+
 ## v0.4.1 (2024-12-05)
 
 ### Fix
