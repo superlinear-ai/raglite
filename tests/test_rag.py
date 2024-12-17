@@ -27,6 +27,23 @@ def test_rag_manual(raglite_test_config: RAGLiteConfig) -> None:
     assert [message["role"] for message in messages] == ["user", "assistant"]
 
 
+def test_rag_manual_empty_database(llm: str, embedder: str) -> None:
+    """Test Retrieval-Augmented Generation with manual retrieval."""
+    # Answer a question with manual RAG.
+    raglite_test_config = RAGLiteConfig(db_url="sqlite:///:memory:", llm=llm, embedder=embedder)
+    user_prompt = "How does Einstein define 'simultaneous events' in his special relativity paper?"
+    chunk_spans = retrieve_rag_context(query=user_prompt, config=raglite_test_config)
+    messages = [create_rag_instruction(user_prompt, context=chunk_spans)]
+    stream = rag(messages, config=raglite_test_config)
+    answer = ""
+    for update in stream:
+        assert isinstance(update, str)
+        answer += update
+    assert "event" in answer.lower()
+    # Verify that no RAG context was retrieved through tool use.
+    assert [message["role"] for message in messages] == ["user", "assistant"]
+
+
 def test_rag_auto_with_retrieval(raglite_test_config: RAGLiteConfig) -> None:
     """Test Retrieval-Augmented Generation with automatic retrieval."""
     # Answer a question that requires RAG.

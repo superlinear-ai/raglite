@@ -6,7 +6,6 @@ import string
 from collections import defaultdict
 from collections.abc import Sequence
 from itertools import groupby
-from typing import cast
 
 import numpy as np
 from langdetect import LangDetectException, detect
@@ -66,23 +65,32 @@ def vector_search(
                 .order_by(distance)
                 .limit(oversample * num_results)
             )
-            chunk_ids_, distance = zip(*results, strict=True)
-            chunk_ids, similarity = np.asarray(chunk_ids_), 1.0 - np.asarray(distance)
+            results = list(results)  # type: ignore[assignment]
+            chunk_ids = np.asarray([result[0] for result in results])
+            similarity = 1.0 - np.asarray([result[1] for result in results])
     elif db_backend == "sqlite":
         # Load the NNDescent index.
         index = index_metadata.get("index")
-        ids = np.asarray(index_metadata.get("chunk_ids"))
-        cumsum = np.cumsum(np.asarray(index_metadata.get("chunk_sizes")))
+        ids = np.asarray(index_metadata.get("chunk_ids", []))
+        cumsum = np.cumsum(np.asarray(index_metadata.get("chunk_sizes", [])))
         # Find the neighbouring multi-vector indices.
         from pynndescent import NNDescent
 
-        multi_vector_indices, distance = cast(NNDescent, index).query(
-            query_embedding[np.newaxis, :], k=oversample * num_results
-        )
-        similarity = 1 - distance[0, :]
-        # Transform the multi-vector indices into chunk indices, and then to chunk ids.
-        chunk_indices = np.searchsorted(cumsum, multi_vector_indices[0, :], side="right") + 1
-        chunk_ids = np.asarray([ids[chunk_index - 1] for chunk_index in chunk_indices])
+        if isinstance(index, NNDescent) and len(ids) and len(cumsum):
+            # Query the index.
+            multi_vector_indices, distance = index.query(
+                query_embedding[np.newaxis, :], k=oversample * num_results
+            )
+            similarity = 1 - distance[0, :]
+            # Transform the multi-vector indices into chunk indices, and then to chunk ids.
+            chunk_indices = np.searchsorted(cumsum, multi_vector_indices[0, :], side="right") + 1
+            chunk_ids = np.asarray([ids[chunk_index - 1] for chunk_index in chunk_indices])
+        else:
+            # Empty result set if there is no index or if no chunks are indexed.
+            chunk_ids, similarity = np.array([], dtype=np.intp), np.array([])
+    # Exit early if there are no search results.
+    if not len(chunk_ids):
+        return [], []
     # Score each unique chunk id as the mean similarity of its multi-vector hits. Chunk ids with
     # fewer hits are padded with the minimum similarity of the result set.
     unique_chunk_ids, counts = np.unique(chunk_ids, return_counts=True)
@@ -157,6 +165,9 @@ def reciprocal_rank_fusion(
         chunk_id_index = {chunk_id: i for i, chunk_id in enumerate(ranking)}
         for chunk_id in chunk_ids:
             chunk_id_score[chunk_id] += 1 / (k + chunk_id_index.get(chunk_id, len(chunk_id_index)))
+    # Exit early if there are no results to fuse.
+    if not chunk_id_score:
+        return [], []
     # Rank RRF results according to descending RRF score.
     rrf_chunk_ids, rrf_score = zip(
         *sorted(chunk_id_score.items(), key=lambda x: x[1], reverse=True), strict=True
@@ -181,6 +192,8 @@ def retrieve_chunks(
     chunk_ids: list[ChunkId], *, config: RAGLiteConfig | None = None
 ) -> list[Chunk]:
     """Retrieve chunks by their ids."""
+    if not chunk_ids:
+        return []
     config = config or RAGLiteConfig()
     engine = create_database_engine(config)
     with Session(engine) as session:
@@ -207,8 +220,8 @@ def rerank_chunks(
         if all(isinstance(chunk_id, ChunkId) for chunk_id in chunk_ids)
         else chunk_ids
     )
-    # Early exit if no reranker is configured.
-    if not config.reranker:
+    # Exit early if no reranker is configured or if the input is empty.
+    if not config.reranker or not chunks:
         return chunks
     # Select the reranker.
     if isinstance(config.reranker, Sequence):
@@ -243,6 +256,9 @@ def retrieve_chunk_spans(
     Chunk spans are ordered according to the aggregate relevance of their underlying chunks, as
     determined by the order in which they are provided to this function.
     """
+    # Exit early if the input is empty.
+    if not chunk_ids:
+        return []
     # Retrieve the chunks.
     config = config or RAGLiteConfig()
     chunks: list[Chunk] = (
