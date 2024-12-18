@@ -62,3 +62,15 @@ def test_search_no_results(raglite_test_config: RAGLiteConfig, search_method: Se
     assert len(chunk_ids) == len(scores) == num_results_expected
     assert all(isinstance(chunk_id, str) for chunk_id in chunk_ids)
     assert all(isinstance(score, float) for score in scores)
+
+
+def test_search_empty_database(llm: str, embedder: str, search_method: SearchMethod) -> None:
+    """Test searching for a query with an empty database."""
+    raglite_test_config = RAGLiteConfig(db_url="sqlite:///:memory:", llm=llm, embedder=embedder)
+    query = "supercalifragilisticexpialidocious"
+    num_results = 5
+    chunk_ids, scores = search_method(query, num_results=num_results, config=raglite_test_config)
+    num_results_expected = 0
+    assert len(chunk_ids) == len(scores) == num_results_expected
+    assert all(isinstance(chunk_id, str) for chunk_id in chunk_ids)
+    assert all(isinstance(score, float) for score in scores)

@@ -5,6 +5,7 @@ import os
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
+from typing import Literal
 
 from llama_cpp import llama_supports_gpu_offload
 from platformdirs import user_data_dir
@@ -48,8 +49,8 @@ class RAGLiteConfig:
     # Chunk config used to partition documents into chunks.
     chunk_max_size: int = 1440  # Max number of characters per chunk.
     # Vector search config.
-    vector_search_index_metric: str = "cosine"  # The query adapter supports "dot" and "cosine".
-    vector_search_query_adapter: bool = True
+    vector_search_index_metric: Literal["cosine", "dot", "l1", "l2"] = "cosine"
+    vector_search_query_adapter: bool = True  # Only supported for "cosine" and "dot" metrics.
     # Reranking config.
     reranker: BaseRanker | tuple[tuple[str, BaseRanker], ...] | None = field(
         default_factory=lambda: (

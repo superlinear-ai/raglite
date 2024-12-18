@@ -27,7 +27,7 @@ Whenever possible, use only the provided context to respond to the question at t
 When responding, you MUST NOT reference the existence of the context, directly or indirectly.
 Instead, you MUST treat the context as if its contents are entirely part of your working memory.
 
-{context}
+<context>{context}</context>
 
 {user_prompt}
 """.strip()
@@ -91,7 +91,9 @@ def _get_tools(
     """Get tools to search the knowledge base if no RAG context is provided in the messages."""
     # Check if messages already contain RAG context or if the LLM supports tool use.
     final_message = messages[-1].get("content", "")
-    messages_contain_rag_context = any(s in final_message for s in ("</document>", "from_chunk_id"))
+    messages_contain_rag_context = any(
+        s in final_message for s in ("<context>", "<document>", "from_chunk_id")
+    )
     llm_supports_function_calling = supports_function_calling(config.llm)
     if not messages_contain_rag_context and not llm_supports_function_calling:
         error_message = "You must either explicitly provide RAG context in the last message, or use an LLM that supports function calling."
