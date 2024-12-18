@@ -176,7 +176,7 @@ messages.append({
     "content": "How is intelligence measured?"
 })
 
-# Adaptively decide whether to retrieve and stream the response:
+# Adaptively decide whether to retrieve and then stream the response:
 chunk_spans = []
 stream = rag(messages, on_retrieval=lambda x: chunk_spans.extend(x), config=my_config)
 for update in stream:
