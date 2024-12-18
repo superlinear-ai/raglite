@@ -1,3 +1,9 @@
+## v0.5.1 (2024-12-18)
+
+### Fix
+
+- improve output for empty databases (#68)
+
 ## v0.5.0 (2024-12-17)
 
 ### Feat
