@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, cast, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 from xml.sax.saxutils import escape
 
 import numpy as np
@@ -193,10 +193,14 @@ class ChunkSpan:
 
         [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
         """
+        return json.dumps(self.to_dict())
+
+    def to_dict(self, index: int | None = None) -> dict[str, Any]:
+        """Convert this chunk span to a dictionary representation."""
         if not self.chunks:
-            return "{}"
+            return {}
         index_attribute = {"index": index} if index is not None else {}
-        json_document = {
+        return {
             **index_attribute,
             "id": self.document.id,
             "source": self.document.url if self.document.url else self.document.filename,
@@ -207,7 +211,6 @@ class ChunkSpan:
                 "content": "".join(chunk.body for chunk in self.chunks).strip(),
             },
         }
-        return json.dumps(json_document)
 
     @property
     def content(self) -> str:

@@ -1,21 +1,23 @@
 """Chainlit frontend for RAGLite."""
 
 import os
+from functools import partial
 from pathlib import Path
 
 import chainlit as cl
 from chainlit.input_widget import Switch, TextInput
+from litellm.types.utils import ChatCompletionMessageToolCall
 
 from raglite import (
     RAGLiteConfig,
-    async_rag,
     hybrid_search,
     insert_document,
     rerank_chunks,
     retrieve_rag_context,
 )
 from raglite._markdown import document_to_markdown
-from raglite._rag import compose_rag_messages
+from raglite._rag import compose_rag_messages, rag, search_knowledge_base_tool
+from raglite._tools import Tool
 
 async_insert_document = cl.make_async(insert_document)
 
@@ -90,52 +92,69 @@ async def handle_message(user_message: cl.Message) -> None:
         + f"\n\n{user_message.content}"
     )
 
-    # Retrieve the context for RAG.
-    async with cl.Step(name="retrieval", type="retrieval") as step:
-        step.input = user_message.content
-        async_retrieve_rag_context = cl.make_async(retrieve_rag_context)
-        chunk_spans = await async_retrieve_rag_context(
-            query=user_prompt,
-            search=hybrid_search,
-            rerank=rerank_chunks,
-            max_chunk_spans=5,
-            config=config,
-        )
-        step.output = chunk_spans
-        step.elements = [  # Show the top chunk spans inline.
-            cl.Text(content=str(chunk_span), display="inline") for chunk_span in chunk_spans
-        ]
-        await step.update()  # TODO: Workaround for https://github.com/Chainlit/chainlit/issues/602.
-    # Stream the LLM response.
+    # # Stream the LLM response.
     assistant_message = cl.Message(content="")
     messages = compose_rag_messages(
         user_prompt=user_prompt,
-        context=chunk_spans,
         history=cl.chat_context.to_openai()[:-1],  # type: ignore[no-untyped-call]
         system_prompt=None,
     )
-    async for token in async_rag(messages, config=config):
+
+    for token in rag(
+        messages,
+        config=config,
+        tools=get_tools(config),
+    ):
         await assistant_message.stream_token(token)
 
-    # assistant_message = cl.Message(content="")
-    # chunk_spans = []
-    # messages: list[dict[str, str]] = cl.chat_context.to_openai()[:-1]  # type: ignore[no-untyped-call]
-    # messages.append({"role": "user", "content": user_prompt})
-    # async for token in async_rag(
-    #     messages, on_retrieval=lambda x: chunk_spans.extend(x), config=config
-    # ):
-    #     await assistant_message.stream_token(token)
-    # # Append RAG sources, if any.
-    # if chunk_spans:
-    #     rag_sources: dict[str, list[str]] = {}
-    #     for chunk_span in chunk_spans:
-    #         rag_sources.setdefault(chunk_span.document.id, [])
-    #         rag_sources[chunk_span.document.id].append(str(chunk_span))
-    #     assistant_message.content += "\n\nSources: " + ", ".join(  # Rendered as hyperlinks.
-    #         f"[{i + 1}]" for i in range(len(rag_sources))
-    #     )
-    #     assistant_message.elements = [  # Markdown content is rendered in sidebar.
-    #         cl.Text(name=f"[{i + 1}]", content="\n\n---\n\n".join(content), display="side")  # type: ignore[misc]
-    #         for i, (_, content) in enumerate(rag_sources.items())
-    #     ]
     await assistant_message.update()  # type: ignore[no-untyped-call]
+
+
+@cl.step
+def tool_progress(tool_call: ChatCompletionMessageToolCall) -> None:
+    """Show the tool call."""
+    step = cl.context.current_step
+    step.input = tool_call.to_json()
+    step.update()
+
+
+def get_tools(config: RAGLiteConfig) -> list[Tool]:
+    """Get the tools for the RAGLite pipeline."""
+    return [
+        Tool(
+            name="weather",
+            description="Get the weather at a location.",
+            parameters={
+                "location": {
+                    "type": "string",
+                    "description": "The location to get the weather for.",
+                }
+            },
+            call=cl.step(lambda location: f"The weather in {location} is sunny."),
+        ),
+        Tool(
+            name="time",
+            description="Get the current time.",
+            parameters={
+                "location": {
+                    "type": "string",
+                    "description": "The location to get the time for.",
+                }
+            },
+            call=cl.step(
+                lambda location: f"The current time in {location} is 12:00 PM.", type="tool"
+            ),
+        ),
+        search_knowledge_base_tool(
+            cl.step(
+                partial(
+                    retrieve_rag_context,
+                    search_method=cl.step(hybrid_search, type="retrieval"),
+                    rerank=cl.step(rerank_chunks, type="rerank"),
+                    config=config,
+                ),
+                name="Search knowledge base",
+                type="tool",
+            )
+        ),
+    ]

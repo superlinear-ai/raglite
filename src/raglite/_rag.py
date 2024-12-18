@@ -1,7 +1,7 @@
 """Retrieval-augmented generation."""
 
 import json
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncGenerator, Callable, Iterator
 from typing import TYPE_CHECKING, Any, Optional
 
 import numpy as np
@@ -9,14 +9,13 @@ from litellm import (  # type: ignore[attr-defined]
     ChatCompletionMessageToolCall,
     acompletion,
     completion,
-    stream_chunk_builder,
-    supports_function_calling,
 )
 
 from raglite._database import ChunkSpan
 from raglite._litellm import get_context_size
 from raglite._prompts import DEFAULT_RAG_INSTRUCTION_TEMPLATE
 from raglite._search import retrieve_chunk_spans, retrieve_chunks
+from raglite._tools import Tool, process_stream
 
 if TYPE_CHECKING:
     from raglite._config import RAGLiteConfig
@@ -26,14 +25,14 @@ if TYPE_CHECKING:
 def retrieve_rag_context(  # noqa: PLR0913
     query: str,
     *,
-    search: "ChunkSearchMethod",
+    search_method: "ChunkSearchMethod",
     rerank: Optional["ChunkRerankingMethod"] = None,
     max_chunk_spans: int | None = None,
     chunk_neighbors: tuple[int, ...] = (-1, 1),
     config: "RAGLiteConfig",
 ) -> list[ChunkSpan]:
     """Retrieve context for RAG."""
-    chunk_ids, _ = search(query, config=config)
+    chunk_ids, _ = search_method(query, config=config)
     # Rerank the chunks from most to least relevant.
     if rerank:
         chunks = rerank(query, chunk_ids=chunk_ids, config=config)
@@ -47,7 +46,7 @@ def create_rag_instruction(
     user_prompt: str,
     context: list[ChunkSpan],
     *,
-    rag_instruction_template: str,
+    rag_instruction_template: str = DEFAULT_RAG_INSTRUCTION_TEMPLATE,
 ) -> dict[str, str]:
     """Convert a user prompt to a RAG instruction.
 
@@ -61,7 +60,9 @@ def create_rag_instruction(
             user_prompt=user_prompt.strip(),
             context="\n".join(
                 chunk_span.to_xml(index=i + 1) for i, chunk_span in enumerate(context)
-            ),
+            )
+            if context
+            else user_prompt,
         ),
     }
     return message
@@ -95,207 +96,79 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
     return messages[first_message:]
 
 
-def _get_tools(
-    messages: list[dict[str, str]], config: RAGLiteConfig
-) -> tuple[list[dict[str, Any]] | None, dict[str, Any] | str | None]:
-    """Get tools to search the knowledge base if no RAG context is provided in the messages."""
-    # Check if messages already contain RAG context or if the LLM supports tool use.
-    final_message = messages[-1].get("content", "")
-    messages_contain_rag_context = any(s in final_message for s in ("</document>", "from_chunk_id"))
-    llm_supports_function_calling = supports_function_calling(config.llm)
-    if not messages_contain_rag_context and not llm_supports_function_calling:
-        error_message = "You must either explicitly provide RAG context in the last message, or use an LLM that supports function calling."
-        raise ValueError(error_message)
-    # Add a tool to search the knowledge base if no RAG context is provided in the messages. Because
-    # llama-cpp-python cannot stream tool_use='auto' yet, we use a workaround that forces the LLM
-    # to use a tool, but allows it to skip the search.
-    auto_tool_use_workaround = (
-        {
-            "expert": {
-                "type": "boolean",
-                "description": "The `expert` boolean MUST be true if the question requires domain-specific or expert-level knowledge to answer, and false otherwise.",
-            }
-        }
-        if config.llm.startswith("llama-cpp-python")
-        else {}
-    )
-    tools: list[dict[str, Any]] | None = (
-        [
-            {
-                "type": "function",
-                "function": {
-                    "name": "search_knowledge_base",
-                    "description": "Search the knowledge base. IMPORTANT: Only use this tool if a well-rounded non-expert would need to look up information to answer the question.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            **auto_tool_use_workaround,
-                            "query": {
-                                "type": "string",
-                                "description": (
-                                    "The `query` string to search the knowledge base with.\n"
-                                    "The `query` string MUST satisfy ALL of the following criteria:\n"
-                                    "- The `query` string MUST be a precise question in the user's language.\n"
-                                    "- The `query` string MUST resolve all pronouns to explicit nouns from the conversation history."
-                                ),
-                            },
-                        },
-                        "required": [*list(auto_tool_use_workaround), "query"],
-                        "additionalProperties": False,
-                    },
-                },
-            }
-        ]
-        if not messages_contain_rag_context
-        else None
-    )
-    tool_choice: dict[str, Any] | str | None = (
-        (
-            {"type": "function", "function": {"name": "search_knowledge_base"}}
-            if auto_tool_use_workaround
-            else "auto"
-        )
-        if tools
-        else None
-    )
-    return tools, tool_choice
+def search_knowledge_base_tool(chunk_span_search_method: Callable[[str], list[ChunkSpan]]) -> Tool:
+    def retrieval_tool(query: str) -> str:
+        response = json.dumps([span.to_dict() for span in chunk_span_search_method(query)])
+        return response
 
-
-def _run_tools(
-    tool_calls: list[ChatCompletionMessageToolCall],
-    on_retrieval: Callable[[list[ChunkSpan]], None] | None,
-    config: RAGLiteConfig,
-) -> list[dict[str, Any]]:
-    """Run tools to search the knowledge base for RAG context."""
-    tool_messages: list[dict[str, Any]] = []
-    for tool_call in tool_calls:
-        if tool_call.function.name == "search_knowledge_base":
-            kwargs = json.loads(tool_call.function.arguments)
-            kwargs["config"] = config
-            skip = not kwargs.pop("expert", True)
-            chunk_spans = retrieve_rag_context(**kwargs) if not skip and kwargs["query"] else None
-            tool_messages.append(
-                {
-                    "role": "tool",
-                    "content": '{{"documents": [{elements}]}}'.format(
-                        elements=", ".join(
-                            chunk_span.to_json(index=i + 1)
-                            for i, chunk_span in enumerate(chunk_spans)  # type: ignore[arg-type]
-                        )
-                    )
-                    if not skip and kwargs["query"]
-                    else "{}",
-                    "tool_call_id": tool_call.id,
-                }
-            )
-            if chunk_spans and callable(on_retrieval):
-                on_retrieval(chunk_spans)
-        else:
-            error_message = f"Unknown function `{tool_call.function.name}`."
-            raise ValueError(error_message)
-    return tool_messages
+    return Tool(
+        name="search_knowledge_base",
+        description="Search the knowledge base.",
+        parameters={
+            "query": {
+                "type": "string",
+                "description": (
+                    "The `query` string to search the knowledge base with.\n"
+                    "The `query` string MUST satisfy ALL of the following criteria:\n"
+                    "- The `query` string MUST be a precise question in the user's language.\n"
+                    "- The `query` string MUST resolve all pronouns to explicit nouns from the conversation history."
+                ),
+            },
+        },
+        call=retrieval_tool,
+    )
 
 
 def rag(
     messages: list[dict[str, str]],
     *,
-    on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
-    config: RAGLiteConfig,
+    tools: list[Tool] | None = None,
+    on_tool_call: Callable[[ChatCompletionMessageToolCall], Any] | None = None,
+    max_iterations: int = 10,
+    config: "RAGLiteConfig",
 ) -> Iterator[str]:
+    """Generate a response. Mutates the messages array in place."""
     # If the final message does not contain RAG context, get a tool to search the knowledge base.
     max_tokens = get_context_size(config)
-    tools, tool_choice = _get_tools(messages, config)
-    # Stream the LLM response, which is either a tool call request or an assistant response.
-    chunks = []
-    clipped_messages = _clip(messages, max_tokens)
-    if tools and config.llm.startswith("llama-cpp-python"):
-        # Help llama.cpp LLMs plan their response by providing a JSON schema for the tool call.
-        clipped_messages[-1]["content"] += (
-            "\n\n<tools>\n"
-            f"Available tools:\n```\n{json.dumps(tools)}\n```\n"
-            "IMPORTANT: The `expert` boolean MUST be true if the question requires domain-specific or expert-level knowledge to answer, and false otherwise.\n"
-            "</tools>"
+    for _ in range(max_iterations):
+        clipped_messages = _clip(messages, max_tokens)
+        stream = completion(
+            model=config.llm,
+            messages=clipped_messages,
+            tools=[tool.to_json() for tool in tools] if tools else None,
+            tool_choice="auto" if tools else None,
+            stream=True,
         )
-    stream = completion(
-        model=config.llm,
-        messages=clipped_messages,
-        tools=tools,
-        tool_choice=tool_choice,
-        stream=True,
-    )
-    for chunk in stream:
-        chunks.append(chunk)
-        if isinstance(token := chunk.choices[0].delta.content, str):
-            yield token
-    # Check if there are tools to be called.
-    response = stream_chunk_builder(chunks, messages)
-    tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
-    if tool_calls:
-        # Add the tool call request to the message array.
-        messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
-        # Run the tool calls to retrieve the RAG context and append the output to the message array.
-        messages.extend(_run_tools(tool_calls, on_retrieval, config))
-        # Stream the assistant response.
-        chunks = []
-        stream = completion(model=config.llm, messages=_clip(messages, max_tokens), stream=True)
-        for chunk in stream:
-            chunks.append(chunk)
-            if isinstance(token := chunk.choices[0].delta.content, str):
-                yield token
-    # Append the assistant response to the message array.
-    response = stream_chunk_builder(chunks, messages)
-    messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+        yield from process_stream(stream, messages=messages, tools=tools, on_tool_call=on_tool_call)
+        if messages[-1]["role"] != "tool":
+            break
 
 
 async def async_rag(
     messages: list[dict[str, str]],
     *,
-    on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
+    tools: list[Tool] | None = None,
+    on_tool_call: Callable[[ChatCompletionMessageToolCall], Any] | None = None,
+    max_iterations: int = 10,
     config: "RAGLiteConfig",
-) -> AsyncIterator[str]:
-    # If the final message does not contain RAG context, get a tool to search the knowledge base.
+) -> AsyncGenerator[str, None]:
+    """Generate a response. Mutates the messages array in place."""
     max_tokens = get_context_size(config)
-    tools, tool_choice = _get_tools(messages, config)
-    # Asynchronously stream the LLM response, which is either a tool call or an assistant response.
-    chunks = []
-    clipped_messages = _clip(messages, max_tokens)
-    if tools and config.llm.startswith("llama-cpp-python"):
-        # Help llama.cpp LLMs plan their response by providing a JSON schema for the tool call.
-        clipped_messages[-1]["content"] += (
-            "\n\n<tools>\n"
-            f"Available tools:\n```\n{json.dumps(tools)}\n```\n"
-            "IMPORTANT: The `expert` boolean MUST be true if the question requires domain-specific or expert-level knowledge to answer, and false otherwise.\n"
-            "</tools>"
+    for _ in range(max_iterations):
+        clipped_messages = _clip(messages, max_tokens)
+        stream = acompletion(
+            model=config.llm,
+            messages=clipped_messages,
+            tools=[tool.to_json() for tool in tools] if tools else None,
+            tool_choice="auto" if tools else None,
+            stream=True,
         )
-    async_stream = await acompletion(
-        model=config.llm,
-        messages=clipped_messages,
-        tools=tools,
-        tool_choice=tool_choice,
-        stream=True,
-    )
-    async for chunk in async_stream:
-        chunks.append(chunk)
-        if isinstance(token := chunk.choices[0].delta.content, str):
+        for token in process_stream(
+            stream,
+            messages=messages,
+            tools=tools,
+            on_tool_call=on_tool_call,
+        ):
             yield token
-    # Check if there are tools to be called.
-    response = stream_chunk_builder(chunks, messages)
-    tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
-    if tool_calls:
-        # Add the tool call requests to the message array.
-        messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
-        # Run the tool calls to retrieve the RAG context and append the output to the message array.
-        # TODO: Make this async.
-        messages.extend(_run_tools(tool_calls, on_retrieval, config))
-        # Asynchronously stream the assistant response.
-        chunks = []
-        async_stream = await acompletion(
-            model=config.llm, messages=_clip(messages, max_tokens), stream=True
-        )
-        async for chunk in async_stream:
-            chunks.append(chunk)
-            if isinstance(token := chunk.choices[0].delta.content, str):
-                yield token
-    # Append the assistant response to the message array.
-    response = stream_chunk_builder(chunks, messages)
-    messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+        if messages[-1]["role"] != "tool":
+            break
