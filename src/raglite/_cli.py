@@ -86,7 +86,7 @@ def install_mcp_server(
         "command": "uvx",
         "args": [
             "--python",
-            "3.12",
+            "3.11",
             "--with",
             "numpy<2.0.0",  # TODO: Remove this constraint when uv no longer needs it to solve the environment.
             "raglite",

@@ -1,13 +1,10 @@
 """Test RAGLite's RAG functionality."""
 
-import json
-
 from raglite import (
     RAGLiteConfig,
     create_rag_instruction,
     retrieve_rag_context,
 )
-from raglite._database import ChunkSpan
 from raglite._rag import rag
 
 
