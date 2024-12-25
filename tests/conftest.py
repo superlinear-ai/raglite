@@ -7,7 +7,6 @@ from collections.abc import Generator
 from pathlib import Path
 
 import pytest
-from llama_cpp import llama_supports_gpu_offload
 from sqlalchemy import create_engine, text
 
 from raglite import RAGLiteConfig, insert_document
@@ -22,11 +21,6 @@ def is_postgres_running() -> bool:
             return True
     except OSError:
         return False
-
-
-def is_accelerator_available() -> bool:
-    """Check if an accelerator is available."""
-    return llama_supports_gpu_offload() or (os.cpu_count() or 1) >= 8  # noqa: PLR2004
 
 
 def is_openai_available() -> bool:
@@ -79,7 +73,7 @@ def database(request: pytest.FixtureRequest) -> str:
                 "llama-cpp-python/bartowski/Llama-3.2-3B-Instruct-GGUF/*Q4_K_M.gguf@4096",
                 "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@1024",  # More context degrades performance.
             ),
-            id="llama32_3B-bge_m3",
+            id="llama_3.2_3B-bge_m3",
         ),
         pytest.param(
             ("gpt-4o-mini", "text-embedding-3-small"),

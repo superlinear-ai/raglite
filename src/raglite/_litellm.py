@@ -31,6 +31,7 @@ from llama_cpp import (  # type: ignore[attr-defined]
     LlamaRAMCache,
 )
 
+from raglite._chatml_function_calling import chatml_function_calling_with_streaming
 from raglite._config import RAGLiteConfig
 
 # Reduce the logging level for LiteLLM, flashrank, and httpx.
@@ -116,8 +117,8 @@ class LlamaCppPythonLLM(CustomLLM):
                 n_ctx=n_ctx,
                 n_gpu_layers=-1,
                 verbose=False,
-                # Enable function calling.
-                chat_format="chatml-function-calling",
+                # Enable function calling with streaming.
+                chat_handler=chatml_function_calling_with_streaming,
                 # Workaround to enable long context embedding models [1].
                 # [1] https://github.com/abetlen/llama-cpp-python/issues/1762
                 n_batch=n_ctx if n_ctx > 0 else 1024,
