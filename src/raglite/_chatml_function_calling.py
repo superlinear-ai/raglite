@@ -2,21 +2,22 @@
 
 Changes:
 1. General:
-    a. Improvement: If no system message is supplied, add an empty system message to hold the tool metadata.
-    b. Improvement: Add function descriptions to the system message so that tool use is better informed (fixes #1869).
-    c. Improvement: Replace `print` statements relating to JSON grammars with `RuntimeWarning` warnings.
-2. Case "Tool choice by user":
-    b. Improvement: add support for more than one function call by making this a special case of "Automatic tool choice" with a single tool.
-3. Case "Automatic tool choice -> respond with a message":
-    a. Improvement: use user-defined `stop` and `max_tokens`.
-    b. Fix: replace incorrect use of follow-up grammar with user-defined grammar.
-4. Case "Automatic tool choice -> one or more function calls":
-    a. Improvement: add support for streaming the function calls.
-    b. Improvement: make tool calling more robust by giving the LLM an explicit way to terminate the tool calls by wrapping them in a `<function_calls></function_calls>` block.
-    c. Fix: add missing ":" stop token to determine whether to continue with another tool call, which prevented parallel function calling.
-    d. Improvement: set temperature=0 to determine whether to continue with another tool call, similar to the initial decision on whether to call a tool.
+    a. ✨ If no system message is supplied, add an empty system message to hold the tool metadata.
+    b. ✨ Add function descriptions to the system message so that tool use is better informed (fixes https://github.com/abetlen/llama-cpp-python/issues/1869).
+    c. ✨ Replace `print` statements relating to JSON grammars with `RuntimeWarning` warnings.
+    d. ✅ Added tests with fairly broad coverage of the different scenarios.
+4. Case "Tool choice by user":
+    a. ✨ Add support for more than one function call by making this a special case of "Automatic tool choice" with a single tool (subsumes https://github.com/abetlen/llama-cpp-python/pull/1503).
+5. Case "Automatic tool choice -> respond with a message":
+    a. ✨ Use user-defined `stop` and `max_tokens`.
+    b. 🐛 Replace incorrect use of follow-up grammar with user-defined grammar.
+6. Case "Automatic tool choice -> one or more function calls":
+    a. ✨ Add support for streaming the function calls (fixes https://github.com/abetlen/llama-cpp-python/issues/1883).
+    b. ✨ Make tool calling more robust by giving the LLM an explicit way to terminate the tool calls by wrapping them in a `<function_calls></function_calls>` block.
+    c. 🐛 Add missing ":" stop token to determine whether to continue with another tool call, which prevented parallel function calling (fixes https://github.com/abetlen/llama-cpp-python/issues/1756)
+    d. ✨ Set temperature=0 to determine whether to continue with another tool call, similar to the initial decision on whether to call a tool.
 """
-# Ignore some ruff rules for the entire file to minimise changes w.r.t. the original implementation:
+# This file uses old-style type hints and ignores certain ruff rules to minimise changes w.r.t. the original implementation:
 # ruff: noqa: C901, PLR0913, PLR0912, PLR0915, UP006, UP007, FBT001, FBT002, B006, TRY003, EM102, BLE001, PT018, W505
 
 import json
