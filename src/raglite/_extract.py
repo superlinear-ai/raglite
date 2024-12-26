@@ -41,7 +41,7 @@ def extract_with_llm(
     system_prompt = getattr(return_type, "system_prompt", "").strip()
     if not llm_supports_response_format or config.llm.startswith("llama-cpp-python"):
         system_prompt += f"\n\nFormat your response according to this JSON schema:\n{return_type.model_json_schema()!s}"
-    # Constrain the reponse format to the JSON schema if it's supported by the LLM [1]. Strict mode
+    # Constrain the response format to the JSON schema if it's supported by the LLM [1]. Strict mode
     # is disabled by default because it only supports a subset of JSON schema features [2].
     # [1] https://docs.litellm.ai/docs/completion/json_mode
     # [2] https://platform.openai.com/docs/guides/structured-outputs#some-type-specific-keywords-are-not-yet-supported
