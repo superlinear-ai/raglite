@@ -58,5 +58,5 @@ def test_rag_auto_without_retrieval(raglite_test_config: RAGLiteConfig) -> None:
         assert isinstance(update, str)
         answer += update
     # Verify that no RAG context was retrieved.
-    assert [msg["role"] for msg in messages] == ["user", "assistant"]
+    assert [message["role"] for message in messages] == ["user", "assistant"]
     assert not chunk_spans
