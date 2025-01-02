@@ -31,7 +31,7 @@ mdformat-gfm = ">=0.3.6"
 # Sentence and chunk splitting:
 numpy = ">=1.26.4"
 scipy = ">=1.5.0"
-spacy = ">=3.7.0,<3.8.0"
+wtpsplit-lite = ">=0.1.0"
 # Large Language Models:
 huggingface-hub = ">=0.22.0"
 litellm = ">=1.48.4"
@@ -76,7 +76,6 @@ ruff = ">=0.5.7"
 safety = ">=3.1.0"
 shellcheck-py = ">=0.10.0.1"
 typeguard = ">=4.2.1"
-xx_sent_ud_sm = { url = "https://github.com/explosion/spacy-models/releases/download/xx_sent_ud_sm-3.7.0/xx_sent_ud_sm-3.7.0-py3-none-any.whl" }
 
 [tool.poetry.group.dev.dependencies] # https://python-poetry.org/docs/master/managing-dependencies/
 cruft = ">=2.15.0"

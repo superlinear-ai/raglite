@@ -17,8 +17,8 @@ async_rerank_chunks = cl.make_async(rerank_chunks)
 @cl.on_chat_start
 async def start_chat() -> None:
     """Initialize the chat."""
-    # Disable tokenizes parallelism to avoid the deadlock warning.
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    # Set tokenizers parallelism to avoid a deadlock warning.
+    os.environ["TOKENIZERS_PARALLELISM"] = "true"
     # Add Chainlit settings with which the user can configure the RAGLite config.
     default_config = RAGLiteConfig()
     config = RAGLiteConfig(
