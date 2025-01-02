@@ -25,21 +25,25 @@ def _mark_additional_sentence_boundaries(doc: spacy.tokens.Doc) -> spacy.tokens.
                 start_line, end_line = token.map  # type: ignore[misc]
                 heading_start = char_idx[start_line]
                 heading_end = char_idx[end_line]
-                headings.append((heading_start, heading_end))
+                headings.append((heading_start, heading_end + 1))
         return headings
 
     headings = get_markdown_heading_indexes(doc.text)
     for heading_start, heading_end in headings:
-        # Mark the start of a heading as a new sentence.
+        # Extract this heading's tokens.
+        heading_tokens = []
         for token in doc:
-            if heading_start <= token.idx:
-                token.is_sent_start = True
+            if heading_start <= token.idx < heading_end:
+                heading_tokens.append(token)  # Include the tokens strictly part of the heading.
+            elif heading_tokens:
+                heading_tokens.append(token)  # Include the first token after the heading.
                 break
-        # Mark the end of a heading as a new sentence.
-        for token in doc:
-            if heading_end <= token.idx:
-                token.is_sent_start = True
-                break
+        # Mark the start of the heading as a new sentence, the heading body as not containing
+        # sentence boundaries, and the first token after the heading as a new sentence.
+        heading_tokens[0].is_sent_start = True
+        heading_tokens[-1].is_sent_start = True
+        for token in heading_tokens[1:-1]:
+            token.is_sent_start = False
     return doc
 
 
