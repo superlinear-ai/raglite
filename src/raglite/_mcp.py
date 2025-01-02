@@ -13,9 +13,8 @@ Query = Annotated[
     Field(
         description=(
             "The `query` string to search the knowledge base with.\n"
-            "The `query` string MUST satisfy ALL of the following criteria:\n"
-            "- The `query` string MUST be a precise question in the user's language.\n"
-            "- The `query` string MUST resolve all pronouns to explicit nouns from the conversation history."
+            "The `query` string MUST be a precise single-faceted question in the user's language.\n"
+            "The `query` string MUST resolve all pronouns to explicit nouns from the conversation history."
         )
     ),
 ]
