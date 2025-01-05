@@ -5,7 +5,7 @@ Changes:
     a. ✨ If no system message is supplied, add an empty system message to hold the tool metadata.
     b. ✨ Add function descriptions to the system message so that tool use is better informed (fixes https://github.com/abetlen/llama-cpp-python/issues/1869).
     c. ✨ Replace `print` statements relating to JSON grammars with `RuntimeWarning` warnings.
-    d. ✅ Added tests with fairly broad coverage of the different scenarios.
+    d. ✅ Add tests with fairly broad coverage of the different scenarios.
 4. Case "Tool choice by user":
     a. ✨ Add support for more than one function call by making this a special case of "Automatic tool choice" with a single tool (subsumes https://github.com/abetlen/llama-cpp-python/pull/1503).
 5. Case "Automatic tool choice -> respond with a message":
@@ -14,7 +14,7 @@ Changes:
 6. Case "Automatic tool choice -> one or more function calls":
     a. ✨ Add support for streaming the function calls (fixes https://github.com/abetlen/llama-cpp-python/issues/1883).
     b. ✨ Make tool calling more robust by giving the LLM an explicit way to terminate the tool calls by wrapping them in a `<function_calls></function_calls>` block.
-    c. 🐛 Add missing ":" stop token to determine whether to continue with another tool call, which prevented parallel function calling (fixes https://github.com/abetlen/llama-cpp-python/issues/1756)
+    c. 🐛 Add missing ":" stop token to determine whether to continue with another tool call, which prevented parallel function calling (fixes https://github.com/abetlen/llama-cpp-python/issues/1756).
     d. ✨ Set temperature=0 to determine whether to continue with another tool call, similar to the initial decision on whether to call a tool.
 """
 # This file uses old-style type hints and ignores certain ruff rules to minimise changes w.r.t. the original implementation:
@@ -122,7 +122,7 @@ def _stream_tool_calls(
     completions: List[llama_types.CreateCompletionResponse] = []
     completions_tool_name: List[str] = []
     finish_reason_chat_chunk = None
-    while tool is not None:
+    while tool is not None and len(completions) <= 16:  # noqa: PLR2004
         # Generate the parameter values for the selected tool
         prompt += f"functions.{tool_name}:\n"
         try:
@@ -296,11 +296,11 @@ def chatml_function_calling_with_streaming(
     # Collect the llama.create_completion keyword arguments so we don't have to repeat these with
     # each completion call
     stop = (
-        [stop, "<|im_end|>"]
+        [stop, "<|im_end|>", "|im_end|>"]
         if isinstance(stop, str)
-        else [*stop, "<|im_end|>"]
+        else [*stop, "<|im_end|>", "|im_end|>"]
         if stop
-        else ["<|im_end|>"]
+        else ["<|im_end|>", "|im_end|>"]
     )
     grammar = (  # It is assumed the grammar applies to messages only, not tool calls
         grammar
@@ -394,9 +394,12 @@ def chatml_function_calling_with_streaming(
 
     # Case 2 step 2A: Respond with a message
     if tool_name is None:
+        prompt = template_renderer.render(
+            messages=messages, tools=[], tool_calls=None, add_generation_prompt=True
+        )
         return _convert_completion_to_chat(
             llama.create_completion(
-                prompt=prompt + "message:\n",
+                prompt=prompt,
                 **completion_kwargs,  # type: ignore[arg-type]
                 logprobs=top_logprobs if logprobs else None,
             ),
@@ -416,7 +419,7 @@ def chatml_function_calling_with_streaming(
     tool = next((tool for tool in tools if tool["function"]["name"] == tool_name), None)
     completions: List[llama_types.CreateCompletionResponse] = []
     completions_tool_name: List[str] = []
-    while tool is not None:
+    while tool is not None and len(completions) <= 16:  # noqa: PLR2004
         # Generate the parameter values for the selected tool
         prompt += f"functions.{tool_name}:\n"
         try:
