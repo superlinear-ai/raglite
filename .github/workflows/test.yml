@@ -25,10 +25,10 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 21
+          node-version: 23
 
       - name: Install @devcontainers/cli
-        run: npm install --location=global @devcontainers/cli@0.58.0
+        run: npm install --location=global @devcontainers/cli@0.72.0
 
       - name: Start Dev Container
         run: |
@@ -42,6 +42,6 @@ jobs:
         run: devcontainer exec --workspace-folder . poe test
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: reports/coverage.xml

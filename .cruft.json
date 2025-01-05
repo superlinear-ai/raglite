@@ -1,6 +1,6 @@
 {
   "template": "https://github.com/superlinear-ai/poetry-cookiecutter",
-  "commit": "b7f2fb0f123aae0a01d2ab015db31f52d2d8cc21",
+  "commit": "0b4edb2d3ea619bfc3b2ffd440e2e95ca997f0f2",
   "checkout": null,
   "context": {
     "cookiecutter": {
