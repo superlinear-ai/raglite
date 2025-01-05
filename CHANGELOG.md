@@ -1,3 +1,12 @@
+## v0.6.0 (2025-01-05)
+
+### Feat
+
+- add support for Python 3.12 (#69)
+- upgrade from xx_sent_ud_sm to SaT (#74)
+- add streaming tool use to llama-cpp-python (#71)
+- improve sentence splitting (#72)
+
 ## v0.5.1 (2024-12-18)
 
 ### Fix

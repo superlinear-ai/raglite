@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry] # https://python-poetry.org/docs/pyproject/
 name = "raglite"
-version = "0.5.1"
+version = "0.6.0"
 description = "A Python toolkit for Retrieval-Augmented Generation (RAG) with SQLite or PostgreSQL."
 authors = ["Laurent Sorber <laurent@superlinear.eu>"]
 readme = "README.md"
