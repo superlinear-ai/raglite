@@ -1,15 +1,20 @@
 """Sentence splitter."""
 
 import re
+from collections.abc import Callable
+from functools import cache
+from typing import Any
 
-import spacy
+import numpy as np
 from markdown_it import MarkdownIt
-from spacy.language import Language
+from wtpsplit_lite import SaT
+from wtpsplit_lite._utils import indices_to_sentences
+
+from raglite._typing import FloatVector
 
 
-@Language.component("_mark_additional_sentence_boundaries")
-def _mark_additional_sentence_boundaries(doc: spacy.tokens.Doc) -> spacy.tokens.Doc:
-    """Mark additional sentence boundaries in Markdown documents."""
+def markdown_sentence_boundaries(doc: str) -> FloatVector:
+    """Determine known sentence boundaries from a Markdown document."""
 
     def get_markdown_heading_indexes(doc: str) -> list[tuple[int, int]]:
         """Get the indexes of the headings in a Markdown document."""
@@ -28,36 +33,68 @@ def _mark_additional_sentence_boundaries(doc: spacy.tokens.Doc) -> spacy.tokens.
                 headings.append((heading_start, heading_end + 1))
         return headings
 
-    headings = get_markdown_heading_indexes(doc.text)
+    # Get the start and end character indexes of the headings in the document.
+    headings = get_markdown_heading_indexes(doc)
+    # Indicate that each heading is a contiguous sentence by setting the boundary probabilities.
+    boundary_probas = np.full(len(doc), np.nan)
     for heading_start, heading_end in headings:
-        # Extract this heading's tokens.
-        heading_tokens = []
-        for token in doc:
-            if heading_start <= token.idx < heading_end:
-                heading_tokens.append(token)  # Include the tokens strictly part of the heading.
-            elif heading_tokens:
-                heading_tokens.append(token)  # Include the first token after the heading.
-                break
-        # Mark the start of the heading as a new sentence, the heading body as not containing
-        # sentence boundaries, and the first token after the heading as a new sentence.
-        heading_tokens[0].is_sent_start = True
-        heading_tokens[-1].is_sent_start = True
-        for token in heading_tokens[1:-1]:
-            token.is_sent_start = False
-    return doc
+        if heading_start >= 1:
+            boundary_probas[heading_start - 1] = 1  # First heading character starts a sentence.
+        boundary_probas[heading_start : heading_end - 1] = 0  # Body does not contain boundaries.
+        boundary_probas[heading_end - 1] = 1  # Last heading character is the end of a sentence.
+    return boundary_probas
 
 
-def split_sentences(doc: str, max_len: int | None = None) -> list[str]:
-    """Split a document into sentences."""
-    # Split sentences with spaCy.
-    try:
-        nlp = spacy.load("xx_sent_ud_sm")
-    except OSError as error:
-        error_message = "Please install `xx_sent_ud_sm` with `pip install https://github.com/explosion/spacy-models/releases/download/xx_sent_ud_sm-3.7.0/xx_sent_ud_sm-3.7.0-py3-none-any.whl`."
-        raise ImportError(error_message) from error
-    nlp.add_pipe("_mark_additional_sentence_boundaries", before="senter")
-    sentences = [sent.text_with_ws for sent in nlp(doc).sents if sent.text.strip()]
-    # Apply additional splits on paragraphs and sentences because spaCy's splitting is not perfect.
+@cache
+def _load_sat() -> tuple[SaT, dict[str, Any]]:
+    """Load a Segment any Text (SaT) model."""
+    sat = SaT("sat-3l-sm")  # This model makes the best trade-off between speed and accuracy.
+    sat_kwargs = {"stride": 128, "block_size": 256, "weighting": "hat"}
+    return sat, sat_kwargs
+
+
+def split_sentences(
+    doc: str,
+    max_len: int | None = None,
+    boundary_probas: FloatVector | Callable[[str], FloatVector] = markdown_sentence_boundaries,
+) -> list[str]:
+    """Split a document into sentences.
+
+    Parameters
+    ----------
+    doc
+        The document to split into sentences.
+    max_len
+        The maximum length of a sentence, with no maximum length by default.
+    boundary_probas
+        Any known sentence boundary probabilities to override the model's predicted sentence
+        boundary probabilities. If an element of the probability vector with index k is 1 (0), then
+        the character at index k + 1 is (not) the start of a sentence. Elements set to NaN will not
+        override the predicted probabilities. By default, the known sentence boundary probabilities
+        are determined from the document's Markdown headings.
+
+    Returns
+    -------
+    list[str]
+        The sentences.
+    """
+    # Compute the sentence boundary probabilities with a wtpsplit Segment any Text (SaT) model.
+    sat, sat_kwargs = _load_sat()
+    predicted_probas = sat.predict_proba(doc, **sat_kwargs)
+    # Override the predicted boundary probabilities with the known boundary probabilities.
+    known_probas = boundary_probas(doc) if callable(boundary_probas) else boundary_probas
+    probas = predicted_probas.copy()
+    probas[np.isfinite(known_probas)] = known_probas[np.isfinite(known_probas)]
+    # For consecutive high probability sentence boundaries, keep only the first one.
+    sentence_threshold = 0.25  # Default threshold for -sm models.
+    split_indices = np.where(probas > sentence_threshold)[0]
+    for split_index in split_indices:
+        if probas[split_index] > sentence_threshold:
+            probas[split_index + 1 : split_index + 3] = 0
+    # Split the document into sentences where the boundary probability exceeds a threshold.
+    split_indices = np.where(probas > sentence_threshold)[0]
+    sentences: list[str] = [s for s in indices_to_sentences(doc, split_indices) if s.strip()]  # type: ignore[no-untyped-call]
+    # Apply additional splits on paragraphs and sentences.
     if max_len is not None:
         for pattern in (r"(?<=\n\n)", r"(?<=\.\s)"):
             sentences = [
