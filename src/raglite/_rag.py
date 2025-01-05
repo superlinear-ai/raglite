@@ -98,41 +98,27 @@ def _get_tools(
     if not messages_contain_rag_context and not llm_supports_function_calling:
         error_message = "You must either explicitly provide RAG context in the last message, or use an LLM that supports function calling."
         raise ValueError(error_message)
-    # Add a tool to search the knowledge base if no RAG context is provided in the messages. Because
-    # llama-cpp-python cannot stream tool_use='auto' yet, we use a workaround that forces the LLM
-    # to use a tool, but allows it to skip the search.
-    auto_tool_use_workaround = (
-        {
-            "expert": {
-                "type": "boolean",
-                "description": "The `expert` boolean MUST be true if the question requires domain-specific or expert-level knowledge to answer, and false otherwise.",
-            }
-        }
-        if config.llm.startswith("llama-cpp-python")
-        else {}
-    )
+    # Return a single tool to search the knowledge base if no RAG context is provided.
     tools: list[dict[str, Any]] | None = (
         [
             {
                 "type": "function",
                 "function": {
                     "name": "search_knowledge_base",
-                    "description": "Search the knowledge base. IMPORTANT: Only use this tool if a well-rounded non-expert would need to look up information to answer the question.",
+                    "description": "Search the knowledge base. IMPORTANT: You MAY NOT use this function if the query can be answered with common knowledge or straightforward reasoning.",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            **auto_tool_use_workaround,
                             "query": {
                                 "type": "string",
                                 "description": (
                                     "The `query` string to search the knowledge base with.\n"
-                                    "The `query` string MUST satisfy ALL of the following criteria:\n"
-                                    "- The `query` string MUST be a precise question in the user's language.\n"
-                                    "- The `query` string MUST resolve all pronouns to explicit nouns from the conversation history."
+                                    "The `query` string MUST be a precise single-faceted question in the user's language.\n"
+                                    "The `query` string MUST resolve all pronouns to explicit nouns from the conversation history."
                                 ),
                             },
                         },
-                        "required": [*list(auto_tool_use_workaround), "query"],
+                        "required": ["query"],
                         "additionalProperties": False,
                     },
                 },
@@ -141,15 +127,7 @@ def _get_tools(
         if not messages_contain_rag_context
         else None
     )
-    tool_choice: dict[str, Any] | str | None = (
-        (
-            {"type": "function", "function": {"name": "search_knowledge_base"}}
-            if auto_tool_use_workaround
-            else "auto"
-        )
-        if tools
-        else None
-    )
+    tool_choice: dict[str, Any] | str | None = "auto" if tools else None
     return tools, tool_choice
 
 
@@ -164,19 +142,16 @@ def _run_tools(
         if tool_call.function.name == "search_knowledge_base":
             kwargs = json.loads(tool_call.function.arguments)
             kwargs["config"] = config
-            skip = not kwargs.pop("expert", True)
-            chunk_spans = retrieve_rag_context(**kwargs) if not skip and kwargs["query"] else None
+            chunk_spans = retrieve_rag_context(**kwargs)
             tool_messages.append(
                 {
                     "role": "tool",
                     "content": '{{"documents": [{elements}]}}'.format(
                         elements=", ".join(
                             chunk_span.to_json(index=i + 1)
-                            for i, chunk_span in enumerate(chunk_spans)  # type: ignore[arg-type]
+                            for i, chunk_span in enumerate(chunk_spans)
                         )
-                    )
-                    if not skip and kwargs["query"]
-                    else "{}",
+                    ),
                     "tool_call_id": tool_call.id,
                 }
             )
@@ -198,23 +173,14 @@ def rag(
     max_tokens = get_context_size(config)
     tools, tool_choice = _get_tools(messages, config)
     # Stream the LLM response, which is either a tool call request or an assistant response.
-    chunks = []
-    clipped_messages = _clip(messages, max_tokens)
-    if tools and config.llm.startswith("llama-cpp-python"):
-        # Help llama.cpp LLMs plan their response by providing a JSON schema for the tool call.
-        clipped_messages[-1]["content"] += (
-            "\n\n<tools>\n"
-            f"Available tools:\n```\n{json.dumps(tools)}\n```\n"
-            "IMPORTANT: The `expert` boolean MUST be true if the question requires domain-specific or expert-level knowledge to answer, and false otherwise.\n"
-            "</tools>"
-        )
     stream = completion(
         model=config.llm,
-        messages=clipped_messages,
+        messages=_clip(messages, max_tokens),
         tools=tools,
         tool_choice=tool_choice,
         stream=True,
     )
+    chunks = []
     for chunk in stream:
         chunks.append(chunk)
         if isinstance(token := chunk.choices[0].delta.content, str):
@@ -249,23 +215,14 @@ async def async_rag(
     max_tokens = get_context_size(config)
     tools, tool_choice = _get_tools(messages, config)
     # Asynchronously stream the LLM response, which is either a tool call or an assistant response.
-    chunks = []
-    clipped_messages = _clip(messages, max_tokens)
-    if tools and config.llm.startswith("llama-cpp-python"):
-        # Help llama.cpp LLMs plan their response by providing a JSON schema for the tool call.
-        clipped_messages[-1]["content"] += (
-            "\n\n<tools>\n"
-            f"Available tools:\n```\n{json.dumps(tools)}\n```\n"
-            "IMPORTANT: The `expert` boolean MUST be true if the question requires domain-specific or expert-level knowledge to answer, and false otherwise.\n"
-            "</tools>"
-        )
     async_stream = await acompletion(
         model=config.llm,
-        messages=clipped_messages,
+        messages=_clip(messages, max_tokens),
         tools=tools,
         tool_choice=tool_choice,
         stream=True,
     )
+    chunks = []
     async for chunk in async_stream:
         chunks.append(chunk)
         if isinstance(token := chunk.choices[0].delta.content, str):
