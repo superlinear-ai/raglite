@@ -69,11 +69,16 @@ def insert_document(doc_path: Path, *, config: RAGLiteConfig | None = None) -> N
     """Insert a document into the database and update the index."""
     # Use the default config if not provided.
     config = config or RAGLiteConfig()
-    db_backend = make_url(config.db_url).get_backend_name()
     # Preprocess the document into chunks and chunk embeddings.
-    with tqdm(total=5, unit="step", dynamic_ncols=True) as pbar:
+    with tqdm(total=6, unit="step", dynamic_ncols=True) as pbar:
         pbar.set_description("Initializing database")
         engine = create_database_engine(config)
+        document_record = Document.from_path(doc_path)
+        with Session(engine) as session:  # Exit early if the document is already in the database.
+            if session.get(Document, document_record.id) is not None:
+                pbar.update(6)
+                pbar.close()
+                return
         pbar.update(1)
         pbar.set_description("Converting to Markdown")
         doc = document_to_markdown(doc_path)
@@ -92,32 +97,20 @@ def insert_document(doc_path: Path, *, config: RAGLiteConfig | None = None) -> N
             max_size=config.chunk_max_size,
         )
         pbar.update(1)
-    # Create and store the chunk records.
-    with Session(engine) as session:
-        # Add the document to the document table.
-        document_record = Document.from_path(doc_path)
-        if session.get(Document, document_record.id) is None:
+        pbar.set_description("Updating database")
+        with Session(engine) as session:
             session.add(document_record)
+            for chunk_record, chunk_embedding_record_list in zip(
+                *_create_chunk_records(document_record.id, chunks, chunk_embeddings, config),
+                strict=True,
+            ):
+                session.add(chunk_record)
+                session.add_all(chunk_embedding_record_list)
             session.commit()
-        # Create the chunk records to insert into the chunk table.
-        chunk_records, chunk_embedding_records = _create_chunk_records(
-            document_record.id, chunks, chunk_embeddings, config
-        )
-        # Store the chunk and chunk embedding records.
-        for chunk_record, chunk_embedding_record_list in tqdm(
-            zip(chunk_records, chunk_embedding_records, strict=True),
-            desc="Inserting chunks",
-            total=len(chunk_records),
-            unit="chunk",
-            dynamic_ncols=True,
-        ):
-            if session.get(Chunk, chunk_record.id) is not None:
-                continue
-            session.add(chunk_record)
-            session.add_all(chunk_embedding_record_list)
-            session.commit()
+        pbar.update(1)
+        pbar.close()
     # Manually update the vector search chunk index for SQLite.
-    if db_backend == "sqlite":
+    if make_url(config.db_url).get_backend_name() == "sqlite":
         from pynndescent import NNDescent
 
         with Session(engine) as session:
