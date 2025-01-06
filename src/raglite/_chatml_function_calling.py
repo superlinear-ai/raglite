@@ -296,11 +296,11 @@ def chatml_function_calling_with_streaming(
     # Collect the llama.create_completion keyword arguments so we don't have to repeat these with
     # each completion call
     stop = (
-        [stop, "<|im_end|>", "|im_end|>"]
+        [stop, "<|im_end|>"]
         if isinstance(stop, str)
-        else [*stop, "<|im_end|>", "|im_end|>"]
+        else [*stop, "<|im_end|>"]
         if stop
-        else ["<|im_end|>", "|im_end|>"]
+        else ["<|im_end|>"]
     )
     grammar = (  # It is assumed the grammar applies to messages only, not tool calls
         grammar
