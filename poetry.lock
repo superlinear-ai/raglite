@@ -6243,4 +6243,4 @@ ragas = ["ragas"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<4.0"
-content-hash = "633bee82da33bf0d3f2bd3b78c85f71dbe56fb41016a5fe8a9d67bc79ebde73c"
+content-hash = "79fc9846f604c547e4390dfe8686431f2f5416044f57f748eba3738fe8aba13c"
