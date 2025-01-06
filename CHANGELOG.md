@@ -1,3 +1,9 @@
+## v0.6.2 (2025-01-06)
+
+### Fix
+
+- remove unnecessary stop sequence (#84)
+
 ## v0.6.1 (2025-01-06)
 
 ### Fix
