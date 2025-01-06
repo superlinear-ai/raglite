@@ -38,10 +38,11 @@ def markdown_sentence_boundaries(doc: str) -> FloatVector:
     # Indicate that each heading is a contiguous sentence by setting the boundary probabilities.
     boundary_probas = np.full(len(doc), np.nan)
     for heading_start, heading_end in headings:
-        if heading_start >= 1:
+        if 0 <= heading_start - 1 < len(boundary_probas):
             boundary_probas[heading_start - 1] = 1  # First heading character starts a sentence.
         boundary_probas[heading_start : heading_end - 1] = 0  # Body does not contain boundaries.
-        boundary_probas[heading_end - 1] = 1  # Last heading character is the end of a sentence.
+        if 0 <= heading_end - 1 < len(boundary_probas):
+            boundary_probas[heading_end - 1] = 1  # Last heading character is the end of a sentence.
     return boundary_probas
 
 
