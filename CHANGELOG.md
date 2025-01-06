@@ -1,3 +1,12 @@
+## v0.6.1 (2025-01-06)
+
+### Fix
+
+- fix Markdown heading boundary probas (#81)
+- improve (re)insertion speed (#80)
+- **deps**: exclude litellm versions that break get_model_info (#78)
+- conditionally enable `LlamaRAMCache` (#83)
+
 ## v0.6.0 (2025-01-05)
 
 ### Feat
