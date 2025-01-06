@@ -50,8 +50,8 @@ class Document(SQLModel, table=True):
     metadata_: dict[str, Any] = Field(default_factory=dict, sa_column=Column("metadata", JSON))
 
     # Add relationships so we can access document.chunks and document.evals.
-    chunks: list["Chunk"] = Relationship(back_populates="document")
-    evals: list["Eval"] = Relationship(back_populates="document")
+    chunks: list["Chunk"] = Relationship(back_populates="document", cascade_delete=True)
+    evals: list["Eval"] = Relationship(back_populates="document", cascade_delete=True)
 
     @staticmethod
     def from_path(doc_path: Path, **kwargs: Any) -> "Document":
@@ -76,7 +76,7 @@ class Chunk(SQLModel, table=True):
 
     # Table columns.
     id: ChunkId = Field(..., primary_key=True)
-    document_id: DocumentId = Field(..., foreign_key="document.id", index=True)
+    document_id: DocumentId = Field(..., foreign_key="document.id", index=True, ondelete="CASCADE")
     index: int = Field(..., index=True)
     headings: str
     body: str
@@ -84,7 +84,7 @@ class Chunk(SQLModel, table=True):
 
     # Add relationships so we can access chunk.document and chunk.embeddings.
     document: Document = Relationship(back_populates="chunks")
-    embeddings: list["ChunkEmbedding"] = Relationship(back_populates="chunk")
+    embeddings: list["ChunkEmbedding"] = Relationship(back_populates="chunk", cascade_delete=True)
 
     @staticmethod
     def from_body(
@@ -230,7 +230,7 @@ class ChunkEmbedding(SQLModel, table=True):
 
     # Table columns.
     id: int = Field(..., primary_key=True)
-    chunk_id: ChunkId = Field(..., foreign_key="chunk.id", index=True)
+    chunk_id: ChunkId = Field(..., foreign_key="chunk.id", index=True, ondelete="CASCADE")
     embedding: FloatVector = Field(..., sa_column=Column(Embedding(dim=-1)))
 
     # Add relationship so we can access embedding.chunk.
@@ -285,7 +285,7 @@ class Eval(SQLModel, table=True):
 
     # Table columns.
     id: EvalId = Field(..., primary_key=True)
-    document_id: DocumentId = Field(..., foreign_key="document.id", index=True)
+    document_id: DocumentId = Field(..., foreign_key="document.id", index=True, ondelete="CASCADE")
     chunk_ids: list[ChunkId] = Field(default_factory=list, sa_column=Column(JSON))
     question: str
     contexts: list[str] = Field(default_factory=list, sa_column=Column(JSON))
