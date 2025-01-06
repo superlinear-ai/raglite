@@ -29,6 +29,7 @@ from llama_cpp import (  # type: ignore[attr-defined]
     CreateChatCompletionStreamResponse,
     Llama,
     LlamaRAMCache,
+    llama_supports_gpu_offload,
 )
 
 from raglite._chatml_function_calling import chatml_function_calling_with_streaming
@@ -126,7 +127,8 @@ class LlamaCppPythonLLM(CustomLLM):
                 **kwargs,
             )
         # Enable caching.
-        llm.set_cache(LlamaRAMCache())
+        if llama_supports_gpu_offload() or (os.cpu_count() or 1) >= 8:  # noqa: PLR2004
+            llm.set_cache(LlamaRAMCache())
         # Register the model info with LiteLLM.
         model_info = {
             repo_id_filename: {
