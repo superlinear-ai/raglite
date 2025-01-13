@@ -13,7 +13,7 @@ def test_split_sentences() -> None:
     sentences = split_sentences(doc)
     expected_sentences = [
         "# ON THE ELECTRODYNAMICS OF MOVING BODIES\n\n",
-        "## By A. EINSTEIN  June 30, 1905\n\n",
+        "## By A. EINSTEIN June 30, 1905\n\n",
         "It is known that Maxwell’s electrodynamics—as usually understood at the\npresent time—when applied to moving bodies, leads to asymmetries which do\nnot appear to be inherent in the phenomena. ",  # noqa: RUF001
         "Take, for example, the recipro-\ncal electrodynamic action of a magnet and a conductor. ",
         "The observable phe-\nnomenon here depends only on the relative motion of the conductor and the\nmagnet, whereas the customary view draws a sharp distinction between the two\ncases in which either the one or the other of these bodies is in motion. ",

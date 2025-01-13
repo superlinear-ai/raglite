@@ -34,7 +34,7 @@ scipy = ">=1.5.0"
 wtpsplit-lite = ">=0.1.0"
 # Large Language Models:
 huggingface-hub = ">=0.22.0"
-litellm = ">=1.48.4,<1.56.10"
+litellm = ">=1.48.4,<1.56.2"
 llama-cpp-python = ">=0.3.2"
 pydantic = ">=2.7.0"
 # Approximate Nearest Neighbors:
