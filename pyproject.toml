@@ -38,7 +38,7 @@ litellm = ">=1.48.4,<1.56.2"
 llama-cpp-python = ">=0.3.2"
 pydantic = ">=2.7.0"
 # Approximate Nearest Neighbors:
-pynndescent = ">=0.5.12"
+pynndescent = ">=0.5.13"
 # Reranking:
 langdetect = ">=1.0.9"
 rerankers = { extras = ["flashrank"], version = ">=0.6.0" }
