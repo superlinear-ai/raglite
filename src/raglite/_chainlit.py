@@ -26,14 +26,14 @@ async def start_chat() -> None:
         llm=os.environ.get("RAGLITE_LLM", default_config.llm),
         embedder=os.environ.get("RAGLITE_EMBEDDER", default_config.embedder),
     )
-    settings = await cl.ChatSettings(  # type: ignore[no-untyped-call]
+    settings = await cl.ChatSettings(
         [
             TextInput(id="db_url", label="Database URL", initial=str(config.db_url)),
             TextInput(id="llm", label="LLM", initial=config.llm),
             TextInput(id="embedder", label="Embedder", initial=config.embedder),
             Switch(id="vector_search_query_adapter", label="Query adapter", initial=True),
         ]
-    ).send()
+    ).send()  # type: ignore[no-untyped-call]
     await update_config(settings)
 
 

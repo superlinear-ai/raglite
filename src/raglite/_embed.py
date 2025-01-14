@@ -178,7 +178,7 @@ def _embed_sentences_with_windowing(
     )
     batch_embeddings = [
         _embed_string_batch(sentence_windows[i : i + batch_size], config=config)
-        for i in batch_range(0, len(sentence_windows), batch_size)  # type: ignore[operator]
+        for i in batch_range(0, len(sentence_windows), batch_size)
     ]
     sentence_embeddings = np.vstack(batch_embeddings)
     return sentence_embeddings

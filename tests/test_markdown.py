@@ -15,7 +15,7 @@ def test_pdf_with_missing_font_sizes() -> None:
     expected_heading = """
 # ON THE ELECTRODYNAMICS OF MOVING BODIES
 
-## By A. EINSTEIN  June 30, 1905
+## By A. EINSTEIN June 30, 1905
 
 It is known that Maxwell
     """.strip()

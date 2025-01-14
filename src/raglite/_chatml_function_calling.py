@@ -361,7 +361,7 @@ def chatml_function_calling_with_streaming(
     if isinstance(tool_choice, dict):
         tools = [t for t in tools if t["function"]["name"] == tool_choice["function"]["name"]]
         assert tools
-    function_names = " | ".join([f'''"functions.{t['function']['name']}:"''' for t in tools])
+    function_names = " | ".join([f'''"functions.{t["function"]["name"]}:"''' for t in tools])
     prompt = template_renderer.render(
         messages=messages, tools=tools, tool_calls=True, add_generation_prompt=True
     )
@@ -408,8 +408,7 @@ def chatml_function_calling_with_streaming(
 
     # Case 2 step 2B: One or more function calls
     follow_up_gbnf_tool_grammar = (
-        'root ::= functions | "</function_calls>" | "<|im_end|>"\n'
-        f"functions ::= {function_names}\n"
+        f'root ::= functions | "</function_calls>" | "<|im_end|>"\nfunctions ::= {function_names}\n'
     )
     prompt += "<function_calls>\n"
     if stream:
@@ -474,28 +473,31 @@ def chatml_function_calling_with_streaming(
         "created": completion["created"],
         "model": completion["model"],
         "choices": [
-            {
-                "finish_reason": "tool_calls",
-                "index": 0,
-                "logprobs": completion["choices"][0]["logprobs"],
-                "message": {
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": [
-                        {
-                            "id": "call_" + f"_{i}_" + tool_name + "_" + completion["id"],
-                            "type": "function",
-                            "function": {
-                                "name": tool_name,
-                                "arguments": completion["choices"][0]["text"],
-                            },
-                        }
-                        for i, (tool_name, completion) in enumerate(
-                            zip(completions_tool_name, completions, strict=True)
-                        )
-                    ],
+            cast(
+                llama_types.ChatCompletionResponseChoice,
+                {
+                    "finish_reason": "tool_calls",
+                    "index": 0,
+                    "logprobs": completion["choices"][0]["logprobs"],
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "call_" + f"_{i}_" + tool_name + "_" + completion["id"],
+                                "type": "function",
+                                "function": {
+                                    "name": tool_name,
+                                    "arguments": completion["choices"][0]["text"],
+                                },
+                            }
+                            for i, (tool_name, completion) in enumerate(
+                                zip(completions_tool_name, completions, strict=True)
+                            )
+                        ],
+                    },
                 },
-            }
+            )
         ],
         "usage": {
             "completion_tokens": sum(

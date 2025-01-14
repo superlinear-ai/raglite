@@ -18,20 +18,20 @@ def test_extract(llm: str, strict: bool) -> None:  # noqa: FBT001
     config = RAGLiteConfig(llm=llm)
 
     # Define the JSON schema of the response.
-    class LoginResponse(BaseModel):
-        """The response to a login request."""
+    class UserProfileResponse(BaseModel):
+        """The response to a user profile extraction request."""
 
         model_config = ConfigDict(extra="forbid" if strict else "allow")
         username: str = Field(..., description="The username.")
-        password: str = Field(..., description="The password.")
-        system_prompt: ClassVar[str] = "Extract the username and password from the input."
+        email: str = Field(..., description="The email address.")
+        system_prompt: ClassVar[str] = "Extract the username and email from the input."
 
-    # Extract structured data.
-    username, password = "cypher", "steak"
-    login_response = extract_with_llm(
-        LoginResponse, f"username: {username}\npassword: {password}", strict=strict, config=config
+    # Example input data.
+    username, email = "cypher", "cypher@example.com"
+    profile_response = extract_with_llm(
+        UserProfileResponse, f"username: {username}\nemail: {email}", strict=strict, config=config
     )
     # Validate the response.
-    assert isinstance(login_response, LoginResponse)
-    assert login_response.username == username
-    assert login_response.password == password
+    assert isinstance(profile_response, UserProfileResponse)
+    assert profile_response.username == username
+    assert profile_response.email == email

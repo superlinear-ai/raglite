@@ -277,7 +277,7 @@ class LlamaCppPythonLLM(CustomLLM):
         litellm_params: dict[str, Any] | None = None,
         logger_fn: Callable | None = None,  # type: ignore[type-arg]
         headers: dict[str, Any] | None = None,
-        timeout: float | httpx.Timeout | None = None,  # noqa: ASYNC109
+        timeout: float | httpx.Timeout | None = None,
         client: AsyncHTTPHandler | None = None,
     ) -> AsyncIterator[GenericStreamingChunk]:
         # Start a synchronous stream.
