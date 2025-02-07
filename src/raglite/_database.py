@@ -91,8 +91,9 @@ class Chunk(SQLModel, table=True):
         document_id: DocumentId, index: int, body: str, headings: str = "", **kwargs: Any
     ) -> "Chunk":
         """Create a chunk from Markdown."""
+        combined_data = body.encode() + document_id.encode() + str(index).encode()
         return Chunk(
-            id=hash_bytes(body.encode()),
+            id=hash_bytes(combined_data),
             document_id=document_id,
             index=index,
             headings=headings,
