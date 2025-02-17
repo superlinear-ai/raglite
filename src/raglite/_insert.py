@@ -65,23 +65,49 @@ def _create_chunk_records(
     return chunk_records, chunk_embedding_records
 
 
-def insert_document(doc_path: Path, *, config: RAGLiteConfig | None = None) -> None:  # noqa: PLR0915
-    """Insert a document into the database and update the index."""
+def insert_document(  # noqa: PLR0915
+    source: Path | str,
+    *,
+    filename: str | None = None,
+    config: RAGLiteConfig | None = None,
+) -> None:
+    """Insert a document into the database and update the index.
+
+    Args:
+        source (Path | str): Document source, either a file path or a markdown string content.
+        filename (str | None): The name of the file, used if `source` is a string. Defaults to None.
+        config (RAGLiteConfig | None): Configuration settings for insertion. Defaults to None.
+
+    Returns
+    -------
+        None
+    """
     # Use the default config if not provided.
     config = config or RAGLiteConfig()
+
     # Preprocess the document into chunks and chunk embeddings.
     with tqdm(total=6, unit="step", dynamic_ncols=True) as pbar:
         pbar.set_description("Initializing database")
         engine = create_database_engine(config)
-        document_record = Document.from_path(doc_path)
+        pbar.update(1)
+        # Create document record based on input type
+        pbar.set_description(
+            "Converting to Markdown" if isinstance(source, Path) else "Using inputted Markdown"
+        )
+
+        document_record, doc = (
+            (Document.from_path(source), document_to_markdown(source))
+            if isinstance(source, Path)
+            else (Document.from_markdown(source, filename=filename), source)
+        )
+
         with Session(engine) as session:  # Exit early if the document is already in the database.
             if session.get(Document, document_record.id) is not None:
-                pbar.update(6)
+                pbar.set_description("Document already exists in the database -> Skipping action.")
+                pbar.update(5)
                 pbar.close()
                 return
-        pbar.update(1)
-        pbar.set_description("Converting to Markdown")
-        doc = document_to_markdown(doc_path)
+
         pbar.update(1)
         pbar.set_description("Splitting sentences")
         sentences = split_sentences(doc, max_len=config.chunk_max_size)
