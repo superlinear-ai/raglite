@@ -103,7 +103,7 @@ from raglite import RAGLiteConfig
 
 # Example 'remote' config with a PostgreSQL database and an OpenAI LLM:
 my_config = RAGLiteConfig(
-    db_url="postgresql://my_username:my_password@my_host:5432/my_database"
+    db_url="postgresql://my_username:my_password@my_host:5432/my_database",
     llm="gpt-4o-mini",  # Or any LLM supported by LiteLLM.
     embedder="text-embedding-3-large",  # Or any embedder supported by LiteLLM.
 )
