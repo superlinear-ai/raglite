@@ -67,6 +67,32 @@ class Document(SQLModel, table=True):
             },
         )
 
+    @staticmethod
+    def from_markdown(content: str, filename: str | None, **kwargs: Any) -> "Document":
+        """Create a document from markdown content.
+
+        Args:
+            content: The markdown content as a string
+            filename: Optional filename (defaults to timestamp-based name)
+            **kwargs: Additional metadata to store
+        """
+        # Generate a filename if not provided
+        if filename is None:
+            timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
+            filename = f"markdown_{timestamp}.md"
+
+        return Document(
+            id=hash_bytes(content.encode()),
+            filename=filename,
+            metadata_={
+                "size": len(content),
+                "created": datetime.datetime.now(datetime.timezone.utc).timestamp(),
+                "modified": datetime.datetime.now(datetime.timezone.utc).timestamp(),
+                "source": "markdown_direct",
+                **kwargs,
+            },
+        )
+
 
 class Chunk(SQLModel, table=True):
     """A document chunk."""
