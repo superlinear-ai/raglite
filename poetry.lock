@@ -1076,7 +1076,7 @@ profile = ["gprof2dot (>=2022.7.29)"]
 name = "diskcache"
 version = "5.6.3"
 description = "Disk Cache -- Disk and file backed persistent cache."
-optional = false
+optional = true
 python-versions = ">=3"
 files = [
     {file = "diskcache-5.6.3-py3-none-any.whl", hash = "sha256:5e31b2d5fbad117cc363ebaf6b689474db18a1f6438bc82358b024abd4c2ca19"},
@@ -2457,7 +2457,7 @@ pydantic = ">=1,<3"
 name = "llama-cpp-python"
 version = "0.3.2"
 description = "Python bindings for the llama.cpp library"
-optional = false
+optional = true
 python-versions = ">=3.8"
 files = [
     {file = "llama_cpp_python-0.3.2.tar.gz", hash = "sha256:8fbf246a55a999f45015ed0d48f91b4ae04ae959827fac1cd6ac6ec65aed2e2f"},
@@ -6237,10 +6237,11 @@ type = ["pytest-mypy"]
 
 [extras]
 chainlit = ["chainlit"]
+llama-cpp-python = ["llama-cpp-python"]
 pandoc = ["pypandoc-binary"]
 ragas = ["ragas"]
 
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<4.0"
-content-hash = "79fc9846f604c547e4390dfe8686431f2f5416044f57f748eba3738fe8aba13c"
+content-hash = "90303315441ee88e05111cd6387f6fa279cbe9cb52ffe0129b8b5f0fe2cf29f7"

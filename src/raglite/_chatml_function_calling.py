@@ -33,11 +33,14 @@ from typing import (  # noqa: UP035
 
 import jinja2
 from jinja2.sandbox import ImmutableSandboxedEnvironment
-from llama_cpp import llama, llama_grammar, llama_types
-from llama_cpp.llama_chat_format import (
+
+from raglite._lazy_llama import (
     _convert_completion_to_chat,
     _convert_completion_to_chat_function,
     _grammar_for_response_format,
+    llama,
+    llama_grammar,
+    llama_types,
 )
 
 
