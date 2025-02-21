@@ -7,7 +7,7 @@ chainlit.md
 htmlcov/
 reports/
 
-# cruft
+# Copier
 *.rej
 
 # Data
@@ -38,16 +38,15 @@ notebooks/
 # macOS
 .DS_Store
 
+# mise
+mise.local.toml
+
 # mypy
 .dmypy.json
 .mypy_cache/
 
 # Node.js
 node_modules/
-
-# Poetry
-.venv/
-dist/
 
 # PyCharm
 .idea/
@@ -60,7 +59,10 @@ dist/
 
 # Python
 __pycache__/
+*.egg-info/
 *.py[cdo]
+.venv/
+dist/
 
 # RAGLite
 *.db

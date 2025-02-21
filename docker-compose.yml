@@ -12,7 +12,7 @@ services:
         GID: ${GID:-1000}
     environment:
       - OPENAI_API_KEY
-      - POETRY_PYPI_TOKEN_PYPI
+      - UV_PUBLISH_TOKEN
     depends_on:
       - postgres
     networks:
@@ -26,10 +26,9 @@ services:
     stdin_open: true
     tty: true
     entrypoint: []
-    command: [ "sh", "-c", "sudo chown user $$SSH_AUTH_SOCK && cp --update /opt/build/poetry/poetry.lock /workspaces/raglite/ && mkdir -p /workspaces/raglite/.git/hooks/ && cp --update /opt/build/git/* /workspaces/raglite/.git/hooks/ && zsh" ]
+    command: [ "sh", "-c", "sudo chown user $$SSH_AUTH_SOCK && mkdir -p /workspaces/raglite/.git/hooks/ && cp --update /opt/build/git/* /workspaces/raglite/.git/hooks/ && zsh" ]
     environment:
       - OPENAI_API_KEY
-      - POETRY_PYPI_TOKEN_PYPI
       - SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
     depends_on:
       - postgres

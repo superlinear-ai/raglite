@@ -1,0 +1,13 @@
+_commit: v1.1.0
+_src_path: gh:superlinear-ai/substrate
+author_email: laurent@superlinear.eu
+author_name: Laurent Sorber <laurent@superlinear.eu>
+project_description: RAGLite is a Python toolkit for Retrieval-Augmented Generation
+    (RAG) with PostgreSQL or SQLite.
+project_name: raglite
+project_type: package
+project_url: https://github.com/superlinear-ai/raglite
+python_version: '3.10'
+typing: strict
+with_conventional_commits: true
+with_typer_cli: true

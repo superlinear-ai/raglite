@@ -7,21 +7,15 @@ on:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: ghcr.io/astral-sh/uv:3.10-bookworm
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-
-      - name: Install Poetry
-        run: pip install --no-input poetry
-
       - name: Publish package
         run: |
-          poetry config pypi-token.pypi "${{ secrets.POETRY_PYPI_TOKEN_PYPI }}"
-          poetry publish --build
+          uv build
+          uv publish
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.UV_PUBLISH_TOKEN }}
