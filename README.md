@@ -146,19 +146,20 @@ Next, insert some documents into the database. RAGLite will take care of the [co
 
 
 ```python
-# Insert documents with a file path:
+# Insert a document given its file path:
 from pathlib import Path
 from raglite import insert_document
 
 insert_document(Path("On the Measure of Intelligence.pdf"), config=my_config)
 insert_document(Path("Special Relativity.pdf"), config=my_config)
 
-# Insert documents with a Markdown string and filename:
+# Insert a document given its Markdown content:
 markdown_content = """
-# Special Relativity
-Special Relativity is a theory by Albert Einstein that explains the relationship between space and time.
+# ON THE ELECTRODYNAMICS OF MOVING BODIES
+## By A. EINSTEIN  June 30, 1905
+It is known that Maxwell
 """
-insert_document(markdown_content, filename="SpecialRelativity.md", config=my_config)
+insert_document(markdown_content, config=my_config)
 ```
 
 ### 3. Retrieval-Augmented Generation (RAG)

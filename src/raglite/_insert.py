@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import mdformat
 import numpy as np
 from sqlalchemy.engine import make_url
 from sqlmodel import Session, select
@@ -73,10 +74,15 @@ def insert_document(  # noqa: PLR0915
 ) -> None:
     """Insert a document into the database and update the index.
 
-    Args:
-        source (Path | str): Document source, either a file path or a markdown string content.
-        filename (str | None): The name of the file, used if `source` is a string. Defaults to None.
-        config (RAGLiteConfig | None): Configuration settings for insertion. Defaults to None.
+    Parameters
+    ----------
+    source
+        A document file path or the document's content as a Markdown string.
+    filename
+        The document filename to use if the source is a Markdown string. If not provided, the first
+        line of the source is used.
+    config
+        The RAGLite config to use to insert the document into the database.
 
     Returns
     -------
@@ -90,24 +96,19 @@ def insert_document(  # noqa: PLR0915
         pbar.set_description("Initializing database")
         engine = create_database_engine(config)
         pbar.update(1)
-        # Create document record based on input type
-        pbar.set_description(
-            "Converting to Markdown" if isinstance(source, Path) else "Using inputted Markdown"
-        )
-
+        # Create document record based on input type.
+        pbar.set_description("Converting and formatting Markdown")
         document_record, doc = (
             (Document.from_path(source), document_to_markdown(source))
             if isinstance(source, Path)
-            else (Document.from_markdown(source, filename=filename), source)
+            else (Document.from_markdown(source, filename=filename), mdformat.text(source))
         )
-
         with Session(engine) as session:  # Exit early if the document is already in the database.
             if session.get(Document, document_record.id) is not None:
-                pbar.set_description("Document already exists in the database -> Skipping action.")
+                pbar.set_description("Document already in database")
                 pbar.update(5)
                 pbar.close()
                 return
-
         pbar.update(1)
         pbar.set_description("Splitting sentences")
         sentences = split_sentences(doc, max_len=config.chunk_max_size)
