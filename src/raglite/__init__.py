@@ -14,7 +14,7 @@ from raglite._search import (
     vector_search,
 )
 
-__all__ = [
+__all__ = [  # ruff: noqa: RUF022
     # Config
     "RAGLiteConfig",
     # Insert
@@ -34,7 +34,7 @@ __all__ = [
     # Query adapter
     "update_query_adapter",
     # Evaluate
-    "insert_evals",
     "answer_evals",
+    "insert_evals",
     "evaluate",
 ]
