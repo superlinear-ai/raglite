@@ -14,7 +14,7 @@ from raglite._search import (
     vector_search,
 )
 
-__all__ = [  # ruff: noqa: RUF022
+__all__ = [
     # Config
     "RAGLiteConfig",
     # Insert
