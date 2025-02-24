@@ -294,7 +294,10 @@ def chatml_function_calling_with_streaming(
         if isinstance(function_call, str) and (function_call in ("none", "auto")):
             tool_choice = function_call
         if isinstance(function_call, dict) and "name" in function_call:
-            tool_choice = {"type": "function", "function": {"name": function_call["name"]}}
+            tool_choice = {
+                "type": "function",
+                "function": {"name": function_call["name"]},
+            }
 
     # Collect the llama.create_completion keyword arguments so we don't have to repeat these with
     # each completion call
@@ -416,7 +419,12 @@ def chatml_function_calling_with_streaming(
     prompt += "<function_calls>\n"
     if stream:
         return _stream_tool_calls(
-            llama, prompt, tools, tool_name, completion_kwargs, follow_up_gbnf_tool_grammar
+            llama,
+            prompt,
+            tools,
+            tool_name,
+            completion_kwargs,
+            follow_up_gbnf_tool_grammar,
         )
     tool = next((tool for tool in tools if tool["function"]["name"] == tool_name), None)
     completions: List[llama_types.CreateCompletionResponse] = []
@@ -485,7 +493,7 @@ def chatml_function_calling_with_streaming(
                     "content": None,
                     "tool_calls": [
                         {
-                            "id": "call_" + f"_{i}_" + tool_name + "_" + completion["id"],
+                            "id": f"call__{i}_{tool_name}_{completion['id']}",
                             "type": "function",
                             "function": {
                                 "name": tool_name,
