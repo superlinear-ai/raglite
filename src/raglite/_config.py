@@ -7,9 +7,10 @@ from io import StringIO
 from pathlib import Path
 from typing import Literal
 
-from llama_cpp import llama_supports_gpu_offload
 from platformdirs import user_data_dir
 from sqlalchemy.engine import URL
+
+from raglite._lazy_llama import llama_supports_gpu_offload
 
 # Suppress rerankers output on import until [1] is fixed.
 # [1] https://github.com/AnswerDotAI/rerankers/issues/36

@@ -5,10 +5,10 @@ from typing import Literal
 
 import numpy as np
 from litellm import embedding
-from llama_cpp import LLAMA_POOLING_TYPE_NONE, Llama
 from tqdm.auto import tqdm, trange
 
 from raglite._config import RAGLiteConfig
+from raglite._lazy_llama import LLAMA_POOLING_TYPE_NONE, Llama
 from raglite._litellm import LlamaCppPythonLLM
 from raglite._typing import FloatMatrix, IntVector
 

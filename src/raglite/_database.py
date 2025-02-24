@@ -67,6 +67,30 @@ class Document(SQLModel, table=True):
             },
         )
 
+    @staticmethod
+    def from_markdown(content: str, filename: str | None, **kwargs: Any) -> "Document":
+        """Create a document from Markdown content.
+
+        Parameters
+        ----------
+        content
+            The document's content as a Markdown string.
+        filename
+            The document filename to use. If not provided, the first line of the content is used.
+        kwargs
+            Any additional metadata to store.
+
+        Returns
+        -------
+        Document
+            A document.
+        """
+        return Document(
+            id=hash_bytes(content.encode()),
+            filename=filename or (content.strip().split("\n", 1)[0].strip() + ".md"),
+            metadata_={"size": len(content.encode()), **kwargs},
+        )
+
 
 class Chunk(SQLModel, table=True):
     """A document chunk."""

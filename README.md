@@ -103,7 +103,7 @@ from raglite import RAGLiteConfig
 
 # Example 'remote' config with a PostgreSQL database and an OpenAI LLM:
 my_config = RAGLiteConfig(
-    db_url="postgresql://my_username:my_password@my_host:5432/my_database"
+    db_url="postgresql://my_username:my_password@my_host:5432/my_database",
     llm="gpt-4o-mini",  # Or any LLM supported by LiteLLM.
     embedder="text-embedding-3-large",  # Or any embedder supported by LiteLLM.
 )
@@ -144,13 +144,22 @@ my_config = RAGLiteConfig(
 
 Next, insert some documents into the database. RAGLite will take care of the [conversion to Markdown](src/raglite/_markdown.py), [optimal level 4 semantic chunking](src/raglite/_split_chunks.py), and [multi-vector embedding with late chunking](src/raglite/_embed.py):
 
+
 ```python
-# Insert documents:
+# Insert a document given its file path:
 from pathlib import Path
 from raglite import insert_document
 
 insert_document(Path("On the Measure of Intelligence.pdf"), config=my_config)
 insert_document(Path("Special Relativity.pdf"), config=my_config)
+
+# Insert a document given its Markdown content:
+markdown_content = """
+# ON THE ELECTRODYNAMICS OF MOVING BODIES
+## By A. EINSTEIN  June 30, 1905
+It is known that Maxwell
+"""
+insert_document(markdown_content, config=my_config)
 ```
 
 ### 3. Retrieval-Augmented Generation (RAG)
