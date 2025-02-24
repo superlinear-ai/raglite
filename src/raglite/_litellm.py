@@ -23,7 +23,10 @@ from litellm import (  # type: ignore[attr-defined]
 )
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
 from litellm.utils import custom_llm_setup
-from llama_cpp import (  # type: ignore[attr-defined]
+
+from raglite._chatml_function_calling import chatml_function_calling_with_streaming
+from raglite._config import RAGLiteConfig
+from raglite._lazy_llama import (
     ChatCompletionRequestMessage,
     CreateChatCompletionResponse,
     CreateChatCompletionStreamResponse,
@@ -31,9 +34,6 @@ from llama_cpp import (  # type: ignore[attr-defined]
     LlamaRAMCache,
     llama_supports_gpu_offload,
 )
-
-from raglite._chatml_function_calling import chatml_function_calling_with_streaming
-from raglite._config import RAGLiteConfig
 
 # Reduce the logging level for LiteLLM, flashrank, and httpx.
 litellm.suppress_debug_info = True

@@ -5,17 +5,18 @@ from collections.abc import Iterator
 from typing import cast
 
 import pytest
-from llama_cpp import Llama, llama_supports_gpu_offload
-from llama_cpp.llama_types import (
+from typeguard import ForwardRefPolicy, check_type
+
+from raglite._chatml_function_calling import chatml_function_calling_with_streaming
+from raglite._lazy_llama import (
     ChatCompletionRequestMessage,
     ChatCompletionTool,
     ChatCompletionToolChoiceOption,
     CreateChatCompletionResponse,
     CreateChatCompletionStreamResponse,
+    Llama,
+    llama_supports_gpu_offload,
 )
-from typeguard import ForwardRefPolicy, check_type
-
-from raglite._chatml_function_calling import chatml_function_calling_with_streaming
 
 
 def is_accelerator_available() -> bool:
