@@ -150,7 +150,7 @@ docstring-code-format = true
 
 [tool.ruff.lint]
 select = ["A", "ASYNC", "B", "BLE", "C4", "C90", "D", "DTZ", "E", "EM", "ERA", "F", "FBT", "FLY", "FURB", "G", "I", "ICN", "INP", "INT", "ISC", "LOG", "N", "NPY", "PERF", "PGH", "PIE", "PL", "PT", "PTH", "PYI", "Q", "RET", "RSE", "RUF", "S", "SIM", "SLF", "SLOT", "T10", "T20", "TCH", "TID", "TRY", "UP", "W", "YTT"]
-ignore = ["D203", "D213", "E501", "RET504", "RUF002", "RUF022", "S101", "S307", "TCH004"]
+ignore = ["D203", "D213", "E501", "RET504", "RUF002", "RUF022", "S101", "S307", "TC004"]
 unfixable = ["ERA001", "F401", "F841", "T201", "T203"]
 
 [tool.ruff.lint.flake8-tidy-imports]
