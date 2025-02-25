@@ -8,8 +8,6 @@ authors = [
 ]
 requires-python = ">=3.10,<4.0"
 dependencies = [
-  # Python:
-  # "python (>=3.10,<4.0)",
   # Configuration:
   "platformdirs (>=4.0.0)",
   # Markdown conversion:
