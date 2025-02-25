@@ -3154,17 +3154,6 @@ dev = [
     { name = "pytest-mock" },
     { name = "pytest-xdist" },
     { name = "ruff" },
-    { name = "typeguard" },
-]
-test = [
-    { name = "commitizen" },
-    { name = "coverage" },
-    { name = "mypy" },
-    { name = "poethepoet" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-mock" },
-    { name = "ruff" },
     { name = "safety" },
     { name = "shellcheck-py" },
     { name = "typeguard" },
@@ -3204,6 +3193,7 @@ provides-extras = ["chainlit", "ragas", "rerankers", "pypandoc-binary"]
 [package.metadata.requires-dev]
 dev = [
     { name = "commitizen", specifier = ">=4.1.0" },
+    { name = "coverage", specifier = ">=7.6.1" },
     { name = "coverage", extras = ["toml"], specifier = ">=7.6.10" },
     { name = "ipykernel", specifier = ">=6.29.4" },
     { name = "ipython", specifier = ">=8.18.0" },
@@ -3216,20 +3206,9 @@ dev = [
     { name = "pytest-mock", specifier = ">=3.14.0" },
     { name = "pytest-xdist", specifier = ">=3.6.1" },
     { name = "ruff", specifier = ">=0.9.2" },
-    { name = "typeguard", specifier = ">=4.4.1" },
-]
-test = [
-    { name = "commitizen", specifier = ">=3.29.1" },
-    { name = "coverage", specifier = ">=7.6.1" },
-    { name = "mypy", specifier = ">=1.9.0" },
-    { name = "poethepoet", specifier = ">=0.25.0" },
-    { name = "pre-commit", specifier = ">=3.7.0" },
-    { name = "pytest", specifier = ">=8.1.1" },
-    { name = "pytest-mock", specifier = ">=3.14.0" },
-    { name = "ruff", specifier = ">=0.5.7" },
     { name = "safety", specifier = ">=3.1.0" },
     { name = "shellcheck-py", specifier = ">=0.10.0.1" },
-    { name = "typeguard", specifier = ">=4.2.1" },
+    { name = "typeguard", specifier = ">=4.4.1" },
 ]
 
 [[package]]

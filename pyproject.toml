@@ -59,21 +59,9 @@ documentation = "https://github.com/superlinear-ai/raglite"
 issues = "https://github.com/superlinear-ai/raglite/issues"
 
 [dependency-groups]  # https://docs.astral.sh/uv/concepts/projects/dependencies/#development-dependencies
-test = [
-  "commitizen (>=3.29.1)",
-  "coverage (>=7.6.1)",
-  "mypy (>=1.9.0)",
-  "poethepoet (>=0.25.0)",
-  "pre-commit (>=3.7.0)",
-  "pytest (>=8.1.1)",
-  "pytest-mock (>=3.14.0)",
-  "ruff (>=0.5.7)",
-  "safety (>=3.1.0)",
-  "shellcheck-py (>=0.10.0.1)",
-  "typeguard (>=4.2.1)",
-]
 dev = [
   "commitizen (>=4.1.0)",
+  "coverage (>=7.6.1)",
   "coverage[toml] (>=7.6.10)",
   "ipykernel (>=6.29.4)",
   "ipython (>=8.18.0)",
@@ -86,6 +74,8 @@ dev = [
   "pytest-mock (>=3.14.0)",
   "pytest-xdist (>=3.6.1)",
   "ruff (>=0.9.2)",
+  "safety (>=3.1.0)",
+  "shellcheck-py (>=0.10.0.1)",
   "typeguard (>=4.4.1)",
 ]
 
@@ -100,7 +90,6 @@ version_provider = "pep621"
 chainlit = ["chainlit (>=1.2.0)"]
 # Evaluation:
 ragas = ["ragas (>=0.1.12)"]
-
 # Reranking: 
 rerankers = ["rerankers (>=0.6.0)"]
 # Markdown conversion:
