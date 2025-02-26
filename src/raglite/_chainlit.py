@@ -26,7 +26,7 @@ async def start_chat() -> None:
         llm=os.environ.get("RAGLITE_LLM", default_config.llm),
         embedder=os.environ.get("RAGLITE_EMBEDDER", default_config.embedder),
     )
-    settings = await cl.ChatSettings(
+    settings = await cl.ChatSettings(  # type: ignore[no-untyped-call]
         [
             TextInput(id="db_url", label="Database URL", initial=str(config.db_url)),
             TextInput(id="llm", label="LLM", initial=config.llm),
@@ -37,17 +37,17 @@ async def start_chat() -> None:
     await update_config(settings)
 
 
-@cl.on_settings_update
+@cl.on_settings_update  # type: ignore[arg-type]
 async def update_config(settings: cl.ChatSettings) -> None:
     """Update the RAGLite config."""
     # Update the RAGLite config given the Chainlit settings.
     config = RAGLiteConfig(
-        db_url=settings["db_url"],
-        llm=settings["llm"],
-        embedder=settings["embedder"],
-        vector_search_query_adapter=settings["vector_search_query_adapter"],
+        db_url=settings["db_url"],  # type: ignore[index]
+        llm=settings["llm"],  # type: ignore[index]
+        embedder=settings["embedder"],  # type: ignore[index]
+        vector_search_query_adapter=settings["vector_search_query_adapter"],  # type: ignore[index]
     )
-    cl.user_session.set("config", config)
+    cl.user_session.set("config", config)  # type: ignore[no-untyped-call]
     # Run a search to prime the pipeline if it's a local pipeline.
     # TODO: Don't do this for SQLite once we switch from PyNNDescent to sqlite-vec.
     if str(config.db_url).startswith("sqlite") or config.embedder.startswith("llama-cpp-python"):
@@ -61,7 +61,7 @@ async def update_config(settings: cl.ChatSettings) -> None:
 async def handle_message(user_message: cl.Message) -> None:
     """Respond to a user message."""
     # Get the config and message history from the user session.
-    config: RAGLiteConfig = cl.user_session.get("config")
+    config: RAGLiteConfig = cl.user_session.get("config")  # type: ignore[no-untyped-call]
     # Determine what to do with the attachments.
     inline_attachments = []
     for file in user_message.elements:
@@ -86,7 +86,7 @@ async def handle_message(user_message: cl.Message) -> None:
     # Stream the LLM response.
     assistant_message = cl.Message(content="")
     chunk_spans = []
-    messages: list[dict[str, str]] = cl.chat_context.to_openai()[:-1]
+    messages: list[dict[str, str]] = cl.chat_context.to_openai()[:-1]  # type: ignore[no-untyped-call]
     messages.append({"role": "user", "content": user_prompt})
     async for token in async_rag(
         messages, on_retrieval=lambda x: chunk_spans.extend(x), config=config
@@ -102,7 +102,7 @@ async def handle_message(user_message: cl.Message) -> None:
             f"[{i + 1}]" for i in range(len(rag_sources))
         )
         assistant_message.elements = [  # Markdown content is rendered in sidebar.
-            cl.Text(name=f"[{i + 1}]", content="\n\n---\n\n".join(content), display="side")
+            cl.Text(name=f"[{i + 1}]", content="\n\n---\n\n".join(content), display="side")  # type: ignore[misc]
             for i, (_, content) in enumerate(rag_sources.items())
         ]
-    await assistant_message.update()
+    await assistant_message.update()  # type: ignore[no-untyped-call]
