@@ -842,6 +842,22 @@ wheels = [
 ]
 
 [[package]]
+name = "flashrank"
+version = "0.2.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "onnxruntime" },
+    { name = "requests" },
+    { name = "tokenizers" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/55/1f/176cb4a857a70c3538f637e19389ab6aed21548a1ba1d1424fccc8bba108/FlashRank-0.2.10.tar.gz", hash = "sha256:f8f82a25c32fdfc668a09dc4089421d6aab8e7f71308424b541f40bb3f01d9db", size = 18905 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ec/99/72639cc1c9221c5bc77a2df1c2d352fe11965553bdf7d3e0856e7fcc8fd6/FlashRank-0.2.10-py3-none-any.whl", hash = "sha256:5d3272ae657d793c132d1e7917ed9e2adf49e0e1c60735583a67b051c6f0434a", size = 14511 },
+]
+
+[[package]]
 name = "flatbuffers"
 version = "25.2.10"
 source = { registry = "https://pypi.org/simple" }
@@ -3117,6 +3133,7 @@ dependencies = [
     { name = "platformdirs" },
     { name = "pydantic" },
     { name = "pynndescent" },
+    { name = "rerankers", extra = ["flashrank"] },
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "sqlmodel-slim" },
@@ -3134,9 +3151,6 @@ pypandoc-binary = [
 ]
 ragas = [
     { name = "ragas" },
-]
-rerankers = [
-    { name = "rerankers" },
 ]
 
 [package.dev-dependencies]
@@ -3165,7 +3179,7 @@ requires-dist = [
     { name = "fastmcp", specifier = ">=0.4.1" },
     { name = "huggingface-hub", specifier = ">=0.22.0" },
     { name = "langdetect", specifier = ">=1.0.9" },
-    { name = "litellm", specifier = ">=1.48.4,<1.56.10" },
+    { name = "litellm", specifier = ">=1.48.4" },
     { name = "llama-cpp-python", specifier = ">=0.3.2" },
     { name = "markdown-it-py", specifier = ">=3.0.0" },
     { name = "mdformat-gfm", specifier = ">=0.3.6" },
@@ -3180,7 +3194,7 @@ requires-dist = [
     { name = "pynndescent", specifier = ">=0.5.12" },
     { name = "pypandoc-binary", marker = "extra == 'pypandoc-binary'", specifier = ">=1.13" },
     { name = "ragas", marker = "extra == 'ragas'", specifier = ">=0.1.12" },
-    { name = "rerankers", marker = "extra == 'rerankers'", specifier = ">=0.6.0" },
+    { name = "rerankers", extras = ["flashrank"], specifier = ">=0.6.0" },
     { name = "scikit-learn", specifier = ">=1.4.2" },
     { name = "scipy", specifier = ">=1.5.0" },
     { name = "sqlmodel-slim", specifier = ">=0.0.18" },
@@ -3188,12 +3202,11 @@ requires-dist = [
     { name = "typer", specifier = ">=0.15.1" },
     { name = "wtpsplit-lite", specifier = ">=0.1.0" },
 ]
-provides-extras = ["chainlit", "ragas", "rerankers", "pypandoc-binary"]
+provides-extras = ["chainlit", "ragas", "pypandoc-binary"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "commitizen", specifier = ">=4.1.0" },
-    { name = "coverage", specifier = ">=7.6.1" },
     { name = "coverage", extras = ["toml"], specifier = ">=7.6.10" },
     { name = "ipykernel", specifier = ">=6.29.4" },
     { name = "ipython", specifier = ">=8.18.0" },
@@ -3328,6 +3341,11 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/90/5b/6d38e6b823c44ac50c1439557c88250dd82cd0896c383c5df5b985911e4a/rerankers-0.8.0.tar.gz", hash = "sha256:395ea32a62f24356e946882e2001205e3347d1f1bef8ae66beacc5179a729c14", size = 44979 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/25/a6/4735e5226d7508b2b8c56ea0ef02233c5e4f5d3a679cf9324ea37d128b4e/rerankers-0.8.0-py3-none-any.whl", hash = "sha256:47117d33ad0474b88569269f454ad1be1e2c252ebd230046d6b9ceff99875a3c", size = 47343 },
+]
+
+[package.optional-dependencies]
+flashrank = [
+    { name = "flashrank" },
 ]
 
 [[package]]
