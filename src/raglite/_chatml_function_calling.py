@@ -487,7 +487,7 @@ def chatml_function_calling_with_streaming(
             {
                 "finish_reason": "tool_calls",
                 "index": 0,
-                "logprobs": completion["choices"][0]["logprobs"],
+                "logprobs": completion["choices"][0]["logprobs"],  # type: ignore[typeddict-item]
                 "message": {
                     "role": "assistant",
                     "content": None,

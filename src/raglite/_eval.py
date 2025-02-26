@@ -273,7 +273,7 @@ def evaluate(
             verbose=llm.verbose,
         )
     else:
-        lc_llm = ChatLiteLLM(model=config.llm)  # type: ignore[call-arg]
+        lc_llm = ChatLiteLLM(model=config.llm)
     embedder = RAGLiteRagasEmbeddings(config=config)
     # Evaluate the answered evals with Ragas.
     evaluation_df = ragas_evaluate(
