@@ -1562,7 +1562,7 @@ wheels = [
 
 [[package]]
 name = "litellm"
-version = "1.56.9"
+version = "1.61.16"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1577,9 +1577,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "tokenizers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a1/5e/ea481f30edbe1fefb90d816ecb868393f1a1e19544d4d4fe4e1e357e108c/litellm-1.56.9.tar.gz", hash = "sha256:b3af2710eb42353d40c858370a17c56e3499a040d262ea30ebc8722d7976a565", size = 6295533 }
+sdist = { url = "https://files.pythonhosted.org/packages/3d/a5/0750edce9f4cbdce7f0d852b8e175cec4760d1c687c0079f7fe1b91c7d7f/litellm-1.61.16.tar.gz", hash = "sha256:02df5865f98ea9734a4d27ac7c33aad9a45c4015403d5c0797d3292ade3c5cb5", size = 6562533 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f9/86/df7c4d2310154e5095759aee24a2c3f126fe8cc3d62140b0fd2687baef5d/litellm-1.56.9-py3-none-any.whl", hash = "sha256:db61a1e34a8d06ce98dd68c4384afa83f3ba1bddc867bada002d032e4f281039", size = 6577107 },
+    { url = "https://files.pythonhosted.org/packages/56/49/6af8c25e4e57426d322ee94e312a822162bb8122d24adcbcb913916225e2/litellm-1.61.16-py3-none-any.whl", hash = "sha256:d241436ac0edf64ec57fb5686f8d84a25998a7e52213d9063adf87df8432701f", size = 6871951 },
 ]
 
 [[package]]
@@ -2281,11 +2281,11 @@ wheels = [
 
 [[package]]
 name = "packaging"
-version = "24.2"
+version = "23.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/d0/63/68dbb6eb2de9cb10ee4c9c14a0148804425e13c4fb20d61cce69f53106da/packaging-24.2.tar.gz", hash = "sha256:c228a6dc5e932d346bc5739379109d49e8853dd8223571c7c5b55260edc0b97f", size = 163950 }
+sdist = { url = "https://files.pythonhosted.org/packages/fb/2b/9b9c33ffed44ee921d0967086d653047286054117d584f1b1a7c22ceaf7b/packaging-23.2.tar.gz", hash = "sha256:048fb0e9405036518eaaf48a55953c750c11e1a1b68e0dd1a9d62ed0c092cfc5", size = 146714 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/88/ef/eb23f262cca3c0c4eb7ab1933c3b1f03d021f2c48f54763065b6f0e321be/packaging-24.2-py3-none-any.whl", hash = "sha256:09abb1bccd265c01f4a3aa3f7a7db064b36514d2cba19a2f694fe6150451a759", size = 65451 },
+    { url = "https://files.pythonhosted.org/packages/ec/1a/610693ac4ee14fcdf2d9bf3c493370e4f2ef7ae2e19217d7a237ff42367d/packaging-23.2-py3-none-any.whl", hash = "sha256:8c491190033a9af7e1d931d0b5dacc2ef47509b34dd0de67ed209b5203fc88c7", size = 53011 },
 ]
 
 [[package]]
@@ -3175,11 +3175,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "chainlit", marker = "extra == 'chainlit'", specifier = ">=1.2.0" },
+    { name = "chainlit", marker = "extra == 'chainlit'", specifier = ">=2.0.0" },
     { name = "fastmcp", specifier = ">=0.4.1" },
     { name = "huggingface-hub", specifier = ">=0.22.0" },
     { name = "langdetect", specifier = ">=1.0.9" },
-    { name = "litellm", specifier = ">=1.48.4" },
+    { name = "litellm", specifier = ">=1.57.8" },
     { name = "llama-cpp-python", specifier = ">=0.3.2" },
     { name = "markdown-it-py", specifier = ">=3.0.0" },
     { name = "mdformat-gfm", specifier = ">=0.3.6" },
@@ -3798,15 +3798,16 @@ wheels = [
 
 [[package]]
 name = "sse-starlette"
-version = "2.2.1"
+version = "2.1.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
     { name = "starlette" },
+    { name = "uvicorn" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/71/a4/80d2a11af59fe75b48230846989e93979c892d3a20016b42bb44edb9e398/sse_starlette-2.2.1.tar.gz", hash = "sha256:54470d5f19274aeed6b2d473430b08b4b379ea851d953b11d7f1c4a2c118b419", size = 17376 }
+sdist = { url = "https://files.pythonhosted.org/packages/72/fc/56ab9f116b2133521f532fce8d03194cf04dcac25f583cf3d839be4c0496/sse_starlette-2.1.3.tar.gz", hash = "sha256:9cd27eb35319e1414e3d2558ee7414487f9529ce3b3cf9b21434fd110e017169", size = 19678 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d9/e0/5b8bd393f27f4a62461c5cf2479c75a2cc2ffa330976f9f00f5f6e4f50eb/sse_starlette-2.2.1-py3-none-any.whl", hash = "sha256:6410a3d3ba0c89e7675d4c273a301d64649c03a5ef1ca101f10b47f895fd0e99", size = 10120 },
+    { url = "https://files.pythonhosted.org/packages/52/aa/36b271bc4fa1d2796311ee7c7283a3a1c348bad426d37293609ca4300eef/sse_starlette-2.1.3-py3-none-any.whl", hash = "sha256:8ec846438b4665b9e8c560fcdea6bc8081a3abf7942faa95e5a744999d219772", size = 9383 },
 ]
 
 [[package]]
@@ -4112,16 +4113,16 @@ wheels = [
 
 [[package]]
 name = "uvicorn"
-version = "0.34.0"
+version = "0.25.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "h11" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4b/4d/938bd85e5bf2edeec766267a5015ad969730bb91e31b44021dfe8b22df6c/uvicorn-0.34.0.tar.gz", hash = "sha256:404051050cd7e905de2c9a7e61790943440b3416f49cb409f965d9dcd0fa73e9", size = 76568 }
+sdist = { url = "https://files.pythonhosted.org/packages/ec/54/0eb4441bf38c70f6ed1886dddb2e29d1650026041d19e49fc373e332fa60/uvicorn-0.25.0.tar.gz", hash = "sha256:6dddbad1d7ee0f5140aba5ec138ddc9612c5109399903828b4874c9937f009c2", size = 40724 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/61/14/33a3a1352cfa71812a3a21e8c9bfb83f60b0011f5e36f2b1399d51928209/uvicorn-0.34.0-py3-none-any.whl", hash = "sha256:023dc038422502fa28a09c7a30bf2b6991512da7dcdb8fd35fe57cfc154126f4", size = 62315 },
+    { url = "https://files.pythonhosted.org/packages/26/59/fddd9df489fe27f492cc97626e03663fb3b9b6ef7ce8597a7cdc5f2cbbad/uvicorn-0.25.0-py3-none-any.whl", hash = "sha256:ce107f5d9bd02b4636001a77a4e74aab5e1e2b146868ebbad565237145af444c", size = 60303 },
 ]
 
 [[package]]
