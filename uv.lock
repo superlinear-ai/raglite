@@ -3121,7 +3121,6 @@ dependencies = [
     { name = "huggingface-hub" },
     { name = "langdetect" },
     { name = "litellm" },
-    { name = "llama-cpp-python" },
     { name = "markdown-it-py" },
     { name = "mdformat-gfm" },
     { name = "numba" },
@@ -3145,6 +3144,9 @@ dependencies = [
 [package.optional-dependencies]
 chainlit = [
     { name = "chainlit" },
+]
+llama-cpp-python = [
+    { name = "llama-cpp-python" },
 ]
 pypandoc-binary = [
     { name = "pypandoc-binary" },
@@ -3180,7 +3182,7 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.22.0" },
     { name = "langdetect", specifier = ">=1.0.9" },
     { name = "litellm", specifier = ">=1.57.8" },
-    { name = "llama-cpp-python", specifier = ">=0.3.2" },
+    { name = "llama-cpp-python", marker = "extra == 'llama-cpp-python'", specifier = ">=0.3.2" },
     { name = "markdown-it-py", specifier = ">=3.0.0" },
     { name = "mdformat-gfm", specifier = ">=0.3.6" },
     { name = "numba", specifier = ">=0.60.0" },
@@ -3202,7 +3204,7 @@ requires-dist = [
     { name = "typer", specifier = ">=0.15.1" },
     { name = "wtpsplit-lite", specifier = ">=0.1.0" },
 ]
-provides-extras = ["chainlit", "ragas", "pypandoc-binary"]
+provides-extras = ["chainlit", "ragas", "llama-cpp-python", "pypandoc-binary"]
 
 [package.metadata.requires-dev]
 dev = [

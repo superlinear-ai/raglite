@@ -23,7 +23,6 @@ dependencies = [
   # Large Language Models:
   "huggingface-hub (>=0.22.0)",
   "litellm (>=1.57.8)",
-  "llama-cpp-python (>=0.3.2)",
   "pydantic (>=2.7.0)",
   # Approximate Nearest Neighbors:
   "pynndescent (>=0.5.12)",
@@ -88,6 +87,8 @@ version_provider = "pep621"
 chainlit = ["chainlit (>=2.0.0)"]
 # Evaluation:
 ragas = ["ragas (>=0.1.12)"]
+# Largue Language Models:
+llama-cpp-python = ["llama-cpp-python (>=0.3.2)"]
 # Markdown conversion:
 pypandoc-binary = ["pypandoc-binary (>=1.13)"]
 
