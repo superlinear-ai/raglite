@@ -19,15 +19,11 @@ def _embed_sentences_with_late_chunking(  # noqa: PLR0915
     """Embed a document's sentences with late chunking."""
 
     def _count_tokens(
-        sentences: list[str],
-        embedder: Llama,
-        sentinel_char: str,
-        sentinel_tokens: list[int],
+        sentences: list[str], embedder: Llama, sentinel_char: str, sentinel_tokens: list[int]
     ) -> list[int]:
         # Join the sentences with the sentinel token and tokenise the result.
         sentences_tokens = np.asarray(
-            embedder.tokenize(sentinel_char.join(sentences).encode(), add_bos=False),
-            dtype=np.intp,
+            embedder.tokenize(sentinel_char.join(sentences).encode(), add_bos=False), dtype=np.intp
         )
         # Map all sentinel token variants to the first one.
         for sentinel_token in sentinel_tokens[1:]:

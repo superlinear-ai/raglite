@@ -71,8 +71,6 @@ dev = [
   "pytest-mock (>=3.14.0)",
   "pytest-xdist (>=3.6.1)",
   "ruff (>=0.9.2)",
-  "safety (>=3.1.0)",
-  "shellcheck-py (>=0.10.0.1)",
   "typeguard (>=4.4.1)",
 ]
 
@@ -85,12 +83,12 @@ version_provider = "pep621"
 [project.optional-dependencies]
 # Frontend:
 chainlit = ["chainlit (>=2.0.0)"]
-# Evaluation:
-ragas = ["ragas (>=0.1.12)"]
 # Largue Language Models:
 llama-cpp-python = ["llama-cpp-python (>=0.3.2)"]
 # Markdown conversion:
 pypandoc-binary = ["pypandoc-binary (>=1.13)"]
+# Evaluation:
+ragas = ["ragas (>=0.1.12)"]
 
 [tool.coverage.report] # https://coverage.readthedocs.io/en/latest/config.html#report
 fail_under = 50

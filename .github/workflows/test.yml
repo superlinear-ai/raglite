@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.12"]
         resolution-strategy: ["highest", "lowest-direct"]
 
     name: Python ${{ matrix.python-version }} (resolution=${{ matrix.resolution-strategy }})
@@ -34,15 +34,14 @@ jobs:
       - name: Start Dev Container
         run: |
           git config --global init.defaultBranch main
-          PYTHON_VERSION=${{ matrix.python-version }} OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} RESOLUTION_STRATEGY=${{ matrix.resolution-strategy }} devcontainer up --workspace-folder .
+          devcontainer up --workspace-folder .
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PYTHON_VERSION: ${{ matrix.python-version }}
+          RESOLUTION_STRATEGY: ${{ matrix.resolution-strategy }}
 
       - name: Lint package
         run: devcontainer exec --workspace-folder . poe lint
 
       - name: Test package
         run: devcontainer exec --workspace-folder . poe test
-        
-      - name: Upload coverage
-        uses: codecov/codecov-action@v5
-        with:
-          files: reports/coverage.xml
