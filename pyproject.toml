@@ -88,7 +88,7 @@ chainlit = ["chainlit (>=2.0.0)"]
 # Evaluation:
 ragas = ["ragas (>=0.1.12)"]
 # Largue Language Models:
-llama-cpp-python = ["llama-cpp-python (>=0.3.2)"]
+llama-cpp-python = ["llama-cpp-python (==0.3.2)"]
 # Markdown conversion:
 pypandoc-binary = ["pypandoc-binary (>=1.13)"]
 

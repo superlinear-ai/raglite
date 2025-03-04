@@ -1596,7 +1596,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/fc/fc/628b39e31b368aacb
 
 [[package]]
 name = "llama-cpp-python"
-version = "0.3.7"
+version = "0.3.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "diskcache" },
@@ -1604,7 +1604,7 @@ dependencies = [
     { name = "numpy" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a6/38/7a47b1fb1d83eaddd86ca8ddaf20f141cbc019faf7b425283d8e5ef710e5/llama_cpp_python-0.3.7.tar.gz", hash = "sha256:0566a0dcc0f38005c4093309a87f67c2452449522e3e17e15cd735a62957894c", size = 66715891 }
+sdist = { url = "https://files.pythonhosted.org/packages/5f/0e/ff129005a33b955088fc7e4ecb57e5500b604fb97eca55ce8688dbe59680/llama_cpp_python-0.3.2.tar.gz", hash = "sha256:8fbf246a55a999f45015ed0d48f91b4ae04ae959827fac1cd6ac6ec65aed2e2f", size = 64964148 }
 
 [[package]]
 name = "llvmlite"
@@ -3182,7 +3182,7 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.22.0" },
     { name = "langdetect", specifier = ">=1.0.9" },
     { name = "litellm", specifier = ">=1.57.8" },
-    { name = "llama-cpp-python", marker = "extra == 'llama-cpp-python'", specifier = ">=0.3.2" },
+    { name = "llama-cpp-python", marker = "extra == 'llama-cpp-python'", specifier = "==0.3.2" },
     { name = "markdown-it-py", specifier = ">=3.0.0" },
     { name = "mdformat-gfm", specifier = ">=0.3.6" },
     { name = "numba", specifier = ">=0.60.0" },
