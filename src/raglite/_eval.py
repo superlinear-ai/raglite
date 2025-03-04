@@ -18,10 +18,7 @@ from raglite._typing import SearchMethod
 
 
 def insert_evals(  # noqa: C901
-    *,
-    num_evals: int = 100,
-    max_contexts_per_eval: int = 20,
-    config: RAGLiteConfig | None = None,
+    *, num_evals: int = 100, max_contexts_per_eval: int = 20, config: RAGLiteConfig | None = None
 ) -> None:
     """Generate and insert evals into the database."""
 
@@ -32,8 +29,7 @@ def insert_evals(  # noqa: C901
             extra="forbid"  # Forbid extra attributes as required by OpenAI's strict mode.
         )
         question: str = Field(
-            ...,
-            description="A specific question about the content of a set of document contexts.",
+            ..., description="A specific question about the content of a set of document contexts."
         )
         system_prompt: ClassVar[str] = """
 You are given a set of contexts extracted from a document.
@@ -122,17 +118,11 @@ An example of a context that does NOT contain (a part of) the answer is a table 
 
             relevant_chunks = []
             for candidate_chunk in tqdm(
-                candidate_chunks,
-                desc="Evaluating chunks",
-                unit="chunk",
-                dynamic_ncols=True,
+                candidate_chunks, desc="Evaluating chunks", unit="chunk", dynamic_ncols=True
             ):
                 try:
                     context_eval_response = extract_with_llm(
-                        ContextEvalResponse,
-                        str(candidate_chunk),
-                        strict=True,
-                        config=config,
+                        ContextEvalResponse, str(candidate_chunk), strict=True, config=config
                     )
                 except ValueError:  # noqa: PERF203
                     pass
