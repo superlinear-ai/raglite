@@ -1,94 +1,94 @@
-[build-system] # https://python-poetry.org/docs/pyproject/#poetry-and-pep-517
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
-
-[tool.poetry] # https://python-poetry.org/docs/pyproject/
+[project] # https://packaging.python.org/en/latest/specifications/pyproject-toml/
 name = "raglite"
 version = "0.6.2"
 description = "A Python toolkit for Retrieval-Augmented Generation (RAG) with SQLite or PostgreSQL."
-authors = ["Laurent Sorber <laurent@superlinear.eu>"]
 readme = "README.md"
-repository = "https://github.com/superlinear-ai/raglite"
+authors = [
+  { name = "Laurent Sorber", email = "laurent@superlinear.eu" },
+]
+requires-python = ">=3.10,<4.0"
+dependencies = [
+  # Configuration:
+  "platformdirs (>=4.0.0)",
+  # Markdown conversion:
+  "pdftext (>=0.3.13)",
+  "scikit-learn (>=1.4.2)",
+  # Markdown formatting:
+  "markdown-it-py (>=3.0.0)",
+  "mdformat-gfm (>=0.3.6)",
+  # Sentence and chunk splitting:
+  "numpy (>=1.26.4,<2.0.0)",
+  "scipy (>=1.5.0)",
+  "wtpsplit-lite (>=0.1.0)",
+  # Large Language Models:
+  "huggingface-hub (>=0.22.0)",
+  "litellm (>=1.57.8)",
+  "pydantic (>=2.7.0)",
+  # Approximate Nearest Neighbors:
+  "pynndescent (>=0.5.12)",
+  "numba (>=0.60.0)",
+  # Reranking:
+  "langdetect (>=1.0.9)",
+  "rerankers[flashrank] (>=0.6.0)",
+  # Storage:
+  "pg8000 (>=1.31.2)",
+  "sqlmodel-slim (>=0.0.18)",
+  # Progress:
+  "tqdm (>=4.66.0)",
+  # Evaluation:
+  "pandas (>=2.1.0)",
+  # CLI:
+  "typer (>=0.15.1)",
+  # Model Context Protocol:
+  "fastmcp (>=0.4.1)",
+  # Utilities:
+  "packaging (>=23.0)",
+]
 
-[tool.commitizen] # https://commitizen-tools.github.io/commitizen/config/
+[project.scripts]  # https://docs.astral.sh/uv/concepts/projects/config/#command-line-interfaces
+raglite = "raglite.cli:app"
+
+[project.urls]  # https://packaging.python.org/en/latest/specifications/well-known-project-urls/#well-known-labels
+homepage = "https://github.com/superlinear-ai/raglite"
+source = "https://github.com/superlinear-ai/raglite"
+changelog = "https://github.com/superlinear-ai/raglite/blob/main/CHANGELOG.md"
+releasenotes = "https://github.com/superlinear-ai/raglite/releases"
+documentation = "https://github.com/superlinear-ai/raglite"
+issues = "https://github.com/superlinear-ai/raglite/issues"
+
+[dependency-groups]  # https://docs.astral.sh/uv/concepts/projects/dependencies/#development-dependencies
+dev = [
+  "commitizen (>=4.1.0)",
+  "coverage[toml] (>=7.6.10)",
+  "ipykernel (>=6.29.4)",
+  "ipython (>=8.18.0)",
+  "ipywidgets (>=8.1.2)",
+  "mypy (>=1.14.1)",
+  "pdoc (>=15.0.1)",
+  "poethepoet (>=0.32.1)",
+  "pre-commit (>=4.0.1)",
+  "pytest (>=8.3.4)",
+  "pytest-mock (>=3.14.0)",
+  "pytest-xdist (>=3.6.1)",
+  "ruff (>=0.9.2)",
+  "typeguard (>=4.4.1)",
+]
+
+[tool.commitizen]  # https://commitizen-tools.github.io/commitizen/config/
 bump_message = "bump(release): v$current_version → v$new_version"
 tag_format = "v$version"
 update_changelog_on_bump = true
-version_provider = "poetry"
+version_provider = "pep621"
 
-[tool.poetry.dependencies] # https://python-poetry.org/docs/dependency-specification/
-# Python:
-python = ">=3.10,<4.0"
-# Configuration:
-platformdirs = ">=4.0.0"
-# Markdown conversion:
-pdftext = ">=0.3.13"
-pypandoc-binary = { version = ">=1.13", optional = true }
-scikit-learn = ">=1.4.2"
-# Markdown formatting:
-markdown-it-py = ">=3.0.0"
-mdformat-gfm = ">=0.3.6"
-# Sentence and chunk splitting:
-numpy = ">=1.26.4"
-scipy = ">=1.5.0"
-wtpsplit-lite = ">=0.1.0"
-# Large Language Models:
-huggingface-hub = ">=0.22.0"
-litellm = ">=1.48.4,<1.56.10"
-llama-cpp-python = { version = ">=0.3.2", optional = true }
-pydantic = ">=2.7.0"
-# Approximate Nearest Neighbors:
-pynndescent = ">=0.5.12"
-# Reranking:
-langdetect = ">=1.0.9"
-rerankers = { extras = ["flashrank"], version = ">=0.6.0" }
-# Storage:
-pg8000 = ">=1.31.2"
-sqlmodel-slim = ">=0.0.18"
-# Progress:
-tqdm = ">=4.66.0"
-# Evaluation:
-pandas = ">=2.1.0"
-ragas = { version = ">=0.1.12", optional = true }
-# CLI:
-typer = ">=0.12.5"
+[project.optional-dependencies]
 # Frontend:
-chainlit = { version = ">=1.2.0", optional = true }
-# Model Context Protocol:
-fastmcp = ">=0.4.1"
-# Utilities:
-packaging = ">=23.0"
-
-[tool.poetry.extras] # https://python-poetry.org/docs/pyproject/#extras
-chainlit = ["chainlit"]
-llama-cpp-python = ["llama-cpp-python"]
-pandoc = ["pypandoc-binary"]
-ragas = ["ragas"]
-
-[tool.poetry.group.test.dependencies] # https://python-poetry.org/docs/master/managing-dependencies/
-commitizen = ">=3.29.1"
-coverage = { extras = ["toml"], version = ">=7.4.4" }
-mypy = ">=1.9.0"
-poethepoet = ">=0.25.0"
-pre-commit = ">=3.7.0"
-pytest = ">=8.1.1"
-pytest-mock = ">=3.14.0"
-ruff = ">=0.5.7"
-safety = ">=3.1.0"
-shellcheck-py = ">=0.10.0.1"
-typeguard = ">=4.2.1"
-
-[tool.poetry.group.dev.dependencies] # https://python-poetry.org/docs/master/managing-dependencies/
-cruft = ">=2.15.0"
-ipykernel = ">=6.29.4"
-ipython = ">=8.8.0"
-ipywidgets = ">=8.1.2"
-matplotlib = ">=3.9.0"
-memory-profiler = ">=0.61.0"
-pdoc = ">=14.4.0"
-
-[tool.poetry.scripts] # https://python-poetry.org/docs/pyproject/#scripts
-raglite = "raglite._cli:cli"
+chainlit = ["chainlit (>=2.0.0)"]
+# Large Language Models:
+llama-cpp-python = ["llama-cpp-python (>=0.3.2)"]
+# Markdown conversion:
+pypandoc-binary = ["pypandoc-binary (>=1.13)"]
+# Evaluation:
+ragas = ["ragas (>=0.1.12)"]
 
 [tool.coverage.report] # https://coverage.readthedocs.io/en/latest/config.html#report
 fail_under = 50
@@ -118,20 +118,23 @@ show_error_context = true
 warn_unreachable = true
 
 [tool.pytest.ini_options] # https://docs.pytest.org/en/latest/reference/reference.html#ini-options-ref
-addopts = "--color=yes --exitfirst --failed-first --strict-config --strict-markers --verbosity=2 --junitxml=reports/pytest.xml"
+addopts = "--color=yes --doctest-modules --ignore=src/raglite/_chainlit.py --exitfirst --failed-first --strict-config --strict-markers --verbosity=2 --junitxml=reports/pytest.xml"
 filterwarnings = ["error", "ignore::DeprecationWarning", "ignore::pytest.PytestUnraisableExceptionWarning"]
 testpaths = ["src", "tests"]
 xfail_strict = true
 
-[tool.ruff] # https://github.com/charliermarsh/ruff
+[tool.ruff] # https://docs.astral.sh/ruff/settings/
 fix = true
 line-length = 100
 src = ["src", "tests"]
 target-version = "py310"
 
+[tool.ruff.format]
+docstring-code-format = true
+
 [tool.ruff.lint]
 select = ["A", "ASYNC", "B", "BLE", "C4", "C90", "D", "DTZ", "E", "EM", "ERA", "F", "FBT", "FLY", "FURB", "G", "I", "ICN", "INP", "INT", "ISC", "LOG", "N", "NPY", "PERF", "PGH", "PIE", "PL", "PT", "PTH", "PYI", "Q", "RET", "RSE", "RUF", "S", "SIM", "SLF", "SLOT", "T10", "T20", "TCH", "TID", "TRY", "UP", "W", "YTT"]
-ignore = ["D203", "D213", "E501", "RET504", "RUF002", "S101", "S307", "TCH004"]
+ignore = ["D203", "D213", "E501", "RET504", "RUF002", "RUF022", "S101", "S307", "TC004"]
 unfixable = ["ERA001", "F401", "F841", "T201", "T203"]
 
 [tool.ruff.lint.flake8-tidy-imports]
@@ -143,50 +146,48 @@ max-doc-length = 100
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
 
+[tool.uv]  # https://docs.astral.sh/uv/reference/settings/
+package = true
+
 [tool.poe.tasks] # https://github.com/nat-n/poethepoet
 
-[tool.poe.tasks.docs]
-help = "Generate this package's docs"
-cmd = """
+  [tool.poe.tasks.docs]
+  help = "Generate this package's docs"
+  cmd = """
     pdoc
       --docformat $docformat
       --output-directory $outputdirectory
       raglite
     """
 
-[[tool.poe.tasks.docs.args]]
-help = "The docstring style (default: numpy)"
-name = "docformat"
-options = ["--docformat"]
-default = "numpy"
+    [[tool.poe.tasks.docs.args]]
+    help = "The docstring style (default: numpy)"
+    name = "docformat"
+    options = ["--docformat"]
+    default = "numpy"
 
-[[tool.poe.tasks.docs.args]]
-help = "The output directory (default: docs)"
-name = "outputdirectory"
-options = ["--output-directory"]
-default = "docs"
+    [[tool.poe.tasks.docs.args]]
+    help = "The output directory (default: docs)"
+    name = "outputdirectory"
+    options = ["--output-directory"]
+    default = "docs"
 
-[tool.poe.tasks.lint]
-help = "Lint this package"
+  [tool.poe.tasks.lint]
+  help = "Lint this package"
+  cmd = """
+    pre-commit run
+      --all-files
+      --color always
+    """
 
-[[tool.poe.tasks.lint.sequence]]
-cmd = """
-      pre-commit run
-        --all-files
-        --color always
-      """
+  [tool.poe.tasks.test]
+  help = "Test this package"
 
-[[tool.poe.tasks.lint.sequence]]
-shell = "safety check --continue-on-error --full-report"
+    [[tool.poe.tasks.test.sequence]]
+    cmd = "coverage run"
 
-[tool.poe.tasks.test]
-help = "Test this package"
+    [[tool.poe.tasks.test.sequence]]
+    cmd = "coverage report"
 
-[[tool.poe.tasks.test.sequence]]
-cmd = "coverage run"
-
-[[tool.poe.tasks.test.sequence]]
-cmd = "coverage report"
-
-[[tool.poe.tasks.test.sequence]]
-cmd = "coverage xml"
+    [[tool.poe.tasks.test.sequence]]
+    cmd = "coverage xml"

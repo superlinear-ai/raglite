@@ -16,13 +16,14 @@ repos:
       - id: rst-inline-touching-normal
       - id: text-unicode-replacement-char
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v5.0.0
     hooks:
       - id: check-added-large-files
       - id: check-ast
       - id: check-builtin-literals
       - id: check-case-conflict
       - id: check-docstring-first
+      - id: check-illegal-windows-names
       - id: check-json
       - id: check-merge-conflict
       - id: check-shebang-scripts-are-executable
@@ -51,6 +52,13 @@ repos:
         require_serial: true
         language: system
         stages: [commit-msg]
+      - id: uv-lock-check
+        name: uv lock check
+        entry: uv lock
+        args: ["--check"]
+        require_serial: true
+        language: system
+        pass_filenames: false
       - id: ruff-check
         name: ruff check
         entry: ruff check
@@ -65,17 +73,6 @@ repos:
         require_serial: true
         language: system
         types_or: [python, pyi]
-      - id: shellcheck
-        name: shellcheck
-        entry: shellcheck
-        args: [--check-sourced]
-        language: system
-        types: [shell]
-      - id: poetry-check
-        name: poetry check
-        entry: poetry check
-        language: system
-        pass_filenames: false
       - id: mypy
         name: mypy
         entry: mypy

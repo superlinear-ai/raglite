@@ -3,10 +3,19 @@
     "dockerComposeFile": "../docker-compose.yml",
     "service": "devcontainer",
     "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}/",
-    "remoteUser": "user",
+    "features": {
+        "ghcr.io/devcontainers-extra/features/starship:1": {}
+    },
     "overrideCommand": true,
-    "postStartCommand": "cp --update /opt/build/poetry/poetry.lock /workspaces/${localWorkspaceFolderBasename}/ && mkdir -p /workspaces/${localWorkspaceFolderBasename}/.git/hooks/ && cp --update /opt/build/git/* /workspaces/${localWorkspaceFolderBasename}/.git/hooks/",
+    "remoteUser": "user",
+    "postStartCommand": "sudo chown -R user:user /opt/ && uv sync --python ${PYTHON_VERSION:-3.10} ${RESOLUTION_STRATEGY:+--resolution $RESOLUTION_STRATEGY} --all-extras && pre-commit install --install-hooks",
     "customizations": {
+        "jetbrains": {
+            "backend": "PyCharm",
+            "plugins": [
+                "com.github.copilot"
+            ]
+        },
         "vscode": {
             "extensions": [
                 "charliermarsh.ruff",
@@ -41,7 +50,10 @@
                     100
                 ],
                 "files.autoSave": "onFocusChange",
+                "github.copilot.chat.agent.enabled": true,
+                "github.copilot.chat.edits.codesearch.enabled": true,
                 "github.copilot.chat.edits.enabled": true,
+                "github.copilot.nextEditSuggestions.enabled": true,
                 "jupyter.kernels.excludePythonEnvironments": [
                     "/usr/local/bin/python"
                 ],
@@ -52,16 +64,16 @@
                     "notebook.source.organizeImports": "explicit"
                 },
                 "notebook.formatOnSave.enabled": true,
-                "python.defaultInterpreterPath": "/opt/raglite-env/bin/python",
+                "python.defaultInterpreterPath": "/opt/venv/bin/python",
                 "python.terminal.activateEnvironment": false,
                 "python.testing.pytestEnabled": true,
                 "ruff.importStrategy": "fromEnvironment",
                 "ruff.logLevel": "warning",
-                "terminal.integrated.defaultProfile.linux": "zsh",
-                "terminal.integrated.profiles.linux": {
-                    "zsh": {
-                        "path": "/usr/bin/zsh"
-                    }
+                "terminal.integrated.env.linux": {
+                    "GIT_EDITOR": "code --wait"
+                },
+                "terminal.integrated.env.mac": {
+                    "GIT_EDITOR": "code --wait"
                 }
             }
         }

@@ -34,7 +34,7 @@ __all__ = [
     # Query adapter
     "update_query_adapter",
     # Evaluate
-    "insert_evals",
     "answer_evals",
+    "insert_evals",
     "evaluate",
 ]

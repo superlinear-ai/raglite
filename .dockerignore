@@ -3,3 +3,6 @@
 
 # Git
 .git/
+
+# Python
+.venv/
