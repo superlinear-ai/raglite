@@ -83,8 +83,8 @@ version_provider = "pep621"
 [project.optional-dependencies]
 # Frontend:
 chainlit = ["chainlit (>=2.0.0)"]
-# Largue Language Models:
-llama-cpp-python = ["llama-cpp-python (==0.3.2)"]
+# Large Language Models:
+llama-cpp-python = ["llama-cpp-python (>=0.3.2)"]
 # Markdown conversion:
 pypandoc-binary = ["pypandoc-binary (>=1.13)"]
 # Evaluation:
