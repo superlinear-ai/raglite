@@ -3114,7 +3114,7 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.22.0" },
     { name = "langdetect", specifier = ">=1.0.9" },
     { name = "litellm", specifier = ">=1.57.8" },
-    { name = "llama-cpp-python", marker = "extra == 'llama-cpp-python'", specifier = ">=0.3.2" },
+    { name = "llama-cpp-python", marker = "extra == 'llama-cpp-python'", specifier = "==0.3.2" },
     { name = "markdown-it-py", specifier = ">=3.0.0" },
     { name = "mdformat-gfm", specifier = ">=0.3.6" },
     { name = "numba", specifier = ">=0.60.0" },
