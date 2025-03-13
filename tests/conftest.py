@@ -5,6 +5,7 @@ import socket
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
+from typing import Dict, List, Optional, Any
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -117,3 +118,61 @@ def raglite_test_config(database: str, llm: str, embedder: str) -> RAGLiteConfig
     doc_path = Path(__file__).parent / "specrel.pdf"  # Einstein's special relativity paper.
     insert_document(doc_path, config=db_config)
     return db_config
+
+
+@pytest.fixture
+def golden_test_config(
+    database: str, llm: str, embedder: str, request: pytest.FixtureRequest
+) -> tuple[RAGLiteConfig, list, str]:
+    """Create a config for golden tests with customizable documents and model.
+
+    This fixture creates a fresh config without inserting any documents by default,
+    and allows specifying:
+    - documents: List of document paths to insert
+    - test_cases: List of query/document pairs for testing
+    - model: Model to use for creating the golden dataset
+
+    Usage:
+        @pytest.mark.parametrize(
+            "golden_test_config",
+            [
+                {
+                    "documents": ["tests/specrel.pdf", "tests/paul_graham_essay.txt"],
+                    "test_cases": [
+                        {"query": "What is relativity?", "document": "specrel.pdf"},
+                        {"query": "What did Paul Graham do?", "document": "paul_graham_essay.txt"}
+                    ],
+                    "model": "gpt-4o"
+                }
+            ],
+            indirect=True
+        )
+        def test_something(golden_test_config):
+            config, test_cases, model = golden_test_config
+            # Use the config, test_cases, and model
+            ...
+    """
+    # Create a fresh config (similar to raglite_test_config but without inserting specrel.pdf)
+    variant = "local" if embedder.startswith("llama-cpp-python") else "remote"
+    db_url = database
+    if "postgres" in database:
+        db_url = database.replace("/postgres", f"/raglite_test_{variant}")
+    elif "sqlite" in database:
+        db_url = database.replace(".sqlite", f"_{variant}.sqlite")
+
+    # Create a RAGLite config
+    config = RAGLiteConfig(db_url=db_url, llm=llm, embedder=embedder)
+
+    # Get customization parameters (if any)
+    params = getattr(request, "param", {})
+
+    # Insert documents if specified
+    documents = params.get("documents", [])
+    for doc_path in documents:
+        insert_document(Path(doc_path), config=config)
+
+    # Get test cases and model
+    test_cases = params.get("test_cases", [])
+    model = params.get("model", "gpt-4o-mini")
+
+    return config, test_cases, model
