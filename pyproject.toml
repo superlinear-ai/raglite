@@ -15,7 +15,7 @@ dependencies = [
   # Configuration:
   "platformdirs (>=4.0.0)",
   # Markdown conversion:
-  "pdftext (>=0.3.13)",
+  "pdftext (>=0.4.1)",
   "scikit-learn (>=1.4.2)",
   # Markdown formatting:
   "markdown-it-py (>=3.0.0)",
