@@ -1,8 +1,10 @@
 """Test RAGLite's upgraded chatml-function-calling llama-cpp-python chat handler."""
 
 import os
-from collections.abc import Iterator
-from typing import cast
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 import pytest
 from typeguard import ForwardRefPolicy, check_type
@@ -107,7 +109,7 @@ def test_llama_cpp_python_tool_use(
         messages=messages, tools=tools, tool_choice=tool_choice, stream=stream
     )
     if stream:
-        response = cast(Iterator[CreateChatCompletionStreamResponse], response)
+        response = cast("Iterator[CreateChatCompletionStreamResponse]", response)
         num_tool_calls = 0
         for chunk in response:
             check_type(chunk, CreateChatCompletionStreamResponse)
@@ -116,7 +118,7 @@ def test_llama_cpp_python_tool_use(
                 num_tool_calls = max(tool_call["index"] for tool_call in tool_calls) + 1
         assert num_tool_calls == (expected_tool_calls if tool_choice != "none" else 0)
     else:
-        response = cast(CreateChatCompletionResponse, response)
+        response = cast("CreateChatCompletionResponse", response)
         check_type(
             response, CreateChatCompletionResponse, forward_ref_policy=ForwardRefPolicy.IGNORE
         )

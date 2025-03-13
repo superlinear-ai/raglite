@@ -1,4 +1,8 @@
-[project] # https://packaging.python.org/en/latest/specifications/pyproject-toml/
+[build-system]  # https://docs.astral.sh/uv/concepts/projects/config/#build-systems
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]  # https://packaging.python.org/en/latest/specifications/pyproject-toml/
 name = "raglite"
 version = "0.6.2"
 description = "A Python toolkit for Retrieval-Augmented Generation (RAG) with SQLite or PostgreSQL."
@@ -11,18 +15,18 @@ dependencies = [
   # Configuration:
   "platformdirs (>=4.0.0)",
   # Markdown conversion:
-  "pdftext (>=0.3.13)",
+  "pdftext (>=0.4.1)",
   "scikit-learn (>=1.4.2)",
   # Markdown formatting:
   "markdown-it-py (>=3.0.0)",
   "mdformat-gfm (>=0.3.6)",
   # Sentence and chunk splitting:
   "numpy (>=1.26.4,<2.0.0)",
-  "scipy (>=1.5.0)",
+  "scipy (>=1.11.2,!=1.15.0.*,!=1.15.1,!=1.15.2)",
   "wtpsplit-lite (>=0.1.0)",
   # Large Language Models:
   "huggingface-hub (>=0.22.0)",
-  "litellm (>=1.57.8)",
+  "litellm (>=1.60.2)",
   "pydantic (>=2.7.0)",
   # Approximate Nearest Neighbors:
   "pynndescent (>=0.5.12)",
@@ -32,11 +36,11 @@ dependencies = [
   "rerankers[flashrank] (>=0.6.0)",
   # Storage:
   "pg8000 (>=1.31.2)",
-  "sqlmodel-slim (>=0.0.18)",
+  "sqlmodel-slim (>=0.0.21)",
   # Progress:
   "tqdm (>=4.66.0)",
   # Evaluation:
-  "pandas (>=2.1.0)",
+  "pandas (>=2.1.1)",
   # CLI:
   "typer (>=0.15.1)",
   # Model Context Protocol:
@@ -58,7 +62,7 @@ issues = "https://github.com/superlinear-ai/raglite/issues"
 
 [dependency-groups]  # https://docs.astral.sh/uv/concepts/projects/dependencies/#development-dependencies
 dev = [
-  "commitizen (>=4.1.0)",
+  "commitizen (>=4.3.0)",
   "coverage[toml] (>=7.6.10)",
   "ipykernel (>=6.29.4)",
   "ipython (>=8.18.0)",
@@ -70,42 +74,42 @@ dev = [
   "pytest (>=8.3.4)",
   "pytest-mock (>=3.14.0)",
   "pytest-xdist (>=3.6.1)",
-  "ruff (>=0.9.2)",
+  "ruff (>=0.10.0)",
   "typeguard (>=4.4.1)",
 ]
-
-[tool.commitizen]  # https://commitizen-tools.github.io/commitizen/config/
-bump_message = "bump(release): v$current_version → v$new_version"
-tag_format = "v$version"
-update_changelog_on_bump = true
-version_provider = "pep621"
 
 [project.optional-dependencies]
 # Frontend:
 chainlit = ["chainlit (>=2.0.0)"]
 # Large Language Models:
-llama-cpp-python = ["llama-cpp-python (>=0.3.2)"]
+llama-cpp-python = ["llama-cpp-python (>=0.3.3)"]
 # Markdown conversion:
 pypandoc-binary = ["pypandoc-binary (>=1.13)"]
 # Evaluation:
 ragas = ["ragas (>=0.1.12)"]
 
-[tool.coverage.report] # https://coverage.readthedocs.io/en/latest/config.html#report
+[tool.commitizen]  # https://commitizen-tools.github.io/commitizen/config/
+bump_message = "bump: v$current_version → v$new_version"
+tag_format = "v$version"
+update_changelog_on_bump = true
+version_provider = "uv"
+
+[tool.coverage.report]  # https://coverage.readthedocs.io/en/latest/config.html#report
 fail_under = 50
 precision = 1
 show_missing = true
 skip_covered = true
 
-[tool.coverage.run] # https://coverage.readthedocs.io/en/latest/config.html#run
+[tool.coverage.run]  # https://coverage.readthedocs.io/en/latest/config.html#run
 branch = true
 command_line = "--module pytest"
 data_file = "reports/.coverage"
 source = ["src"]
 
-[tool.coverage.xml] # https://coverage.readthedocs.io/en/latest/config.html#xml
+[tool.coverage.xml]  # https://coverage.readthedocs.io/en/latest/config.html#xml
 output = "reports/coverage.xml"
 
-[tool.mypy] # https://mypy.readthedocs.io/en/latest/config_file.html
+[tool.mypy]  # https://mypy.readthedocs.io/en/latest/config_file.html
 junit_xml = "reports/mypy.xml"
 strict = true
 disallow_subclassing_any = false
@@ -117,13 +121,13 @@ show_error_codes = true
 show_error_context = true
 warn_unreachable = true
 
-[tool.pytest.ini_options] # https://docs.pytest.org/en/latest/reference/reference.html#ini-options-ref
+[tool.pytest.ini_options]  # https://docs.pytest.org/en/latest/reference/reference.html#ini-options-ref
 addopts = "--color=yes --doctest-modules --ignore=src/raglite/_chainlit.py --exitfirst --failed-first --strict-config --strict-markers --verbosity=2 --junitxml=reports/pytest.xml"
 filterwarnings = ["error", "ignore::DeprecationWarning", "ignore::pytest.PytestUnraisableExceptionWarning"]
 testpaths = ["src", "tests"]
 xfail_strict = true
 
-[tool.ruff] # https://docs.astral.sh/ruff/settings/
+[tool.ruff]  # https://docs.astral.sh/ruff/settings/
 fix = true
 line-length = 100
 src = ["src", "tests"]
@@ -146,10 +150,10 @@ max-doc-length = 100
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
 
-[tool.uv]  # https://docs.astral.sh/uv/reference/settings/
-package = true
+[tool.poe.executor]  # https://github.com/nat-n/poethepoet
+type = "simple"
 
-[tool.poe.tasks] # https://github.com/nat-n/poethepoet
+[tool.poe.tasks]
 
   [tool.poe.tasks.docs]
   help = "Generate this package's docs"

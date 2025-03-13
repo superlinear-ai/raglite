@@ -189,7 +189,7 @@ class LlamaCppPythonLLM(CustomLLM):
         llm = self.llm(model)
         llama_cpp_python_params = self._translate_openai_params(optional_params)
         response = cast(
-            CreateChatCompletionResponse,
+            "CreateChatCompletionResponse",
             llm.create_chat_completion(messages=messages, **llama_cpp_python_params),
         )
         litellm_model_response: ModelResponse = convert_to_model_response_object(
@@ -222,7 +222,7 @@ class LlamaCppPythonLLM(CustomLLM):
         llm = self.llm(model)
         llama_cpp_python_params = self._translate_openai_params(optional_params)
         stream = cast(
-            Iterator[CreateChatCompletionStreamResponse],
+            "Iterator[CreateChatCompletionStreamResponse]",
             llm.create_chat_completion(messages=messages, **llama_cpp_python_params, stream=True),
         )
         for chunk in stream:
