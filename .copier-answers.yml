@@ -1,8 +1,9 @@
-_commit: v1.2.0
+_commit: v1.5.0
 _src_path: gh:superlinear-ai/substrate
 author_email: laurent@superlinear.eu
 author_name: Laurent Sorber
-project_description: A Python toolkit for Retrieval-Augmented Generation (RAG) with SQLite or PostgreSQL.
+project_description: A Python toolkit for Retrieval-Augmented Generation (RAG) with
+    SQLite or PostgreSQL.
 project_name: raglite
 project_type: package
 project_url: https://github.com/superlinear-ai/raglite

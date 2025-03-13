@@ -52,13 +52,6 @@ repos:
         require_serial: true
         language: system
         stages: [commit-msg]
-      - id: uv-lock-check
-        name: uv lock check
-        entry: uv lock
-        args: ["--check"]
-        require_serial: true
-        language: system
-        pass_filenames: false
       - id: ruff-check
         name: ruff check
         entry: ruff check

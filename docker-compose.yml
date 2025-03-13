@@ -5,7 +5,6 @@ services:
       target: dev
     environment:
       - OPENAI_API_KEY
-      - UV_PUBLISH_TOKEN
     depends_on:
       - postgres
     volumes:
