@@ -342,7 +342,7 @@ def _pgvector_version(session: Session) -> Version:
         result = session.execute(
             text("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
         )
-        pgvector_version = version.parse(cast(str, result.scalar_one()))
+        pgvector_version = version.parse(cast("str", result.scalar_one()))
     except Exception as e:
         error_message = "Unable to parse pgvector version, is pgvector installed?"
         raise ValueError(error_message) from e

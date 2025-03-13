@@ -74,7 +74,7 @@ def _embed_sentences_with_late_chunking(  # noqa: PLR0915
         for token in embedder.tokenize(sentinel_test.encode(), add_bos=False)
         if sentinel_char in embedder.detokenize([token]).decode()
     ]
-    assert len(sentinel_tokens), f"Sentinel `{sentinel_char}` not supported by embedder"
+    assert sentinel_tokens, f"Sentinel `{sentinel_char}` not supported by embedder"
     # Compute the number of tokens per sentence. We use a method based on a sentinel token to
     # minimise the number of calls to embedder.tokenize, which incurs a significant overhead
     # (presumably to load the tokenizer) [1].

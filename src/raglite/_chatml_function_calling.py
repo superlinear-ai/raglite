@@ -171,7 +171,7 @@ def _stream_tool_calls(
         prompt += "\n"
         # Determine whether to call another tool or stop
         response = cast(
-            llama_types.CreateCompletionResponse,
+            "llama_types.CreateCompletionResponse",
             llama.create_completion(
                 prompt=prompt,
                 **{
@@ -191,6 +191,37 @@ def _stream_tool_calls(
     # Yield the finish_reason chunk
     if finish_reason_chat_chunk is not None:
         yield finish_reason_chat_chunk
+
+
+def _convert_text_completion_logprobs_to_chat(
+    logprobs: llama_types.CompletionLogprobs | None,
+) -> llama_types.ChatCompletionLogprobs | None:
+    if logprobs is None:
+        return None
+    return {
+        "content": [
+            {
+                "token": token,
+                "bytes": None,
+                "logprob": logprob,  # type: ignore[typeddict-item]
+                "top_logprobs": [
+                    {
+                        "token": top_token,
+                        "logprob": top_logprob,
+                        "bytes": None,
+                    }
+                    for top_token, top_logprob in (top_logprobs or {}).items()
+                ],
+            }
+            for (token, logprob, top_logprobs) in zip(
+                logprobs["tokens"],
+                logprobs["token_logprobs"],
+                logprobs["top_logprobs"],
+                strict=False,
+            )
+        ],
+        "refusal": None,
+    }
 
 
 def chatml_function_calling_with_streaming(
@@ -377,7 +408,7 @@ def chatml_function_calling_with_streaming(
         else f'root ::= "<function_calls>" "\\n" functions\nfunctions ::= {function_names}\n'
     )
     completion = cast(
-        llama_types.CreateCompletionResponse,
+        "llama_types.CreateCompletionResponse",
         llama.create_completion(
             prompt=prompt,
             **{  # type: ignore[arg-type]
@@ -445,14 +476,14 @@ def chatml_function_calling_with_streaming(
                 "grammar": grammar,
             },
         )
-        completion = cast(llama_types.CreateCompletionResponse, completion_or_chunks)
+        completion = cast("llama_types.CreateCompletionResponse", completion_or_chunks)
         completions.append(completion)
         completions_tool_name.append(tool_name)
         prompt += completion["choices"][0]["text"]
         prompt += "\n"
         # Determine whether to call another tool or stop
         response = cast(
-            llama_types.CreateCompletionResponse,
+            "llama_types.CreateCompletionResponse",
             llama.create_completion(
                 prompt=prompt,
                 **{  # type: ignore[arg-type]
@@ -479,7 +510,9 @@ def chatml_function_calling_with_streaming(
             {
                 "finish_reason": "tool_calls",
                 "index": 0,
-                "logprobs": completion["choices"][0]["logprobs"],
+                "logprobs": _convert_text_completion_logprobs_to_chat(
+                    completion["choices"][0]["logprobs"]
+                ),
                 "message": {
                     "role": "assistant",
                     "content": None,

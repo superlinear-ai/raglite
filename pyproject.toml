@@ -74,7 +74,7 @@ dev = [
   "pytest (>=8.3.4)",
   "pytest-mock (>=3.14.0)",
   "pytest-xdist (>=3.6.1)",
-  "ruff (>=0.9.2)",
+  "ruff (>=0.10.0)",
   "typeguard (>=4.4.1)",
 ]
 
@@ -82,7 +82,7 @@ dev = [
 # Frontend:
 chainlit = ["chainlit (>=2.0.0)"]
 # Large Language Models:
-llama-cpp-python = ["llama-cpp-python (>=0.3.2)"]
+llama-cpp-python = ["llama-cpp-python (>=0.3.3)"]
 # Markdown conversion:
 pypandoc-binary = ["pypandoc-binary (>=1.13)"]
 # Evaluation:

@@ -40,10 +40,10 @@ RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with Postgr
 ## Installing
 
 > [!TIP]
-> 🚀 It is optional but recommended to install [an accelerated llama-cpp-python precompiled binary](https://github.com/abetlen/llama-cpp-python?tab=readme-ov-file#supported-backends) with:
+> 🚀 If you want to use local models, it is recommended to install [an accelerated llama-cpp-python precompiled binary](https://github.com/abetlen/llama-cpp-python?tab=readme-ov-file#supported-backends) with:
 > ```sh
-> # Configure which llama-cpp-python precompiled binary to install (⚠️ On macOS only v0.3.2 is supported right now):
-> LLAMA_CPP_PYTHON_VERSION=0.3.2
+> # Configure which llama-cpp-python precompiled binary to install (⚠️ not every combination is available):
+> LLAMA_CPP_PYTHON_VERSION=0.3.4
 > PYTHON_VERSION=310|311|312
 > ACCELERATOR=metal|cu121|cu122|cu123|cu124
 > PLATFORM=macosx_11_0_arm64|linux_x86_64|win_amd64
