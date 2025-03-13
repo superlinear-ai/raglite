@@ -36,7 +36,7 @@ dependencies = [
   "rerankers[flashrank] (>=0.6.0)",
   # Storage:
   "pg8000 (>=1.31.2)",
-  "sqlmodel-slim (>=0.0.18)",
+  "sqlmodel-slim (>=0.0.21)",
   # Progress:
   "tqdm (>=4.66.0)",
   # Evaluation:
