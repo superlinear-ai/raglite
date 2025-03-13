@@ -51,7 +51,7 @@
                 ],
                 "files.autoSave": "onFocusChange",
                 "github.copilot.chat.agent.enabled": true,
-                "github.copilot.chat.edits.codesearch.enabled": true,
+                "github.copilot.chat.codesearch.enabled": true,
                 "github.copilot.chat.edits.enabled": true,
                 "github.copilot.nextEditSuggestions.enabled": true,
                 "jupyter.kernels.excludePythonEnvironments": [
