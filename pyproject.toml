@@ -40,7 +40,7 @@ dependencies = [
   # Progress:
   "tqdm (>=4.66.0)",
   # Evaluation:
-  "pandas (>=2.1.0)",
+  "pandas (>=2.1.1)",
   # CLI:
   "typer (>=0.15.1)",
   # Model Context Protocol:
