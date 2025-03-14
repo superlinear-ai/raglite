@@ -54,6 +54,86 @@ def _load_sat() -> tuple[SaT, dict[str, Any]]:
     return sat, sat_kwargs
 
 
+def merge_short_sentences(
+    sentences: list[str], min_char_threshold: int = 10, max_len: int | None = None
+) -> list[str]:
+    """
+    Merge short sentences based on a minimum character threshold and optional maximum length.
+
+    Args:
+        sentences (list): List of sentence strings to process
+        min_char_threshold (int): Minimum character count for a sentence to be considered adequate
+        max_len (int, optional): Maximum length for merged sentences, None means no limit
+
+    Returns
+    -------
+        list: List of sentences after merging short ones
+    """
+    if not sentences:
+        return []
+
+    result = []
+    i = 0
+    n = len(sentences)
+
+    while i < n:
+        current = sentences[i]
+        current_len = len(current)
+
+        # If current sentence is long enough, add it directly
+        if current_len >= min_char_threshold:
+            result.append(current)
+            i += 1
+            continue
+
+        # Current sentence is too short - try to merge progressively
+        merged_text = current
+        merged_len = current_len
+        next_idx = i + 1
+
+        # Try to merge with subsequent sentences until threshold is met or no more sentences
+        while merged_len < min_char_threshold and next_idx < n:
+            next_sentence = sentences[next_idx]
+            potential_merge = merged_text + " " + next_sentence
+            potential_len = merged_len + len(next_sentence) + 1
+
+            # Check if adding next sentence exceeds max_len
+            if max_len is not None and potential_len > max_len:
+                break
+
+            # Add next sentence to our merged text
+            merged_text = potential_merge
+            merged_len = potential_len
+            next_idx += 1
+
+            # If we've reached the threshold, we can stop merging
+            if merged_len >= min_char_threshold:
+                break
+
+        # If we merged anything, add the result and update index
+        if next_idx > i + 1:
+            result.append(merged_text)
+            i = next_idx
+            continue
+
+        # If we couldn't merge forward, try to merge with previous
+        if result:
+            prev_sentence = result[-1]
+            potential_merge = prev_sentence + " " + current
+            potential_len = len(prev_sentence) + current_len + 1
+
+            if max_len is None or potential_len <= max_len:
+                result[-1] = potential_merge
+                i += 1
+                continue
+
+        # If we couldn't merge in either direction, keep as is
+        result.append(current)
+        i += 1
+
+    return result
+
+
 def split_sentences(
     doc: str,
     max_len: int | None = None,
@@ -115,4 +195,5 @@ def split_sentences(
                     else [sent[: len(sent) // 2], sent[len(sent) // 2 :]]
                 )
             ]
-    return sentences
+
+    return merge_short_sentences(sentences)
