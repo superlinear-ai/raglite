@@ -104,15 +104,15 @@ from raglite import RAGLiteConfig
 # Example 'remote' config with a PostgreSQL database and an OpenAI LLM:
 my_config = RAGLiteConfig(
     db_url="postgresql://my_username:my_password@my_host:5432/my_database",
-    llm="gpt-4o-mini",  # Or any LLM supported by LiteLLM.
-    embedder="text-embedding-3-large",  # Or any embedder supported by LiteLLM.
+    llm="gpt-4o-mini",  # Or any LLM supported by LiteLLM
+    embedder="text-embedding-3-large",  # Or any embedder supported by LiteLLM
 )
 
 # Example 'local' config with a SQLite database and a llama.cpp LLM:
 my_config = RAGLiteConfig(
     db_url="sqlite:///raglite.db",
     llm="llama-cpp-python/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/*Q4_K_M.gguf@8192",
-    embedder="llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024",  # A context size of 1024 tokens is the sweet spot for bge-m3.
+    embedder="llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024",  # A context size of 1024 tokens is the sweet spot for bge-m3
 )
 ```
 
@@ -146,14 +146,14 @@ Next, insert some documents into the database. RAGLite will take care of the [co
 
 
 ```python
-# Insert a document given its file path:
+# Insert a document given its file path
 from pathlib import Path
 from raglite import insert_document
 
 insert_document(Path("On the Measure of Intelligence.pdf"), config=my_config)
 insert_document(Path("Special Relativity.pdf"), config=my_config)
 
-# Insert a document given its Markdown content:
+# Insert a document given its Markdown content
 markdown_content = """
 # ON THE ELECTRODYNAMICS OF MOVING BODIES
 ## By A. EINSTEIN  June 30, 1905
@@ -171,20 +171,20 @@ Now you can run an adaptive RAG pipeline that consists of adding the user prompt
 ```python
 from raglite import rag
 
-# Create a user message:
-messages = []  # Or start with an existing message history.
+# Create a user message
+messages = []  # Or start with an existing message history
 messages.append({
     "role": "user",
     "content": "How is intelligence measured?"
 })
 
-# Adaptively decide whether to retrieve and then stream the response:
+# Adaptively decide whether to retrieve and then stream the response
 chunk_spans = []
 stream = rag(messages, on_retrieval=lambda x: chunk_spans.extend(x), config=my_config)
 for update in stream:
     print(update, end="")
 
-# Access the documents referenced in the RAG context:
+# Access the documents referenced in the RAG context
 documents = [chunk_span.document for chunk_span in chunk_spans]
 ```
 
@@ -197,20 +197,20 @@ If you need manual control over the RAG pipeline, you can run a basic but powerf
 ```python
 from raglite import create_rag_instruction, rag, retrieve_rag_context
 
-# Retrieve relevant chunk spans with hybrid search and reranking:
+# Retrieve relevant chunk spans with hybrid search and reranking
 user_prompt = "How is intelligence measured?"
 chunk_spans = retrieve_rag_context(query=user_prompt, num_chunks=5, config=my_config)
 
-# Append a RAG instruction based on the user prompt and context to the message history:
-messages = []  # Or start with an existing message history.
+# Append a RAG instruction based on the user prompt and context to the message history
+messages = []  # Or start with an existing message history
 messages.append(create_rag_instruction(user_prompt=user_prompt, context=chunk_spans))
 
-# Stream the RAG response and append it to the message history:
+# Stream the RAG response and append it to the message history
 stream = rag(messages, config=my_config)
 for update in stream:
     print(update, end="")
 
-# Access the documents referenced in the RAG context:
+# Access the documents referenced in the RAG context
 documents = [chunk_span.document for chunk_span in chunk_spans]
 ```
 
@@ -230,7 +230,7 @@ RAGLite also offers more advanced control over the individual steps of a full RA
 A full RAG pipeline is straightforward to implement with RAGLite:
 
 ```python
-# Search for chunks:
+# Search for chunks
 from raglite import hybrid_search, keyword_search, vector_search
 
 user_prompt = "How is intelligence measured?"
@@ -238,36 +238,36 @@ chunk_ids_vector, _ = vector_search(user_prompt, num_results=20, config=my_confi
 chunk_ids_keyword, _ = keyword_search(user_prompt, num_results=20, config=my_config)
 chunk_ids_hybrid, _ = hybrid_search(user_prompt, num_results=20, config=my_config)
 
-# Retrieve chunks:
+# Retrieve chunks
 from raglite import retrieve_chunks
 
 chunks_hybrid = retrieve_chunks(chunk_ids_hybrid, config=my_config)
 
-# Rerank chunks and keep the top 5 (optional, but recommended):
+# Rerank chunks and keep the top 5 (optional, but recommended)
 from raglite import rerank_chunks
 
 chunks_reranked = rerank_chunks(user_prompt, chunks_hybrid, config=my_config)
 chunks_reranked = chunks_reranked[:5]
 
-# Extend chunks with their neighbors and group them into chunk spans:
+# Extend chunks with their neighbors and group them into chunk spans
 from raglite import retrieve_chunk_spans
 
 chunk_spans = retrieve_chunk_spans(chunks_reranked, config=my_config)
 
-# Append a RAG instruction based on the user prompt and context to the message history:
+# Append a RAG instruction based on the user prompt and context to the message history
 from raglite import create_rag_instruction
 
-messages = []  # Or start with an existing message history.
+messages = []  # Or start with an existing message history
 messages.append(create_rag_instruction(user_prompt=user_prompt, context=chunk_spans))
 
-# Stream the RAG response and append it to the message history:
+# Stream the RAG response and append it to the message history
 from raglite import rag
 
 stream = rag(messages, config=my_config)
 for update in stream:
     print(update, end="")
 
-# Access the documents referenced in the RAG context:
+# Access the documents referenced in the RAG context
 documents = [chunk_span.document for chunk_span in chunk_spans]
 ```
 
@@ -276,11 +276,11 @@ documents = [chunk_span.document for chunk_span in chunk_spans]
 RAGLite can compute and apply an [optimal closed-form query adapter](src/raglite/_query_adapter.py) to the prompt embedding to improve the output quality of RAG. To benefit from this, first generate a set of evals with `insert_evals` and then compute and store the optimal query adapter with `update_query_adapter`:
 
 ```python
-# Improve RAG with an optimal query adapter:
+# Improve RAG with an optimal query adapter
 from raglite import insert_evals, update_query_adapter
 
 insert_evals(num_evals=100, config=my_config)
-update_query_adapter(config=my_config)  # From here, every vector search will use the query adapter.
+update_query_adapter(config=my_config)  # From here, every vector search will use the query adapter
 ```
 
 ### 5. Evaluation of retrieval and generation
@@ -288,7 +288,7 @@ update_query_adapter(config=my_config)  # From here, every vector search will us
 If you installed the `ragas` extra, you can use RAGLite to answer the evals and then evaluate the quality of both the retrieval and generation steps of RAG using [Ragas](https://github.com/explodinggradients/ragas):
 
 ```python
-# Evaluate retrieval and generation:
+# Evaluate retrieval and generation
 from raglite import answer_evals, evaluate, insert_evals
 
 insert_evals(num_evals=100, config=my_config)
@@ -315,7 +315,11 @@ raglite \
 To use an API-based LLM, make sure to include your credentials in a `.env` file or supply them inline:
 
 ```sh
-OPENAI_API_KEY=sk-... raglite --llm gpt-4o-mini --embedder text-embedding-3-large mcp install
+export OPENAI_API_KEY=sk-...
+raglite \
+    --llm gpt-4o-mini \
+    --embedder text-embedding-3-large \
+    mcp install
 ```
 
 Now, when you start Claude desktop you should see a 🔨 icon at the bottom right of your prompt indicating that the Claude has successfully connected with the MCP server.
