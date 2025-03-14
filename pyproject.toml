@@ -78,13 +78,13 @@ dev = [
   "typeguard (>=4.4.1)",
 ]
 
-[project.optional-dependencies]
+[project.optional-dependencies]  # https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#dependencies-optional-dependencies
 # Frontend:
 chainlit = ["chainlit (>=2.0.0)"]
 # Large Language Models:
 llama-cpp-python = ["llama-cpp-python (>=0.3.3)"]
 # Markdown conversion:
-pypandoc-binary = ["pypandoc-binary (>=1.13)"]
+pandoc = ["pypandoc-binary (>=1.13)"]
 # Evaluation:
 ragas = ["ragas (>=0.1.12)"]
 
