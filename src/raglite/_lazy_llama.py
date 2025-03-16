@@ -1,7 +1,7 @@
-"""Import llama_cpp lazily to avoid import errors when it is not installed."""
+"""Import from llama-cpp-python with a lazy ModuleNotFoundError if it's not installed."""
 
 from importlib import import_module
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, NoReturn
 
 # When type checking, import everything normally.
 if TYPE_CHECKING:
@@ -10,84 +10,59 @@ if TYPE_CHECKING:
         Llama,
         LlamaRAMCache,
         llama,
+        llama_chat_format,
         llama_grammar,
         llama_supports_gpu_offload,
         llama_types,
     )
-    from llama_cpp.llama_chat_format import (
-        _convert_completion_to_chat,
-        _convert_completion_to_chat_function,
-        _grammar_for_response_format,
-    )
-    from llama_cpp.llama_types import (
-        ChatCompletionRequestMessage,
-        ChatCompletionTool,
-        ChatCompletionToolChoiceOption,
-        CreateChatCompletionResponse,
-        CreateChatCompletionStreamResponse,
-    )
 
 # Explicitly export these names for static analysis.
 __all__ = [
-    "llama",
-    "llama_grammar",
-    "llama_types",
-    "Llama",
     "LLAMA_POOLING_TYPE_NONE",
-    "llama_supports_gpu_offload",
+    "Llama",
     "LlamaRAMCache",
-    "_convert_completion_to_chat",
-    "_convert_completion_to_chat_function",
-    "_grammar_for_response_format",
-    "ChatCompletionRequestMessage",
-    "ChatCompletionTool",
-    "ChatCompletionToolChoiceOption",
-    "CreateChatCompletionResponse",
-    "CreateChatCompletionStreamResponse",
+    "llama",
+    "llama_chat_format",
+    "llama_grammar",
+    "llama_supports_gpu_offload",
+    "llama_types",
 ]
 
 
-# Module names for the submodules of llama_cpp.
-LLAMA_CPP_MODULE_NAME = "llama_cpp"
-CHAT_SUBMODULE_NAME = "llama_chat_format"
-TYPES_SUBMODULE_NAME = "llama_types"
-
-# Map attributes that live in submodules to their module names.
-_SUBMODULE_ATTRS = {
-    # Attributes from llama_cpp.llama_chat_format
-    "_convert_completion_to_chat": f"{LLAMA_CPP_MODULE_NAME}.{CHAT_SUBMODULE_NAME}",
-    "_convert_completion_to_chat_function": f"{LLAMA_CPP_MODULE_NAME}.{CHAT_SUBMODULE_NAME}",
-    "_grammar_for_response_format": f"{LLAMA_CPP_MODULE_NAME}.{CHAT_SUBMODULE_NAME}",
-    # Attributes from llama_cpp.llama_types
-    "ChatCompletionRequestMessage": f"{LLAMA_CPP_MODULE_NAME}.{TYPES_SUBMODULE_NAME}",
-    "ChatCompletionTool": f"{LLAMA_CPP_MODULE_NAME}.{TYPES_SUBMODULE_NAME}",
-    "ChatCompletionToolChoiceOption": f"{LLAMA_CPP_MODULE_NAME}.{TYPES_SUBMODULE_NAME}",
-    "CreateChatCompletionResponse": f"{LLAMA_CPP_MODULE_NAME}.{TYPES_SUBMODULE_NAME}",
-    "CreateChatCompletionStreamResponse": f"{LLAMA_CPP_MODULE_NAME}.{TYPES_SUBMODULE_NAME}",
-    # Attributes from the top-level llama_cpp module.
-    "llama": LLAMA_CPP_MODULE_NAME,
-    "llama_grammar": LLAMA_CPP_MODULE_NAME,
-    "llama_types": LLAMA_CPP_MODULE_NAME,
-    "Llama": LLAMA_CPP_MODULE_NAME,
-    "LLAMA_POOLING_TYPE_NONE": LLAMA_CPP_MODULE_NAME,
-}
-
-
 def __getattr__(name: str) -> object:
-    """Import the requested attribute from the llama_cpp module lazily."""
-    module_name = _SUBMODULE_ATTRS.get(name, LLAMA_CPP_MODULE_NAME)
+    """Import from llama-cpp-python with a lazy ModuleNotFoundError if it's not installed."""
 
+    # Create a mock attribute and submodule that lazily raises an ModuleNotFoundError when accessed.
+    class LazyAttributeError:
+        error_message = "To use llama.cpp models, please install `llama-cpp-python`."
+
+        def __init__(self, error: ModuleNotFoundError | None = None):
+            self.error = error
+
+        def __getattr__(self, name: str) -> NoReturn:
+            raise ModuleNotFoundError(self.error_message) from self.error
+
+        def __call__(self, *args: Any, **kwargs: Any) -> NoReturn:
+            raise ModuleNotFoundError(self.error_message) from self.error
+
+    class LazySubmoduleError:
+        def __init__(self, error: ModuleNotFoundError):
+            self.error = error
+
+        def __getattr__(self, name: str) -> LazyAttributeError | type[LazyAttributeError]:
+            return LazyAttributeError(self.error) if name == name.lower() else LazyAttributeError
+
+    # Check if the attribute is a submodule.
+    llama_cpp_submodules = ["llama", "llama_chat_format", "llama_grammar", "llama_types"]
+    attr_is_submodule = name in llama_cpp_submodules
     try:
-        module = import_module(module_name)
-    except ImportError as e:
-        import_error_message = (
-            "llama-cpp-python is required for local language model support.\n"
-            "Install it with `pip install raglite[llama-cpp-python]`."
+        # Import and return the requested submodule or attribute.
+        module = import_module(f"llama_cpp.{name}" if attr_is_submodule else "llama_cpp")
+        return module if attr_is_submodule else getattr(module, name)
+    except ModuleNotFoundError as import_error:
+        # Return a mock submodule or attribute that lazily raises an ModuleNotFoundError.
+        return (
+            LazySubmoduleError(import_error)
+            if attr_is_submodule
+            else LazyAttributeError(import_error)
         )
-        raise ImportError(import_error_message) from e
-
-    try:
-        return getattr(module, name)
-    except AttributeError as e:
-        attribute_error_message = f"Module '{module_name}' has no attribute '{name}'"
-        raise AttributeError(attribute_error_message) from e

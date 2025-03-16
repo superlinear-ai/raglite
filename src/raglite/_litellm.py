@@ -27,12 +27,10 @@ from litellm.utils import custom_llm_setup
 from raglite._chatml_function_calling import chatml_function_calling_with_streaming
 from raglite._config import RAGLiteConfig
 from raglite._lazy_llama import (
-    ChatCompletionRequestMessage,
-    CreateChatCompletionResponse,
-    CreateChatCompletionStreamResponse,
     Llama,
     LlamaRAMCache,
     llama_supports_gpu_offload,
+    llama_types,
 )
 
 # Reduce the logging level for LiteLLM, flashrank, and httpx.
@@ -170,7 +168,7 @@ class LlamaCppPythonLLM(CustomLLM):
     def completion(  # noqa: PLR0913
         self,
         model: str,
-        messages: list[ChatCompletionRequestMessage],
+        messages: list[llama_types.ChatCompletionRequestMessage],
         api_base: str,
         custom_prompt_dict: dict[str, Any],
         model_response: ModelResponse,
@@ -189,7 +187,7 @@ class LlamaCppPythonLLM(CustomLLM):
         llm = self.llm(model)
         llama_cpp_python_params = self._translate_openai_params(optional_params)
         response = cast(
-            "CreateChatCompletionResponse",
+            "llama_types.CreateChatCompletionResponse",
             llm.create_chat_completion(messages=messages, **llama_cpp_python_params),
         )
         litellm_model_response: ModelResponse = convert_to_model_response_object(
@@ -203,7 +201,7 @@ class LlamaCppPythonLLM(CustomLLM):
     def streaming(  # noqa: PLR0913
         self,
         model: str,
-        messages: list[ChatCompletionRequestMessage],
+        messages: list[llama_types.ChatCompletionRequestMessage],
         api_base: str,
         custom_prompt_dict: dict[str, Any],
         model_response: ModelResponse,
@@ -222,7 +220,7 @@ class LlamaCppPythonLLM(CustomLLM):
         llm = self.llm(model)
         llama_cpp_python_params = self._translate_openai_params(optional_params)
         stream = cast(
-            "Iterator[CreateChatCompletionStreamResponse]",
+            "Iterator[llama_types.CreateChatCompletionStreamResponse]",
             llm.create_chat_completion(messages=messages, **llama_cpp_python_params, stream=True),
         )
         for chunk in stream:
@@ -264,7 +262,7 @@ class LlamaCppPythonLLM(CustomLLM):
     async def astreaming(  # type: ignore[misc,override]  # noqa: PLR0913
         self,
         model: str,
-        messages: list[ChatCompletionRequestMessage],
+        messages: list[llama_types.ChatCompletionRequestMessage],
         api_base: str,
         custom_prompt_dict: dict[str, Any],
         model_response: ModelResponse,

@@ -11,13 +11,9 @@ from typeguard import ForwardRefPolicy, check_type
 
 from raglite._chatml_function_calling import chatml_function_calling_with_streaming
 from raglite._lazy_llama import (
-    ChatCompletionRequestMessage,
-    ChatCompletionTool,
-    ChatCompletionToolChoiceOption,
-    CreateChatCompletionResponse,
-    CreateChatCompletionStreamResponse,
     Llama,
     llama_supports_gpu_offload,
+    llama_types,
 )
 
 
@@ -76,7 +72,7 @@ def is_accelerator_available() -> bool:
 def test_llama_cpp_python_tool_use(
     llm_repo_id: str,
     user_prompt_expected_tool_calls: tuple[str, int],
-    tool_choice: ChatCompletionToolChoiceOption,
+    tool_choice: llama_types.ChatCompletionToolChoiceOption,
     stream: bool,  # noqa: FBT001
 ) -> None:
     """Test the upgraded chatml-function-calling llama-cpp-python chat handler."""
@@ -91,8 +87,10 @@ def test_llama_cpp_python_tool_use(
         verbose=False,
         chat_handler=chatml_function_calling_with_streaming,
     )
-    messages: list[ChatCompletionRequestMessage] = [{"role": "user", "content": user_prompt}]
-    tools: list[ChatCompletionTool] = [
+    messages: list[llama_types.ChatCompletionRequestMessage] = [
+        {"role": "user", "content": user_prompt}
+    ]
+    tools: list[llama_types.ChatCompletionTool] = [
         {
             "type": "function",
             "function": {
@@ -109,18 +107,20 @@ def test_llama_cpp_python_tool_use(
         messages=messages, tools=tools, tool_choice=tool_choice, stream=stream
     )
     if stream:
-        response = cast("Iterator[CreateChatCompletionStreamResponse]", response)
+        response = cast("Iterator[llama_types.CreateChatCompletionStreamResponse]", response)
         num_tool_calls = 0
         for chunk in response:
-            check_type(chunk, CreateChatCompletionStreamResponse)
+            check_type(chunk, llama_types.CreateChatCompletionStreamResponse)
             tool_calls = chunk["choices"][0]["delta"].get("tool_calls")
             if isinstance(tool_calls, list):
                 num_tool_calls = max(tool_call["index"] for tool_call in tool_calls) + 1
         assert num_tool_calls == (expected_tool_calls if tool_choice != "none" else 0)
     else:
-        response = cast("CreateChatCompletionResponse", response)
+        response = cast("llama_types.CreateChatCompletionResponse", response)
         check_type(
-            response, CreateChatCompletionResponse, forward_ref_policy=ForwardRefPolicy.IGNORE
+            response,
+            llama_types.CreateChatCompletionResponse,
+            forward_ref_policy=ForwardRefPolicy.IGNORE,
         )
         if expected_tool_calls == 0 or tool_choice == "none":
             assert response["choices"][0]["message"].get("tool_calls") is None

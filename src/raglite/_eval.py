@@ -225,9 +225,9 @@ def evaluate(
         from raglite._config import RAGLiteConfig
         from raglite._embed import embed_sentences
         from raglite._litellm import LlamaCppPythonLLM
-    except ImportError as import_error:
+    except ModuleNotFoundError as import_error:
         error_message = "To use the `evaluate` function, please install the `ragas` extra."
-        raise ImportError(error_message) from import_error
+        raise ModuleNotFoundError(error_message) from import_error
 
     class RAGLiteRagasEmbeddings(BaseRagasEmbeddings):
         """A RAGLite embedder for Ragas."""

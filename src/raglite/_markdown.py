@@ -208,11 +208,11 @@ def document_to_markdown(doc_path: Path) -> str:
             import pypandoc
 
             doc = pypandoc.convert_file(doc_path, to="gfm")
-        except ImportError as error:
+        except ModuleNotFoundError as error:
             error_message = (
                 "To convert files to Markdown with pandoc, please install the `pandoc` extra."
             )
-            raise ImportError(error_message) from error
+            raise ModuleNotFoundError(error_message) from error
         except RuntimeError:
             # File format not supported, fall back to reading the text.
             doc = doc_path.read_text()
