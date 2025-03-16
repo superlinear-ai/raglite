@@ -1,12 +1,15 @@
 """Sentence splitter."""
 
 import re
+import warnings
 from collections.abc import Callable
 from functools import cache
 from typing import Any
 
 import numpy as np
 from markdown_it import MarkdownIt
+from scipy import sparse
+from scipy.optimize import OptimizeWarning, linprog
 from wtpsplit_lite import SaT
 from wtpsplit_lite._utils import indices_to_sentences
 
@@ -56,6 +59,7 @@ def _load_sat() -> tuple[SaT, dict[str, Any]]:
 
 def split_sentences(
     doc: str,
+    min_len: int = 4,
     max_len: int | None = None,
     boundary_probas: FloatVector | Callable[[str], FloatVector] = markdown_sentence_boundaries,
 ) -> list[str]:
@@ -65,6 +69,8 @@ def split_sentences(
     ----------
     doc
         The document to split into sentences.
+    min_len
+        The minimum length of a sentence.
     max_len
         The maximum length of a sentence, with no maximum length by default.
     boundary_probas
@@ -79,6 +85,9 @@ def split_sentences(
     list[str]
         The sentences.
     """
+    # Exit early if there is only one sentence to return.
+    if len(doc) <= min_len:
+        return [doc]
     # Compute the sentence boundary probabilities with a wtpsplit Segment any Text (SaT) model.
     sat, sat_kwargs = _load_sat()
     predicted_probas = sat.predict_proba(doc, **sat_kwargs)
@@ -86,15 +95,29 @@ def split_sentences(
     known_probas = boundary_probas(doc) if callable(boundary_probas) else boundary_probas
     probas = predicted_probas.copy()
     probas[np.isfinite(known_probas)] = known_probas[np.isfinite(known_probas)]
-    # For consecutive high probability sentence boundaries, keep only the first one.
+    # Solve an optimisation problem to find the best sentence boundaries given the predicted
+    # boundary probabilities. The objective is to select boundaries that maximise the sum of the
+    # boundary probabilities above a given threshold, subject to the resulting sentences not being
+    # smaller than the given minimum length.
     sentence_threshold = 0.25  # Default threshold for -sm models.
-    split_indices = np.where(probas > sentence_threshold)[0]
-    for split_index in split_indices:
-        if probas[split_index] > sentence_threshold:
-            probas[split_index + 1 : split_index + 3] = 0
+    c = probas - sentence_threshold
+    N = len(probas)  # noqa: N806
+    M = N - min_len + 1  # noqa: N806
+    diagonals = [np.ones(M, dtype=np.float32) for _ in range(min_len)]
+    offsets = list(range(min_len))
+    A_ub = sparse.diags(diagonals, offsets, shape=(M, N), format="csr")  # noqa: N806
+    b_ub = np.ones(M, dtype=np.float32)
+    x0 = (probas >= sentence_threshold).astype(np.float32)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=OptimizeWarning)  # Ignore x0 not being used.
+        res = linprog(-c, A_ub=A_ub, b_ub=b_ub, bounds=(0, 1), x0=x0, integrality=[1] * N)
+    if not res.success:
+        error_message = "Optimization of sentence partitions failed."
+        raise ValueError(error_message)
     # Split the document into sentences where the boundary probability exceeds a threshold.
-    split_indices = np.where(probas > sentence_threshold)[0]
-    sentences: list[str] = [s for s in indices_to_sentences(doc, split_indices) if s.strip()]  # type: ignore[no-untyped-call]
+    # TODO: Embed the trailing whitespace logic of `indices_to_sentences` in the optimization model.
+    partition_indices = np.where(res.x > 0.5)[0]  # noqa: PLR2004
+    sentences: list[str] = [s for s in indices_to_sentences(doc, partition_indices) if s.strip()]  # type: ignore[no-untyped-call]
     # Apply additional splits on paragraphs and sentences.
     if max_len is not None:
         for pattern in (r"(?<=\n\n)", r"(?<=\.\s)"):
