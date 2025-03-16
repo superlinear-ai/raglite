@@ -50,7 +50,7 @@ dependencies = [
 ]
 
 [project.scripts]  # https://docs.astral.sh/uv/concepts/projects/config/#command-line-interfaces
-raglite = "raglite.cli:app"
+raglite = "raglite._cli:cli"
 
 [project.urls]  # https://packaging.python.org/en/latest/specifications/well-known-project-urls/#well-known-labels
 homepage = "https://github.com/superlinear-ai/raglite"
