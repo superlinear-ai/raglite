@@ -48,9 +48,9 @@ def chainlit(ctx: typer.Context) -> None:
     # Import Chainlit here as it's an optional dependency.
     try:
         from chainlit.cli import run_chainlit
-    except ImportError as error:
+    except ModuleNotFoundError as error:
         error_message = "To serve a Chainlit frontend, please install the `chainlit` extra."
-        raise ImportError(error_message) from error
+        raise ModuleNotFoundError(error_message) from error
     # Serve the frontend.
     run_chainlit(__file__.replace("_cli.py", "_chainlit.py"))
 

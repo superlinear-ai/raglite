@@ -35,10 +35,8 @@ import jinja2
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 
 from raglite._lazy_llama import (
-    _convert_completion_to_chat,
-    _convert_completion_to_chat_function,
-    _grammar_for_response_format,
     llama,
+    llama_chat_format,
     llama_grammar,
     llama_types,
 )
@@ -150,7 +148,7 @@ def _stream_tool_calls(
             },
         )
         chunks: List[llama_types.CreateCompletionResponse] = []
-        chat_chunks = _convert_completion_to_chat_function(
+        chat_chunks = llama_chat_format._convert_completion_to_chat_function(  # noqa: SLF001
             tool_name,
             _accumulate_chunks(completion_or_chunks, chunks),  # type: ignore[arg-type]
             stream=True,
@@ -340,7 +338,7 @@ def chatml_function_calling_with_streaming(
         grammar
         if grammar is not None
         else (
-            _grammar_for_response_format(response_format)
+            llama_chat_format._grammar_for_response_format(response_format)  # noqa: SLF001
             if response_format is not None and response_format["type"] == "json_object"
             else None
         )
@@ -376,7 +374,7 @@ def chatml_function_calling_with_streaming(
         prompt = template_renderer.render(
             messages=messages, tools=[], tool_calls=None, add_generation_prompt=True
         )
-        return _convert_completion_to_chat(
+        return llama_chat_format._convert_completion_to_chat(  # noqa: SLF001
             llama.create_completion(
                 prompt=prompt,
                 **completion_kwargs,  # type: ignore[arg-type]
@@ -431,7 +429,7 @@ def chatml_function_calling_with_streaming(
         prompt = template_renderer.render(
             messages=messages, tools=[], tool_calls=None, add_generation_prompt=True
         )
-        return _convert_completion_to_chat(
+        return llama_chat_format._convert_completion_to_chat(  # noqa: SLF001
             llama.create_completion(
                 prompt=prompt,
                 **completion_kwargs,  # type: ignore[arg-type]
