@@ -1,3 +1,21 @@
+## v0.7.0 (2025-03-17)
+
+### Feat
+
+- replace post-processing with declarative optimization (#112)
+- compute optimal sentence boundaries (#110)
+- migrate from poetry-cookiecutter to substrate (#98)
+- make llama-cpp-python an optional dependency (#97)
+- add ability to directly insert Markdown content into the database (#96)
+- make importing faster (#86)
+
+### Fix
+
+- fix CLI entrypoint regression (#111)
+- lazily raise module not found for optional deps (#109)
+- revert pandoc extra name (#106)
+- avoid conflicting chunk ids (#93)
+
 ## v0.6.2 (2025-01-06)
 
 ### Fix

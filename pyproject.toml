@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]  # https://packaging.python.org/en/latest/specifications/pyproject-toml/
 name = "raglite"
-version = "0.6.2"
+version = "0.7.0"
 description = "A Python toolkit for Retrieval-Augmented Generation (RAG) with SQLite or PostgreSQL."
 readme = "README.md"
 authors = [
