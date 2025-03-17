@@ -81,7 +81,10 @@ def split_sentences(
     Returns
     -------
     list[str]
-        The sentences.
+        The input document partitioned into sentences. All sentences are constructed to contain at
+        least one non-whitespace character, not have any leading whitespace (except for the first
+        sentence if the document itself has leading whitespace), and respect the minimum and maximum
+        sentence lengths.
     """
     # Exit early if there is only one sentence to return.
     if len(doc) <= min_len:
@@ -115,6 +118,9 @@ def split_sentences(
     offsets = list(range(min_len))
     A_min = sparse.diags(diagonals, offsets, shape=(M, N), format="csr")  # noqa: N806
     b_min = np.ones(M, dtype=np.float32)
+    bounds = [(0, 1)] * N
+    bounds[: min_len - 1] = [(0, 0)] * (min_len - 1)  # Prevent short leading sentences.
+    bounds[-min_len:] = [(0, 0)] * min_len  # Prevent short trailing sentences.
     if max_len is not None and (M := N - max_len + 1) > 0:  # noqa: N806
         diagonals = [np.ones(M, dtype=np.float32) for _ in range(max_len)]
         offsets = list(range(max_len))
@@ -128,7 +134,7 @@ def split_sentences(
     x0 = (probas >= sentence_threshold).astype(np.float32)
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=OptimizeWarning)  # Ignore x0 not being used.
-        res = linprog(-c, A_ub=A_ub, b_ub=b_ub, bounds=(0, 1), x0=x0, integrality=[1] * N)
+        res = linprog(-c, A_ub=A_ub, b_ub=b_ub, bounds=bounds, x0=x0, integrality=[1] * N)
     if not res.success:
         error_message = "Optimization of sentence partitions failed."
         raise ValueError(error_message)

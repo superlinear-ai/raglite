@@ -35,6 +35,7 @@ def test_split_sentences() -> None:
         "Let us take a system of co-ordinates in which the equations of Newtonian\nmechanics hold good.2 ",
     ]
     assert isinstance(sentences, list)
+    assert all(not sentence.isspace() for sentence in sentences)
     assert all(
         sentence == expected_sentence
         for sentence, expected_sentence in zip(
@@ -48,8 +49,9 @@ def test_split_sentences() -> None:
     [
         pytest.param(("", [""], (4, None)), id="tiny-0"),
         pytest.param(("Hi!", ["Hi!"], (4, None)), id="tiny-1a"),
-        pytest.param(("Yes? No!", ["Yes? No!"], (5, None)), id="tiny-1b"),
-        pytest.param(("Yes? No!", ["Yes? ", "No!"], (2, None)), id="tiny-2"),
+        pytest.param(("Yes? No!", ["Yes? No!"], (4, None)), id="tiny-1b"),
+        pytest.param(("Yes? No!", ["Yes? ", "No!"], (3, None)), id="tiny-2a"),
+        pytest.param(("\n\nYes?\n\nNo!\n\n", ["\n\nYes?\n\n", "No!\n\n"], (3, None)), id="tiny-2b"),
         pytest.param(
             ("X" * 768 + "\n\n" + "X" * 768, ["X" * 768 + "\n\n" + "X" * 768], (4, None)),
             id="huge-1",
