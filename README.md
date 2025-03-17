@@ -21,7 +21,8 @@ RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with Postgr
 
 - 📖 PDF to Markdown conversion on top of [pdftext](https://github.com/VikParuchuri/pdftext) and [pypdfium2](https://github.com/pypdfium2-team/pypdfium2)
 - 🧬 Multi-vector chunk embedding with [late chunking](https://weaviate.io/blog/late-chunking) and [contextual chunk headings](https://d-star.ai/solving-the-out-of-context-chunk-problem-for-rag)
-- ✂️ Optimal [level 4 semantic chunking](https://medium.com/@anuragmishra_27746/five-levels-of-chunking-strategies-in-rag-notes-from-gregs-video-7b735895694d) by solving a [binary integer programming problem](https://en.wikipedia.org/wiki/Integer_programming)
+- ✏️ Optimal sentence splitting with [wtpsplit-lite](https://github.com/superlinear-ai/wtpsplit-lite) by solving a [binary integer programming problem](https://en.wikipedia.org/wiki/Integer_programming)
+- ✂️ Optimal [semantic chunking](https://www.youtube.com/watch?v=8OJC21T2SL4&t=1930s) by solving a [binary integer programming problem](https://en.wikipedia.org/wiki/Integer_programming)
 - 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) with the database's native keyword & vector search ([tsvector](https://www.postgresql.org/docs/current/datatype-textsearch.html)+[pgvector](https://github.com/pgvector/pgvector), [FTS5](https://www.sqlite.org/fts5.html)+[sqlite-vec](https://github.com/asg017/sqlite-vec)[^1])
 - 💭 [Adaptive retrieval](https://arxiv.org/abs/2403.14403) where the LLM decides whether to and what to retrieve based on the query
 - 💰 Improved cost and latency with a [prompt caching-aware message array structure](https://platform.openai.com/docs/guides/prompt-caching)
