@@ -46,6 +46,7 @@ def test_split_sentences() -> None:
 @pytest.mark.parametrize(
     "case",
     [
+        pytest.param(("", [""], (4, None)), id="tiny-0"),
         pytest.param(("Hi!", ["Hi!"], (4, None)), id="tiny-1a"),
         pytest.param(("Yes? No!", ["Yes? No!"], (5, None)), id="tiny-1b"),
         pytest.param(("Yes? No!", ["Yes? ", "No!"], (2, None)), id="tiny-2"),
@@ -57,7 +58,10 @@ def test_split_sentences() -> None:
             ("X" * 768 + "\n\n" + "X" * 768, ["X" * 768 + "\n\n", "X" * 768], (4, 1024)),
             id="huge-2a",
         ),
-        pytest.param(("X" * 768 * 2, ["X" * 768, "X" * 768], (4, 1024)), id="huge-2b"),
+        pytest.param(
+            ("X" * 768 + " " + "X" * 768, ["X" * 768 + " ", "X" * 768], (4, 1024)),
+            id="huge-2b",
+        ),
     ],
 )
 def test_split_sentences_edge_cases(case: tuple[str, list[str], tuple[int, int | None]]) -> None:

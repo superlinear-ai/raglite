@@ -1,6 +1,5 @@
 """Sentence splitter."""
 
-import re
 import warnings
 from collections.abc import Callable
 from functools import cache
@@ -11,7 +10,6 @@ from markdown_it import MarkdownIt
 from scipy import sparse
 from scipy.optimize import OptimizeWarning, linprog
 from wtpsplit_lite import SaT
-from wtpsplit_lite._utils import indices_to_sentences
 
 from raglite._typing import FloatVector
 
@@ -95,18 +93,38 @@ def split_sentences(
     known_probas = boundary_probas(doc) if callable(boundary_probas) else boundary_probas
     probas = predicted_probas.copy()
     probas[np.isfinite(known_probas)] = known_probas[np.isfinite(known_probas)]
+    # Propagate the boundary probabilities so that whitespace is always trailing and never leading.
+    is_space = np.array([char.isspace() for char in doc], dtype=np.bool_)
+    start = np.where(np.insert(~is_space[:-1] & is_space[1:], len(is_space) - 1, False))[0]
+    end = np.where(np.insert(~is_space[1:] & is_space[:-1], 0, False))[0]
+    start = start[start < np.max(end, initial=-1)]
+    end = end[end > np.min(start, initial=len(is_space))]
+    for i, j in zip(start, end, strict=True):
+        min_proba, max_proba = np.min(probas[i:j]), np.max(probas[i:j])
+        probas[i : j - 1] = min_proba  # From the non-whitespace to the penultimate whitespace char.
+        probas[j - 1] = max_proba  # The last whitespace char.
     # Solve an optimisation problem to find the best sentence boundaries given the predicted
     # boundary probabilities. The objective is to select boundaries that maximise the sum of the
     # boundary probabilities above a given threshold, subject to the resulting sentences not being
-    # smaller than the given minimum length.
+    # shorter or longer than the given minimum or maximum length, respectively.
     sentence_threshold = 0.25  # Default threshold for -sm models.
     c = probas - sentence_threshold
     N = len(probas)  # noqa: N806
     M = N - min_len + 1  # noqa: N806
     diagonals = [np.ones(M, dtype=np.float32) for _ in range(min_len)]
     offsets = list(range(min_len))
-    A_ub = sparse.diags(diagonals, offsets, shape=(M, N), format="csr")  # noqa: N806
-    b_ub = np.ones(M, dtype=np.float32)
+    A_min = sparse.diags(diagonals, offsets, shape=(M, N), format="csr")  # noqa: N806
+    b_min = np.ones(M, dtype=np.float32)
+    if max_len is not None and (M := N - max_len + 1) > 0:  # noqa: N806
+        diagonals = [np.ones(M, dtype=np.float32) for _ in range(max_len)]
+        offsets = list(range(max_len))
+        A_max = sparse.diags(diagonals, offsets, shape=(M, N), format="csr")  # noqa: N806
+        b_max = np.ones(M, dtype=np.float32)
+        A_ub = sparse.vstack([A_min, -A_max], format="csr")  # noqa: N806
+        b_ub = np.hstack([b_min, -b_max])
+    else:
+        A_ub = A_min  # noqa: N806
+        b_ub = b_min
     x0 = (probas >= sentence_threshold).astype(np.float32)
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=OptimizeWarning)  # Ignore x0 not being used.
@@ -115,27 +133,8 @@ def split_sentences(
         error_message = "Optimization of sentence partitions failed."
         raise ValueError(error_message)
     # Split the document into sentences where the boundary probability exceeds a threshold.
-    # TODO: Embed the trailing whitespace logic of `indices_to_sentences` in the optimization model.
-    partition_indices = np.where(res.x > 0.5)[0]  # noqa: PLR2004
-    sentences: list[str] = [s for s in indices_to_sentences(doc, partition_indices) if s.strip()]  # type: ignore[no-untyped-call]
-    # Apply additional splits on paragraphs and sentences.
-    if max_len is not None:
-        for pattern in (r"(?<=\n\n)", r"(?<=\.\s)"):
-            sentences = [
-                part
-                for sent in sentences
-                for part in ([sent] if len(sent) <= max_len else re.split(pattern, sent))
-            ]
-    # Recursively split long sentences in the middle if they are still too long.
-    if max_len is not None:
-        while any(len(sentence) > max_len for sentence in sentences):
-            sentences = [
-                part
-                for sent in sentences
-                for part in (
-                    [sent]
-                    if len(sent) <= max_len
-                    else [sent[: len(sent) // 2], sent[len(sent) // 2 :]]
-                )
-            ]
+    partition_indices = np.where(res.x > 0.5)[0] + 1  # noqa: PLR2004
+    sentences = [
+        doc[i:j] for i, j in zip([0, *partition_indices], [*partition_indices, None], strict=True)
+    ]
     return sentences
