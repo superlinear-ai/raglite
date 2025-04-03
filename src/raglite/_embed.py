@@ -137,50 +137,40 @@ def _embed_sentences_with_late_chunking(  # noqa: PLR0915
     return sentence_embeddings
 
 
+def _embed_string_batch(string_batch: list[str], *, config: RAGLiteConfig) -> FloatMatrix:
+    """Embed a batch of text strings."""
+    if config.embedder.startswith("llama-cpp-python"):
+        # LiteLLM doesn't yet support registering a custom embedder, so we handle it here.
+        # Additionally, we explicitly manually pool the token embeddings to obtain sentence
+        # embeddings because token embeddings are universally supported, while sequence
+        # embeddings are only supported by some models.
+        embedder = LlamaCppPythonLLM.llm(
+            config.embedder, embedding=True, pooling_type=LLAMA_POOLING_TYPE_NONE
+        )
+        embeddings = np.asarray([np.mean(row, axis=0) for row in embedder.embed(string_batch)])
+    else:
+        # Use LiteLLM's API to embed the batch of strings.
+        response = embedding(config.embedder, string_batch)
+        embeddings = np.asarray([item["embedding"] for item in response["data"]])
+    # Normalise the embeddings to unit norm and cast to half precision.
+    if config.embedder_normalize:
+        embeddings /= np.linalg.norm(embeddings, axis=1, keepdims=True)
+    embeddings = embeddings.astype(np.float16)
+    return embeddings
+
+
 def _embed_sentences_with_windowing(
     sentences: list[str], *, config: RAGLiteConfig | None = None
 ) -> FloatMatrix:
     """Embed a document's sentences with windowing."""
-
-    def _embed_string_batch(string_batch: list[str], *, config: RAGLiteConfig) -> FloatMatrix:
-        # Embed the batch of strings.
-        if config.embedder.startswith("llama-cpp-python"):
-            # LiteLLM doesn't yet support registering a custom embedder, so we handle it here.
-            # Additionally, we explicitly manually pool the token embeddings to obtain sentence
-            # embeddings because token embeddings are universally supported, while sequence
-            # embeddings are only supported by some models.
-            embedder = LlamaCppPythonLLM.llm(
-                config.embedder, embedding=True, pooling_type=LLAMA_POOLING_TYPE_NONE
-            )
-            embeddings = np.asarray([np.mean(row, axis=0) for row in embedder.embed(string_batch)])
-        else:
-            # Use LiteLLM's API to embed the batch of strings.
-            response = embedding(config.embedder, string_batch)
-            embeddings = np.asarray([item["embedding"] for item in response["data"]])
-        # Normalise the embeddings to unit norm and cast to half precision.
-        if config.embedder_normalize:
-            embeddings /= np.linalg.norm(embeddings, axis=1, keepdims=True)
-        embeddings = embeddings.astype(np.float16)
-        return embeddings
-
-    # Window the sentences with a lookback of `config.embedder_sentence_window_size - 1` sentences.
     config = config or RAGLiteConfig()
+    # Window the sentences with a lookback of `config.embedder_sentence_window_size - 1` sentences.
     sentence_windows = [
         "".join(sentences[max(0, i - (config.embedder_sentence_window_size - 1)) : i + 1])
         for i in range(len(sentences))
     ]
     # Embed the sentence windows in batches.
-    batch_size = 64
-    batch_range = (
-        partial(trange, desc="Embedding", unit="batch", dynamic_ncols=True)
-        if len(sentence_windows) > batch_size
-        else range
-    )
-    batch_embeddings = [
-        _embed_string_batch(sentence_windows[i : i + batch_size], config=config)
-        for i in batch_range(0, len(sentence_windows), batch_size)
-    ]
-    sentence_embeddings = np.vstack(batch_embeddings)
+    sentence_embeddings = embed_text(sentence_windows, config=config)
     return sentence_embeddings
 
 
@@ -201,3 +191,20 @@ def embed_sentences(sentences: list[str], *, config: RAGLiteConfig | None = None
     else:
         sentence_embeddings = _embed_sentences_with_windowing(sentences, config=config)
     return sentence_embeddings
+
+
+def embed_text(text: list[str], *, config: RAGLiteConfig | None = None) -> FloatMatrix:
+    """Embed a list of text strings in batches."""
+    config = config or RAGLiteConfig()
+    batch_size = 64
+    batch_range = (
+        partial(trange, desc="Embedding", unit="batch", dynamic_ncols=True)
+        if len(text) > batch_size
+        else range
+    )
+    batch_embeddings = [
+        _embed_string_batch(text[i : i + batch_size], config=config)
+        for i in batch_range(0, len(text), batch_size)
+    ]
+    text_embeddings = np.vstack(batch_embeddings)
+    return text_embeddings
