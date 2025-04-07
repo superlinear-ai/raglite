@@ -68,7 +68,7 @@ def split_chunks(  # noqa: C901, PLR0915
     data = []
     for i in range(len(sentences) - 1):
         r = sentence_length_cumsum[i - 1] if i > 0 else 0
-        idx = np.searchsorted(sentence_length_cumsum - r, max_size + 1)
+        idx = np.searchsorted(sentence_length_cumsum - r, max_size, side="right")
         assert idx > i
         if idx == len(sentence_length_cumsum):
             break
