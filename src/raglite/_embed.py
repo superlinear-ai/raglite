@@ -154,9 +154,28 @@ def _embed_string_batch(string_batch: list[str], *, config: RAGLiteConfig) -> Fl
         embeddings = np.asarray([item["embedding"] for item in response["data"]])
     # Normalise the embeddings to unit norm and cast to half precision.
     if config.embedder_normalize:
-        embeddings /= np.linalg.norm(embeddings, axis=1, keepdims=True)
+        eps = np.finfo(embeddings.dtype).eps
+        norm = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        embeddings /= np.maximum(norm, eps)
     embeddings = embeddings.astype(np.float16)
     return embeddings
+
+
+def embed_strings(strings: list[str], *, config: RAGLiteConfig | None = None) -> FloatMatrix:
+    """Embed a list of text strings in batches."""
+    config = config or RAGLiteConfig()
+    batch_size = 64
+    batch_range = (
+        partial(trange, desc="Embedding", unit="batch", dynamic_ncols=True)
+        if len(strings) > batch_size
+        else range
+    )
+    batch_embeddings = [
+        _embed_string_batch(strings[i : i + batch_size], config=config)
+        for i in batch_range(0, len(strings), batch_size)
+    ]
+    string_embeddings = np.vstack(batch_embeddings)
+    return string_embeddings
 
 
 def _embed_sentences_with_windowing(
@@ -170,7 +189,7 @@ def _embed_sentences_with_windowing(
         for i in range(len(sentences))
     ]
     # Embed the sentence windows in batches.
-    sentence_embeddings = embed_text(sentence_windows, config=config)
+    sentence_embeddings = embed_strings(sentence_windows, config=config)
     return sentence_embeddings
 
 
@@ -191,20 +210,3 @@ def embed_sentences(sentences: list[str], *, config: RAGLiteConfig | None = None
     else:
         sentence_embeddings = _embed_sentences_with_windowing(sentences, config=config)
     return sentence_embeddings
-
-
-def embed_text(text: list[str], *, config: RAGLiteConfig | None = None) -> FloatMatrix:
-    """Embed a list of text strings in batches."""
-    config = config or RAGLiteConfig()
-    batch_size = 64
-    batch_range = (
-        partial(trange, desc="Embedding", unit="batch", dynamic_ncols=True)
-        if len(text) > batch_size
-        else range
-    )
-    batch_embeddings = [
-        _embed_string_batch(text[i : i + batch_size], config=config)
-        for i in batch_range(0, len(text), batch_size)
-    ]
-    text_embeddings = np.vstack(batch_embeddings)
-    return text_embeddings

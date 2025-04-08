@@ -10,7 +10,7 @@ from tqdm.auto import tqdm
 
 from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, ChunkEmbedding, Document, IndexMetadata, create_database_engine
-from raglite._embed import embed_sentences, embed_text, sentence_embedding_type
+from raglite._embed import embed_sentences, embed_strings, sentence_embedding_type
 from raglite._markdown import document_to_markdown
 from raglite._split_chunks import split_chunks
 from raglite._split_sentences import split_sentences
@@ -46,8 +46,8 @@ def _create_chunk_records(
             )
     else:
         # Embed the full chunks, including the current Markdown headings.
-        full_chunk_embeddings = embed_text(
-            [str(chunk_record.content) for chunk_record in chunk_records], config=config
+        full_chunk_embeddings = embed_strings(
+            [chunk_record.content for chunk_record in chunk_records], config=config
         )
 
         # Every chunk record is associated with a list of chunk embedding records. The chunk
