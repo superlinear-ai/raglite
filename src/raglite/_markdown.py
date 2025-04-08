@@ -202,6 +202,9 @@ def document_to_markdown(doc_path: Path) -> str:
         # Parse the PDF with pdftext and convert it to Markdown.
         pages = dictionary_output(doc_path, sort=True, keep_chars=False)
         doc = "\n\n".join(parsed_pdf_to_markdown(pages))
+    elif doc_path.suffix == ".md":
+        # Read the Markdown file.
+        doc = doc_path.read_text()
     else:
         try:
             # Use pandoc for everything else.
