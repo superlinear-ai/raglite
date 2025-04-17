@@ -29,9 +29,24 @@ def _create_chunk_records(
     for i, chunk in enumerate(chunks):
         # Create and append the chunk record.
         record = Chunk.from_body(document_id=document_id, index=i, body=chunk, headings=headings)
-        chunk_records.append(record)
-        # Update the Markdown headings with those of this chunk.
+
+        # Get Markdown headings of this chunk. If available, overwrite the heading in the record
         headings = record.extract_headings()
+        if headings != "":
+            record.headings = headings
+
+        # Check if any heading part is duplicated at the beginning of the body.
+        # If it is, remove the heading string in the body
+        heading_parts = [h.strip() for h in headings.split("\n") if h.strip()]
+        chunk_content = chunk
+        for heading_part in heading_parts:
+            if chunk_content.startswith(heading_part):
+                chunk_content = chunk_content[len(heading_part) :].lstrip()
+
+        record.body = chunk_content
+
+        chunk_records.append(record)
+
     # Create the chunk embedding records.
     chunk_embedding_records = []
     if sentence_embedding_type(config=config) == "late_chunking":
