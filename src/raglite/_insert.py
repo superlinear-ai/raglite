@@ -30,21 +30,19 @@ def _create_chunk_records(
         # Create and append the chunk record.
         record = Chunk.from_body(document_id=document_id, index=i, body=chunk, headings=headings)
 
-        # Get Markdown headings of this chunk. If available, overwrite the heading in the record
-        headings = record.extract_headings()
-        if headings != "":
+        # Get Markdown headings of this chunk.
+        extracted_headings = record.extract_headings()
+
+        if headings != extracted_headings:
+            level_heading_before = headings.split("\n")[-1].count("#")
+            level_heading_after = extracted_headings.split("\n")[-1].count("#")
+            heading_level_diff = level_heading_before - level_heading_after
+            # Remove headings that were inherited from previous chunk that are on same or higher lvl
+            while heading_level_diff >= 0:
+                headings = "\n".join(headings.split("\n")[:-1])
+                heading_level_diff -= 1
             record.headings = headings
-
-        # Check if any heading part is duplicated at the beginning of the body.
-        # If it is, remove the heading string in the body
-        heading_parts = [h.strip() for h in headings.split("\n") if h.strip()]
-        chunk_content = chunk
-        for heading_part in heading_parts:
-            if chunk_content.startswith(heading_part):
-                chunk_content = chunk_content[len(heading_part) :].lstrip()
-
-        record.body = chunk_content
-
+            headings = extracted_headings
         chunk_records.append(record)
 
     # Create the chunk embedding records.
