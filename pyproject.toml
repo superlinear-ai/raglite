@@ -82,7 +82,7 @@ dev = [
 # Frontend:
 chainlit = ["chainlit (>=2.0.0)"]
 # Large Language Models:
-llama-cpp-python = ["llama-cpp-python (==0.3.4)"]
+llama-cpp-python = ["llama-cpp-python (>=0.3.4,<0.3.8)"]
 # Markdown conversion:
 pandoc = ["pypandoc-binary (>=1.13)"]
 # Evaluation:
