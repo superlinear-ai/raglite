@@ -44,7 +44,7 @@ dependencies = [
   # CLI:
   "typer (>=0.15.1)",
   # Model Context Protocol:
-  "fastmcp (>=0.4.1)",
+  "fastmcp (>=2.0.0)",
   # Utilities:
   "packaging (>=23.0)",
 ]
