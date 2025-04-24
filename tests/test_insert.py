@@ -1,54 +1,33 @@
 """Tests for the _insert module."""
 
+from pathlib import Path
+
 from sqlmodel import Session, select
+from tqdm import tqdm
 
 from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, Document, create_database_engine
-from raglite._insert import insert_document
-
-TEST_FILENAME = "test_markdown_insertion.md"
-MARKDOWN_INPUT = """This is some text before the first heading.
-# Test the chunking
-I want to ensure that the markdown header is correctly identified for the first chunk in a new section
-## This is a subheading
-What heading will this sub-paragraph get? It remains interesting...
-## The second subheading
-What happens when a second sub-heading arrives? Will it overwrite the first sub-heading?
-### A sub-sub heading
-This paragraph contains text under a sub-sub-heading.
-# The second test of the chunking
-Does the header actually have the right markdown header identified? or is it Test the chunking?
-# Third test
-What about this chunk? Does it get the right heading?
-"""
+from raglite._markdown import document_to_markdown
 
 
-def test_insert_document_from_string(raglite_test_config: RAGLiteConfig) -> None:
-    """Test inserting a document from a Markdown string."""
-    # Create a test configuration that uses the same database as raglite_test_config
-    config = RAGLiteConfig(
-        db_url=raglite_test_config.db_url,
-        llm=raglite_test_config.llm,
-        embedder=raglite_test_config.embedder,
-        chunk_max_size=50,
-    )
+def test_insert(raglite_test_config: RAGLiteConfig) -> None:
+    """Test the insert function by testing logic on chunks in raglite_test_config database."""
+    # Get access to the database from the raglite_test_config
+    engine = create_database_engine(raglite_test_config)
 
-    # Insert the document
-    insert_document(MARKDOWN_INPUT, filename=TEST_FILENAME, config=config)
-
-    # Check that the document was inserted correctly
-    engine = create_database_engine(config)
+    # Open a session to extract document and chunks from the existing database
     with Session(engine) as session:
-        # Query for the document
-        document = session.exec(select(Document).where(Document.filename == TEST_FILENAME)).first()
-        assert document is not None
+        # Get the first document from the database (already inserted by the fixture)
+        document = session.exec(select(Document)).first()
+        assert document is not None, "No document found in the database"
 
-        # Check that chunks were created
-        chunks = session.exec(select(Chunk).where(Chunk.document_id == document.id)).all()
-        assert len(chunks) > 0, "Chunks should have been created for the document."
-
+        # Get the existing chunks for this document
+        chunks = session.exec(
+            select(Chunk).where(Chunk.document_id == document.id).order_by(Chunk.index)  # type: ignore[arg-type]
+        ).all()
+        assert len(chunks) > 0, "No chunks found for the document"
         restored_document = ""
-        for chunk in chunks:
+        for chunk in tqdm(chunks, desc="Processing chunks"):
             # body should not contain the heading string (except if heading is empty)
             if chunk.headings.strip() != "":
                 assert chunk.headings.strip() not in chunk.body.strip(), (
@@ -65,10 +44,12 @@ def test_insert_document_from_string(raglite_test_config: RAGLiteConfig) -> None
 
             restored_document += chunk.body
 
-        # combining the chunks should give the original document
+        # combining the chunks should yield the original document
         restored_document = "".join(restored_document)
         restored_document = restored_document.replace("\n", "").strip()
-        markdown_input = MARKDOWN_INPUT.replace("\n", "").strip()
-        assert restored_document == markdown_input, (
-            "Restored document does not match the original input."
-        )
+
+        doc_path = Path(__file__).parent / "specrel.pdf"  # Einstein's special relativity paper.
+        doc = document_to_markdown(doc_path)
+        doc = doc.replace("\n", "").strip()
+
+        assert restored_document == doc, "Restored document does not match the original input."
