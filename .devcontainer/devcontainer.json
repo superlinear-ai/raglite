@@ -8,7 +8,7 @@
     },
     "overrideCommand": true,
     "remoteUser": "user",
-    "postStartCommand": "export CC=clang && export CXX=clang++ && sudo chown -R user:user /opt/ && uv sync --python ${localEnv:PYTHON_VERSION:3.10} --resolution ${localEnv:RESOLUTION_STRATEGY:highest} --all-extras && pre-commit install --install-hooks",
+    "postStartCommand": "sudo chown -R user:user /opt/ && CC=clang CXX=clang++ uv sync --python ${localEnv:PYTHON_VERSION:3.10} --resolution ${localEnv:RESOLUTION_STRATEGY:highest} --all-extras && pre-commit install --install-hooks",
     "customizations": {
         "jetbrains": {
             "backend": "PyCharm",
