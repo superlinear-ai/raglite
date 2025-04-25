@@ -57,15 +57,25 @@ def _create_chunk_records(
         for chunk_record, chunk_embedding, full_chunk_embedding in zip(
             chunk_records, chunk_embeddings, full_chunk_embeddings, strict=True
         ):
-            chunk_embedding_records.append(
-                [
-                    ChunkEmbedding(
-                        chunk_id=chunk_record.id,
-                        embedding=α * sentence_embedding + (1 - α) * full_chunk_embedding,
-                    )
-                    for sentence_embedding in chunk_embedding
-                ]
-            )
+            if config.vector_search_multivector:
+                chunk_embedding_records.append(
+                    [
+                        ChunkEmbedding(
+                            chunk_id=chunk_record.id,
+                            embedding=α * sentence_embedding + (1 - α) * full_chunk_embedding,
+                        )
+                        for sentence_embedding in chunk_embedding
+                    ]
+                )
+            else:
+                chunk_embedding_records.append(
+                    [
+                        ChunkEmbedding(
+                            chunk_id=chunk_record.id,
+                            embedding=full_chunk_embedding,
+                        )
+                    ]
+                )
     return chunk_records, chunk_embedding_records
 
 
