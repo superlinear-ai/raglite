@@ -34,8 +34,8 @@ def _create_chunk_records(
         extracted_headings = record.extract_headings()
 
         if headings != extracted_headings:
-            level_heading_before = headings.split("\n")[-1].count("#")
-            level_heading_after = extracted_headings.split("\n")[-1].count("#")
+            level_heading_before = headings.split("\n")[-1].split(" ")[0].count("#")
+            level_heading_after = extracted_headings.split("\n")[-1].split(" ")[0].count("#")
             heading_level_diff = level_heading_before - level_heading_after
             # Remove headings that were inherited from previous chunk that are on same or higher lvl
             while heading_level_diff >= 0:
