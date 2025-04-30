@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/var/cache/apt/ \
     groupadd --gid 1000 user && \
     useradd --create-home --no-log-init --gid 1000 --uid 1000 --shell /usr/bin/bash user && \
     chown user:user /opt/ && \
-    apt-get update && apt-get install --no-install-recommends --yes sudo clang && \
+    apt-get update && apt-get install --no-install-recommends --yes sudo && \
     echo 'user ALL=(root) NOPASSWD:ALL' > /etc/sudoers.d/user && chmod 0440 /etc/sudoers.d/user
 USER user
 
