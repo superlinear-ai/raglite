@@ -42,7 +42,10 @@ def test_search(raglite_test_config: RAGLiteConfig, search_method: SearchMethod)
     chunks = retrieve_chunks(chunk_ids, config=raglite_test_config)
     assert all(isinstance(chunk, Chunk) for chunk in chunks)
     assert all(chunk_id == chunk.id for chunk_id, chunk in zip(chunk_ids, chunks, strict=True))
-    assert any("Definition of Simultaneity" in str(chunk) for chunk in chunks)
+    assert any("Definition of Simultaneity" in str(chunk) for chunk in chunks), (
+        "Expected 'Definition of Simultaneity' in chunks but got:\n"
+        + "\n".join(f"- Chunk {i + 1}:\n{chunk!s}\n{'-' * 80}" for i, chunk in enumerate(chunks))
+    )
     assert all(isinstance(chunk.document, Document) for chunk in chunks)
     # Extend the chunks with their neighbours and group them into contiguous segments.
     chunk_spans = retrieve_chunk_spans(chunk_ids, neighbors=(-1, 1), config=raglite_test_config)
