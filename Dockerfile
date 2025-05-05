@@ -27,3 +27,7 @@ RUN mkdir ~/.history/ && \
     echo 'bind "\"\e[A\": history-search-backward"' >> ~/.bashrc && \
     echo 'bind "\"\e[B\": history-search-forward"' >> ~/.bashrc && \
     echo 'eval "$(starship init bash)"' >> ~/.bashrc
+
+# Explicitly configure compilers for llama-cpp-python.
+ENV CMAKE_C_COMPILER=/usr/bin/gcc
+ENV CMAKE_CXX_COMPILER=/usr/bin/g++
