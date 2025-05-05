@@ -22,13 +22,16 @@ def _create_chunk_records(
     chunks: list[str],
     chunk_embeddings: list[FloatMatrix],
     config: RAGLiteConfig,
+    metadata: dict[str, str],
 ) -> tuple[list[Chunk], list[list[ChunkEmbedding]]]:
     """Process chunks into chunk and chunk embedding records."""
     # Create the chunk records.
     chunk_records, headings = [], ""
     for i, chunk in enumerate(chunks):
         # Create and append the chunk record.
-        record = Chunk.from_body(document_id=document_id, index=i, body=chunk, headings=headings)
+        record = Chunk.from_body(
+            document_id=document_id, index=i, body=chunk, headings=headings, **metadata
+        )
         chunk_records.append(record)
         # Update the Markdown headings with those of this chunk.
         headings = record.extract_headings()
@@ -74,6 +77,7 @@ def insert_document(  # noqa: PLR0915
     *,
     filename: str | None = None,
     config: RAGLiteConfig | None = None,
+    metadata: dict[str, str] | None = None,
 ) -> None:
     """Insert a document into the database and update the index.
 
@@ -93,7 +97,8 @@ def insert_document(  # noqa: PLR0915
     """
     # Use the default config if not provided.
     config = config or RAGLiteConfig()
-
+    if metadata is None:
+        metadata = {}
     # Preprocess the document into chunks and chunk embeddings.
     with tqdm(total=6, unit="step", dynamic_ncols=True) as pbar:
         pbar.set_description("Initializing database")
@@ -131,7 +136,9 @@ def insert_document(  # noqa: PLR0915
         with Session(engine) as session:
             session.add(document_record)
             for chunk_record, chunk_embedding_record_list in zip(
-                *_create_chunk_records(document_record.id, chunks, chunk_embeddings, config),
+                *_create_chunk_records(
+                    document_record.id, chunks, chunk_embeddings, config, metadata=metadata
+                ),
                 strict=True,
             ):
                 session.add(chunk_record)
