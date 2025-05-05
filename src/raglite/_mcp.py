@@ -1,6 +1,6 @@
 """MCP server for RAGLite."""
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastmcp import FastMCP
 from pydantic import Field
@@ -20,9 +20,9 @@ Query = Annotated[
 ]
 
 
-def create_mcp_server(server_name: str, *, config: RAGLiteConfig) -> FastMCP:
+def create_mcp_server(server_name: str, *, config: RAGLiteConfig) -> FastMCP[Any]:
     """Create a RAGLite MCP server."""
-    mcp = FastMCP(server_name)
+    mcp: FastMCP[Any] = FastMCP(server_name)
 
     @mcp.prompt()
     def kb(query: Query) -> str:
