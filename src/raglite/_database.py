@@ -119,26 +119,44 @@ class Chunk(SQLModel, table=True):
             id=hash_bytes(f"{document_id}-{index}".encode()),
             document_id=document_id,
             index=index,
-            headings=headings,
+            headings=Chunk.truncate_headings(headings, body),
             body=body,
             metadata_=kwargs,
         )
 
-    def extract_headings(self) -> str:
-        """Extract Markdown headings from the chunk, starting from the current Markdown headings."""
+    @staticmethod
+    def extract_heading_lines(doc: str, leading_only: bool = False) -> list[str]:  # noqa: FBT001,FBT002
+        """Extract the leading or final state of the Markdown headings of a document."""
         md = MarkdownIt()
-        heading_lines = [""] * 10
+        heading_lines = [""] * 6
         level = None
-        for doc in (self.headings, self.body):
-            for token in md.parse(doc):
-                if token.type == "heading_open":
-                    level = int(token.tag[1])
-                elif token.type == "heading_close":
-                    level = None
-                elif level is not None:
-                    heading_content = token.content.strip().replace("\n", " ")
-                    heading_lines[level] = ("#" * level) + " " + heading_content
-                    heading_lines[level + 1 :] = [""] * len(heading_lines[level + 1 :])
+        for token in md.parse(doc):
+            if token.type == "heading_open":
+                level = int(token.tag[1]) if 1 <= int(token.tag[1]) <= 6 else None  # noqa: PLR2004
+            elif token.type == "heading_close":
+                level = None
+            elif level is not None:
+                heading_content = token.content.strip().replace("\n", " ")
+                heading_lines[level - 1] = ("#" * level) + " " + heading_content
+                heading_lines[level:] = [""] * len(heading_lines[level + 1 :])
+            elif leading_only and level is None and token.content and not token.content.isspace():
+                break
+        return heading_lines
+
+    @staticmethod
+    def truncate_headings(headings: str, body: str) -> str:
+        """Truncate the contextual headings given the chunk's leading headings (if present)."""
+        heading_lines = Chunk.extract_heading_lines(headings)
+        leading_body_heading_lines = Chunk.extract_heading_lines(body, leading_only=True)
+        level = next((i + 1 for i, line in enumerate(leading_body_heading_lines) if line), None)
+        if level:
+            heading_lines[level - 1 :] = [""] * len(heading_lines[level - 1 :])
+        headings = "\n".join([heading for heading in heading_lines if heading])
+        return headings
+
+    def extract_headings(self) -> str:
+        """Extract Markdown headings from the chunk, starting from the contextual headings."""
+        heading_lines = self.extract_heading_lines(self.headings + "\n\n" + self.body)
         headings = "\n".join([heading for heading in heading_lines if heading])
         return headings
 
