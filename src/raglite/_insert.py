@@ -100,6 +100,8 @@ def insert_document(  # noqa: PLR0915
         line of the source is used.
     config
         The RAGLite config to use to insert the document into the database.
+    metadata
+        Document metadata that is attached to the extracted chunks.
 
     Returns
     -------
