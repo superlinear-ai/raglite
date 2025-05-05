@@ -98,10 +98,10 @@ def insert_document(  # noqa: PLR0915
     filename
         The document filename to use if the source is a Markdown string. If not provided, the first
         line of the source is used.
-    config
-        The RAGLite config to use to insert the document into the database.
     metadata
         Document metadata that is attached to the extracted chunks.
+    config
+        The RAGLite config to use to insert the document into the database.
 
     Returns
     -------
