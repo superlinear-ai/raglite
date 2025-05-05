@@ -290,7 +290,7 @@ def chatml_function_calling_with_streaming(
         # Assistant message
         "{% if message.role == 'assistant' %}"
         ## Regular message
-        "{% if 'content' in message and message.content | length > 0 %}"
+        "{% if 'content' in message and message.content %}"
         "{% if tool_calls %}"
         "message:\n"
         "{% endif %}"
