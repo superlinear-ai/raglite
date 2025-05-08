@@ -46,7 +46,6 @@ class RAGLiteConfig:
         )
     )
     embedder_normalize: bool = True
-    embedder_sentence_window_size: int = 3
     # Chunk config used to partition documents into chunks.
     chunk_max_size: int = 1440  # Max number of characters per chunk.
     # Vector search config.
@@ -61,8 +60,3 @@ class RAGLiteConfig:
         ),
         compare=False,  # Exclude the reranker from comparison to avoid lru_cache misses.
     )
-
-    def __post_init__(self) -> None:
-        # Late chunking with llama-cpp-python does not apply sentence windowing.
-        if self.embedder.startswith("llama-cpp-python"):
-            object.__setattr__(self, "embedder_sentence_window_size", 1)
