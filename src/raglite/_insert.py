@@ -21,6 +21,7 @@ def _create_chunk_records(
     document_id: DocumentId,
     chunks: list[str],
     chunk_embeddings: list[FloatMatrix],
+    metadata: dict[str, str],
     config: RAGLiteConfig,
 ) -> tuple[list[Chunk], list[list[ChunkEmbedding]]]:
     """Process chunks into chunk and chunk embedding records."""
@@ -28,7 +29,9 @@ def _create_chunk_records(
     chunk_records, headings = [], ""
     for i, chunk in enumerate(chunks):
         # Create and append the chunk record.
-        record = Chunk.from_body(document_id=document_id, index=i, body=chunk, headings=headings)
+        record = Chunk.from_body(
+            document_id=document_id, index=i, body=chunk, headings=headings, **metadata
+        )
         chunk_records.append(record)
         # Update the Markdown headings with those of this chunk.
         headings = record.extract_headings()
@@ -83,6 +86,7 @@ def insert_document(  # noqa: PLR0915
     source: Path | str,
     *,
     filename: str | None = None,
+    metadata: dict[str, str] | None = None,
     config: RAGLiteConfig | None = None,
 ) -> None:
     """Insert a document into the database and update the index.
@@ -94,6 +98,8 @@ def insert_document(  # noqa: PLR0915
     filename
         The document filename to use if the source is a Markdown string. If not provided, the first
         line of the source is used.
+    metadata
+        Document metadata that is attached to the extracted chunks.
     config
         The RAGLite config to use to insert the document into the database.
 
@@ -103,7 +109,6 @@ def insert_document(  # noqa: PLR0915
     """
     # Use the default config if not provided.
     config = config or RAGLiteConfig()
-
     # Preprocess the document into chunks and chunk embeddings.
     with tqdm(total=6, unit="step", dynamic_ncols=True) as pbar:
         pbar.set_description("Initializing database")
@@ -141,7 +146,9 @@ def insert_document(  # noqa: PLR0915
         with Session(engine) as session:
             session.add(document_record)
             for chunk_record, chunk_embedding_record_list in zip(
-                *_create_chunk_records(document_record.id, chunks, chunk_embeddings, config),
+                *_create_chunk_records(
+                    document_record.id, chunks, chunk_embeddings, metadata or {}, config
+                ),
                 strict=True,
             ):
                 session.add(chunk_record)
