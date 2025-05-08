@@ -362,13 +362,13 @@ def get_embedding_dim(config: RAGLiteConfig, *, fallback: bool = True) -> int:
         return embedding_dim
     # If that fails, fall back to embedding a single sentence and reading its embedding dimension.
     if fallback:
-        from raglite._embed import embed_sentences
+        from raglite._embed import embed_strings
 
         warnings.warn(
             f"Could not determine the embedding dimension of {config.embedder} from LiteLLM's model_info, using fallback.",
             stacklevel=2,
         )
-        fallback_embeddings = embed_sentences(["Hello world"], config=config)
+        fallback_embeddings = embed_strings(["Hello world"], config=config)
         return fallback_embeddings.shape[1]
     error_message = f"Could not determine the embedding dimension of {config.embedder}."
     raise ValueError(error_message)

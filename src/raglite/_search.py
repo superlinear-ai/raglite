@@ -21,7 +21,7 @@ from raglite._database import (
     IndexMetadata,
     create_database_engine,
 )
-from raglite._embed import embed_sentences
+from raglite._embed import embed_strings
 from raglite._typing import ChunkId, FloatMatrix
 
 
@@ -40,7 +40,7 @@ def vector_search(
     index_metadata = IndexMetadata.get("default", config=config)
     # Embed the query.
     query_embedding = (
-        embed_sentences([query], config=config)[0, :] if isinstance(query, str) else np.ravel(query)
+        embed_strings([query], config=config)[0, :] if isinstance(query, str) else np.ravel(query)
     )
     # Apply the query adapter to the query embedding.
     Q = index_metadata.get("query_adapter")  # noqa: N806

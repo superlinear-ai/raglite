@@ -223,7 +223,7 @@ def evaluate(
         from ragas.embeddings import BaseRagasEmbeddings
 
         from raglite._config import RAGLiteConfig
-        from raglite._embed import embed_sentences
+        from raglite._embed import embed_strings
         from raglite._litellm import LlamaCppPythonLLM
     except ModuleNotFoundError as import_error:
         error_message = "To use the `evaluate` function, please install the `ragas` extra."
@@ -237,12 +237,12 @@ def evaluate(
 
         def embed_query(self, text: str) -> list[float]:
             # Embed the input text with RAGLite's embedding function.
-            embeddings = embed_sentences([text], config=self.config)
+            embeddings = embed_strings([text], config=self.config)
             return embeddings[0].tolist()  # type: ignore[no-any-return]
 
         def embed_documents(self, texts: list[str]) -> list[list[float]]:
             # Embed a list of documents with RAGLite's embedding function.
-            embeddings = embed_sentences(texts, config=self.config)
+            embeddings = embed_strings(texts, config=self.config)
             return embeddings.tolist()  # type: ignore[no-any-return]
 
     # Create a set of answered evals if not provided.
