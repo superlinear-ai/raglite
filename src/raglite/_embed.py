@@ -190,7 +190,7 @@ def embed_strings(strings: list[str], *, config: RAGLiteConfig | None = None) ->
     """Embed the chunklets of a document as a NumPy matrix with one row per chunklet."""
     config = config or RAGLiteConfig()
     if embedding_type(config=config) == "late_chunking":
-        sentence_embeddings = embed_strings_with_late_chunking(strings, config=config)
+        string_embeddings = embed_strings_with_late_chunking(strings, config=config)
     else:
-        sentence_embeddings = embed_strings_without_late_chunking(strings, config=config)
-    return sentence_embeddings
+        string_embeddings = embed_strings_without_late_chunking(strings, config=config)
+    return string_embeddings
