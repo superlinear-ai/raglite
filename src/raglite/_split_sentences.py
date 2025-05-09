@@ -111,9 +111,9 @@ def split_sentences(
     doc
         The document to split into sentences.
     min_len
-        The minimum length of a sentence.
+        The minimum number of characters in a sentence.
     max_len
-        The maximum length of a sentence, with no maximum length by default.
+        The maximum number of characters in a sentence, with no maximum by default.
     boundary_probas
         Any known sentence boundary probabilities to override the model's predicted sentence
         boundary probabilities. If an element of the probability vector with index k is 1 (0), then
