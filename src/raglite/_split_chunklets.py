@@ -72,7 +72,7 @@ def compute_num_statements(sentences: list[str]) -> FloatVector:
 def split_chunklets(
     sentences: list[str],
     boundary_cost: Callable[[FloatVector], float] = lambda p: (1.0 - p[0]) + np.sum(p[1:]),
-    statement_cost: Callable[[float], float] = lambda s: ((s - 3) ** 2 / np.sqrt(max(s, 1e-6) / 2)),
+    statement_cost: Callable[[float], float] = lambda s: ((s - 3) ** 2 / np.sqrt(max(s, 1e-6)) / 2),
     max_size: int = 1440,
 ) -> list[str]:
     """Split document sentences into optimal chunklets."""
