@@ -21,7 +21,7 @@ def markdown_chunklet_boundaries(sentences: list[str]) -> FloatVector:
         line_start_char.append(line_start_char[-1] + len(line))
     # Identify the character index of each sentence in the document.
     sentence_start_char = [0]
-    for sentence in sentences[:-1]:
+    for sentence in sentences:
         sentence_start_char.append(sentence_start_char[-1] + len(sentence))
     # Map each line index to a corresponding sentence index.
     line_to_sentence = np.searchsorted(sentence_start_char, line_start_char, side="right") - 1

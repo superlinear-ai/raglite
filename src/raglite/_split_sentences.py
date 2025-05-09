@@ -32,24 +32,11 @@ def markdown_sentence_boundaries(doc: str) -> FloatVector:
         headings = []
         lines = doc.splitlines(keepends=True)
         line_start_char = [0]
-
-        # Process all lines, not just lines[:-1]
         for line in lines:
             line_start_char.append(line_start_char[-1] + len(line))
-
         for token in tokens:
             if token.type == "heading_open":
                 start_line, end_line = token.map  # type: ignore[misc]
-
-                # Add bounds checking
-                if (
-                    start_line < 0
-                    or start_line >= len(line_start_char)
-                    or end_line < 0
-                    or end_line >= len(line_start_char)
-                ):
-                    continue  # Skip this heading if indices are out of bounds
-
                 heading_start = line_start_char[start_line]
                 heading_end = line_start_char[end_line]
                 headings.append((heading_start, heading_end + 1))
