@@ -75,7 +75,44 @@ def split_chunklets(
     statement_cost: Callable[[float], float] = lambda s: ((s - 3) ** 2 / np.sqrt(max(s, 1e-6)) / 2),
     max_size: int = 1440,
 ) -> list[str]:
-    """Split document sentences into optimal chunklets."""
+    """Split sentences into optimal chunklets.
+
+    A chunklet is a concatenated contiguous list of sentences from a document. This function
+    optimally partitions a document into chunklets using dynamic programming.
+
+    A chunklet is considered optimal when it contains as close to 3 statements as possible, when the
+    first sentence in the chunklet is a Markdown boundary such as the start of a heading or
+    paragraph, and when the remaining sentences in the chunklet are not Markdown boundaries.
+
+    Here, we define the number of statements in a sentence as a measure of the sentence's
+    information content. A sentence is said to contain 1 statement if it contains the median number
+    of words per sentence, across sentences in the document.
+
+    The given document of sentences is optimally partitioned into chunklets by solving a dynamic
+    programming problem that assigns a cost to each chunklet given the
+    `boundary_cost(boundary_probas)` function and the `statement_cost(num_statements)` function. The
+    former outputs the cost associated with the boundaries of the chunklet's sentences given the
+    sentences' Markdown boundary probabilities, while the latter outputs the cost of the total
+    number of statements in the chunklet.
+
+    Parameters
+    ----------
+    sentences
+        The input document as a list of sentences.
+    boundary_cost
+        A function that computes the boundary cost of a chunklet given the boundary probabilities of
+        its sentences. The total cost of a chunklet is the sum of its boundary and statement cost.
+    statement_cost
+        A function that computes the statement cost of a chunklet given its number of statements.
+        The total cost of a chunklet is the sum of its boundary and statement cost.
+    max_size
+        The maximum size of a chunklet in characters.
+
+    Returns
+    -------
+    list[str]
+        The document optimally partitioned into chunklets.
+    """
     # Precompute chunklet boundary probabilities and each sentence's number of statements.
     boundary_probas = markdown_chunklet_boundaries(sentences)
     num_statements = compute_num_statements(sentences)

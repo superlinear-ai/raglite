@@ -14,7 +14,31 @@ def split_chunks(  # noqa: C901
     chunklet_embeddings: FloatMatrix,
     max_size: int = 1440,
 ) -> tuple[list[str], list[FloatMatrix]]:
-    """Split chunklets into optimal semantic chunks with corresponding chunklet embeddings."""
+    """Split chunklets into optimal semantic chunks with corresponding chunklet embeddings.
+
+    A chunk is a concatenated contiguous list of chunklets from a document. This function
+    optimally partitions a document into chunks using binary integer programming.
+
+    A partioning of a document into chunks is considered optimal if the total cost of partitioning
+    the document into chunks is minimized. The cost of adding a partition point is given by the
+    cosine similarity of the chunklet embedding before and after the partition point, corrected by
+    the discourse vector of the chunklet embeddings across the document.
+
+    Parameters
+    ----------
+    chunklets
+        The input document as a list of chunklets.
+    chunklet_embeddings
+        A NumPy array wherein the i'th row is an embedding vector corresponding to the i'th
+        chunklet. Embedding vectors are expected to have nonzero length.
+    max_size
+        The maximum size of a chunk in characters.
+
+    Returns
+    -------
+    tuple[list[str], list[FloatMatrix]]
+        The document and chunklet embeddings optimally partitioned into chunks.
+    """
     # Validate the input.
     chunklet_size = np.asarray([len(chunklet) for chunklet in chunklets])
     if not np.all(chunklet_size <= max_size):
