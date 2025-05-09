@@ -55,7 +55,7 @@ class LlamaCppPythonLLM(CustomLLM):
     from litellm import completion
 
     response = completion(
-        model="llama-cpp-python/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/*Q4_K_M.gguf@4092",
+        model="llama-cpp-python/unsloth/Qwen3-8B-GGUF/*Q4_K_M.gguf@8192",
         messages=[{"role": "user", "content": "Hello world!"}],
         # stream=True
     )

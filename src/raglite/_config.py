@@ -31,9 +31,9 @@ class RAGLiteConfig:
     # LLM config used for generation.
     llm: str = field(
         default_factory=lambda: (
-            "llama-cpp-python/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/*Q4_K_M.gguf@8192"
+            "llama-cpp-python/unsloth/Qwen3-8B-GGUF/*Q4_K_M.gguf@8192"
             if llama_supports_gpu_offload()
-            else "llama-cpp-python/bartowski/Llama-3.2-3B-Instruct-GGUF/*Q4_K_M.gguf@4096"
+            else "llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@4096"
         )
     )
     llm_max_tries: int = 4

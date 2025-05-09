@@ -44,7 +44,7 @@ RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with Postgr
 > 🚀 If you want to use local models, it is recommended to install [an accelerated llama-cpp-python precompiled binary](https://github.com/abetlen/llama-cpp-python?tab=readme-ov-file#supported-backends) with:
 > ```sh
 > # Configure which llama-cpp-python precompiled binary to install (⚠️ not every combination is available):
-> LLAMA_CPP_PYTHON_VERSION=0.3.4
+> LLAMA_CPP_PYTHON_VERSION=0.3.9
 > PYTHON_VERSION=310|311|312
 > ACCELERATOR=metal|cu121|cu122|cu123|cu124
 > PLATFORM=macosx_11_0_arm64|linux_x86_64|win_amd64
@@ -92,7 +92,7 @@ pip install raglite[ragas]
 ### 1. Configuring RAGLite
 
 > [!TIP]
-> 🧠 RAGLite extends [LiteLLM](https://github.com/BerriAI/litellm) with support for [llama.cpp](https://github.com/ggerganov/llama.cpp) models using [llama-cpp-python](https://github.com/abetlen/llama-cpp-python). To select a llama.cpp model (e.g., from [bartowski's collection](https://huggingface.co/bartowski)), use a model identifier of the form `"llama-cpp-python/<hugging_face_repo_id>/<filename>@<n_ctx>"`, where `n_ctx` is an optional parameter that specifies the context size of the model.
+> 🧠 RAGLite extends [LiteLLM](https://github.com/BerriAI/litellm) with support for [llama.cpp](https://github.com/ggerganov/llama.cpp) models using [llama-cpp-python](https://github.com/abetlen/llama-cpp-python). To select a llama.cpp model (e.g., from [Unsloth's collection](https://huggingface.co/unsloth)), use a model identifier of the form `"llama-cpp-python/<hugging_face_repo_id>/<filename>@<n_ctx>"`, where `n_ctx` is an optional parameter that specifies the context size of the model.
 
 > [!TIP]
 > 💾 You can create a PostgreSQL database in a few clicks at [neon.tech](https://neon.tech).
@@ -112,7 +112,7 @@ my_config = RAGLiteConfig(
 # Example 'local' config with a SQLite database and a llama.cpp LLM:
 my_config = RAGLiteConfig(
     db_url="sqlite:///raglite.db",
-    llm="llama-cpp-python/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/*Q4_K_M.gguf@8192",
+    llm="llama-cpp-python/unsloth/Qwen3-8B-GGUF/*Q4_K_M.gguf@8192",
     embedder="llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024",  # A context size of 1024 tokens is the sweet spot for bge-m3
 )
 ```
@@ -308,7 +308,7 @@ RAGLite comes with an [MCP server](https://modelcontextprotocol.io) implemented 
 ```
 raglite \
     --db-url sqlite:///raglite.db \
-    --llm llama-cpp-python/bartowski/Llama-3.2-3B-Instruct-GGUF/*Q4_K_M.gguf@4096 \
+    --llm llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@4096 \
     --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024 \
     mcp install
 ```
@@ -344,7 +344,7 @@ You can specify the database URL, LLM, and embedder directly in the Chainlit fro
 ```sh
 raglite \
     --db-url sqlite:///raglite.db \
-    --llm llama-cpp-python/bartowski/Llama-3.2-3B-Instruct-GGUF/*Q4_K_M.gguf@4096 \
+    --llm llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@4096 \
     --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024 \
     chainlit
 ```
