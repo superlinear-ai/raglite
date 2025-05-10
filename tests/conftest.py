@@ -71,7 +71,7 @@ def database(request: pytest.FixtureRequest) -> str:
         pytest.param(
             (
                 "llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192",
-                "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@1024",  # More context degrades performance.
+                "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@512",  # More context degrades performance.
             ),
             id="qwen3_4B-bge_m3",
         ),

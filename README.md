@@ -81,13 +81,26 @@ pip install raglite[ragas]
 
 ### Overview
 
-1. [Configuring RAGLite](#1-configuring-raglite)
-2. [Inserting documents](#2-inserting-documents)
-3. [Retrieval-Augmented Generation (RAG)](#3-retrieval-augmented-generation-rag)
-4. [Computing and using an optimal query adapter](#4-computing-and-using-an-optimal-query-adapter)
-5. [Evaluation of retrieval and generation](#5-evaluation-of-retrieval-and-generation)
-6. [Running a Model Context Protocol (MCP) server](#6-running-a-model-context-protocol-mcp-server)
-7. [Serving a customizable ChatGPT-like frontend](#7-serving-a-customizable-chatgpt-like-frontend)
+- [🥤 RAGLite](#-raglite)
+  - [Features](#features)
+        - [Configurable](#configurable)
+        - [Fast and permissive](#fast-and-permissive)
+        - [Unhobbled](#unhobbled)
+        - [Extensible](#extensible)
+  - [Installing](#installing)
+  - [Using](#using)
+    - [Overview](#overview)
+    - [1. Configuring RAGLite](#1-configuring-raglite)
+    - [2. Inserting documents](#2-inserting-documents)
+    - [3. Retrieval-Augmented Generation (RAG)](#3-retrieval-augmented-generation-rag)
+      - [3.1 Adaptive RAG](#31-adaptive-rag)
+      - [3.2 Programmable RAG](#32-programmable-rag)
+    - [4. Computing and using an optimal query adapter](#4-computing-and-using-an-optimal-query-adapter)
+    - [5. Evaluation of retrieval and generation](#5-evaluation-of-retrieval-and-generation)
+    - [6. Running a Model Context Protocol (MCP) server](#6-running-a-model-context-protocol-mcp-server)
+    - [7. Serving a customizable ChatGPT-like frontend](#7-serving-a-customizable-chatgpt-like-frontend)
+  - [Contributing](#contributing)
+  - [Star History](#star-history)
 
 ### 1. Configuring RAGLite
 
@@ -113,7 +126,7 @@ my_config = RAGLiteConfig(
 my_config = RAGLiteConfig(
     db_url="sqlite:///raglite.db",
     llm="llama-cpp-python/unsloth/Qwen3-8B-GGUF/*Q4_K_M.gguf@8192",
-    embedder="llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024",  # A context size of 1024 tokens is the sweet spot for bge-m3
+    embedder="llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512", # More than 512 tokens degrades bge-m3's performance
 )
 ```
 
@@ -309,7 +322,7 @@ RAGLite comes with an [MCP server](https://modelcontextprotocol.io) implemented 
 raglite \
     --db-url sqlite:///raglite.db \
     --llm llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192 \
-    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024 \
+    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512 \
     mcp install
 ```
 
@@ -345,7 +358,7 @@ You can specify the database URL, LLM, and embedder directly in the Chainlit fro
 raglite \
     --db-url sqlite:///raglite.db \
     --llm llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192 \
-    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024 \
+    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512 \
     chainlit
 ```
 
