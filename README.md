@@ -113,7 +113,7 @@ my_config = RAGLiteConfig(
 my_config = RAGLiteConfig(
     db_url="sqlite:///raglite.db",
     llm="llama-cpp-python/unsloth/Qwen3-8B-GGUF/*Q4_K_M.gguf@8192",
-    embedder="llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024",  # A context size of 1024 tokens is the sweet spot for bge-m3
+    embedder="llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512", # More than 512 tokens degrades bge-m3's performance
 )
 ```
 
@@ -309,7 +309,7 @@ RAGLite comes with an [MCP server](https://modelcontextprotocol.io) implemented 
 raglite \
     --db-url sqlite:///raglite.db \
     --llm llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@4096 \
-    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024 \
+    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512 \
     mcp install
 ```
 
@@ -345,7 +345,7 @@ You can specify the database URL, LLM, and embedder directly in the Chainlit fro
 raglite \
     --db-url sqlite:///raglite.db \
     --llm llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@4096 \
-    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024 \
+    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512 \
     chainlit
 ```
 

@@ -52,7 +52,6 @@ def _create_chunk_records(
         full_chunk_embeddings = embed_strings(
             [chunk_record.content for chunk_record in chunk_records], config=config
         )
-
         # Every chunk record is associated with a list of chunk embedding records. The chunk
         # embedding records each correspond to a linear combination of a sentence embedding and an
         # embedding of the full chunk with Markdown headings.
