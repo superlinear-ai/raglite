@@ -326,12 +326,13 @@ def chatml_function_calling_with_streaming(
 
     # Collect the llama.create_completion keyword arguments so we don't have to repeat these with
     # each completion call
+    default_stop = ["<|im_end|>", "<|endoftext|>"]
     stop = (
-        [stop, "<|im_end|>"]
+        [stop, *default_stop]
         if isinstance(stop, str)
-        else [*stop, "<|im_end|>"]
+        else [*stop, *default_stop]
         if stop
-        else ["<|im_end|>"]
+        else default_stop
     )
     grammar = (  # It is assumed the grammar applies to messages only, not tool calls
         grammar
@@ -398,11 +399,16 @@ def chatml_function_calling_with_streaming(
     )
     initial_gbnf_tool_grammar = (
         (
-            'root ::= "<function_calls>" "\\n" functions | "message:"\n'
+            'root ::= think? ("<function_calls>" "\\n" functions | "message:")\n'
             f"functions ::= {function_names}\n"
+            'think ::= "<think>" [^<]* "</think>" "\\n\\n"\n'
         )
         if tool_choice == "auto"
-        else f'root ::= "<function_calls>" "\\n" functions\nfunctions ::= {function_names}\n'
+        else (
+            f'root ::= think? "<function_calls>" "\\n" functions\n'
+            f"functions ::= {function_names}\n"
+            'think ::= "<think>" [^<]* "</think>" "\\n\\n"\n'
+        )
     )
     completion = cast(
         "llama_types.CreateCompletionResponse",
@@ -412,7 +418,6 @@ def chatml_function_calling_with_streaming(
                 **completion_kwargs,
                 "temperature": 0,
                 "stream": False,
-                "stop": [":"],
                 "max_tokens": None,
                 "grammar": llama_grammar.LlamaGrammar.from_string(
                     initial_gbnf_tool_grammar, verbose=llama.verbose
@@ -421,7 +426,17 @@ def chatml_function_calling_with_streaming(
         ),
     )
     text = completion["choices"][0]["text"]
-    tool_name = None if text.startswith("message") else text.split("\n")[-1][len("functions.") :]
+    think_text = text.split("</think>\n\n", maxsplit=1)
+    if len(think_text) == 2:  # noqa: PLR2004
+        prompt += think_text[0] + "</think>\n\n"
+        text = think_text[1].strip()
+    else:
+        text = think_text[0].strip()
+    tool_name = (
+        None
+        if text.startswith("message")
+        else text.split("\n")[-1][len("functions.") :].rstrip(":")
+    )
 
     # Case 2 step 2A: Respond with a message
     if tool_name is None:
@@ -439,7 +454,8 @@ def chatml_function_calling_with_streaming(
 
     # Case 2 step 2B: One or more function calls
     follow_up_gbnf_tool_grammar = (
-        f'root ::= functions | "</function_calls>" | "<|im_end|>"\nfunctions ::= {function_names}\n'
+        'root ::= functions | "</function_calls>" | "<|im_end|>" | "<|endoftext|>"\n'
+        f"functions ::= {function_names}\n"
     )
     prompt += "<function_calls>\n"
     if stream:
