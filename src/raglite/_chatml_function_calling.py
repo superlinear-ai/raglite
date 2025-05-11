@@ -426,12 +426,10 @@ def chatml_function_calling_with_streaming(
         ),
     )
     text = completion["choices"][0]["text"]
-    think_text = text.split("</think>\n\n", maxsplit=1)
-    if len(think_text) == 2:  # noqa: PLR2004
-        prompt += think_text[0] + "</think>\n\n"
-        text = think_text[1].strip()
-    else:
-        text = think_text[0].strip()
+    if "</think>\n\n" in text:
+        think, text = text.split("</think>\n\n", maxsplit=1)
+        prompt += think + "</think>\n\n"
+    text = text.strip()
     tool_name = (
         None
         if text.startswith("message")
