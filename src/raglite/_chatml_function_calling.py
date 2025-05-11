@@ -6,6 +6,9 @@ Changes:
     b. ✨ Add function descriptions to the system message so that tool use is better informed (fixes https://github.com/abetlen/llama-cpp-python/issues/1869).
     c. ✨ Replace `print` statements relating to JSON grammars with `RuntimeWarning` warnings.
     d. ✅ Add tests with fairly broad coverage of the different scenarios.
+    e. 🐛 Fix a 'content' KeyError in the prompt template.
+    f. ✨ Add support for Qwen3's <|endoftext|> separator.
+    g. ✨ Add support for Qwen3's <think>...</think> mode to (auto and fixed) function calling.
 4. Case "Tool choice by user":
     a. ✨ Add support for more than one function call by making this a special case of "Automatic tool choice" with a single tool (subsumes https://github.com/abetlen/llama-cpp-python/pull/1503).
 5. Case "Automatic tool choice -> respond with a message":
