@@ -185,13 +185,18 @@ class Chunk(SQLModel, table=True):
     @property
     def front_matter(self) -> str:
         """Return this chunk's front matter."""
-        filename = self.metadata_.get("filename")
-        url = self.metadata_.get("url")
-        if filename and url:
-            return f"<!-- [{filename}]({url}) -->"
-        elif filename or url:  # noqa: RET505
-            return f"<!-- {filename or url} -->"
-        return ""
+        # Compose the chunk metadata from the filename and URL.
+        metadata = "\n".join(
+            f"{key}: {self.metadata_.get(key)}"
+            for key in ("filename", "url")
+            if self.metadata_.get(key)
+        )
+        if not metadata:
+            return ""
+        # Return the chunk metadata in the YAML front matter format [1].
+        # [1] https://jekyllrb.com/docs/front-matter/
+        front_matter = f"---\n{metadata}\n---"
+        return front_matter
 
     @property
     def content(self) -> str:
