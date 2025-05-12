@@ -112,16 +112,16 @@ class Chunk(SQLModel, table=True):
 
     @staticmethod
     def from_body(
-        document_id: DocumentId, index: int, body: str, headings: str = "", **kwargs: Any
+        document: Document, index: int, body: str, headings: str = "", **kwargs: Any
     ) -> "Chunk":
         """Create a chunk from Markdown."""
         return Chunk(
-            id=hash_bytes(f"{document_id}-{index}".encode()),
-            document_id=document_id,
+            id=hash_bytes(f"{document.id}-{index}".encode()),
+            document_id=document.id,
             index=index,
             headings=Chunk.truncate_headings(headings, body),
             body=body,
-            metadata_=kwargs,
+            metadata_={"filename": document.filename, "url": document.url, **kwargs},
         )
 
     @staticmethod
@@ -183,9 +183,25 @@ class Chunk(SQLModel, table=True):
         )
 
     @property
+    def front_matter(self) -> str:
+        """Return this chunk's front matter."""
+        # Compose the chunk metadata from the filename and URL.
+        metadata = "\n".join(
+            f"{key}: {self.metadata_.get(key)}"
+            for key in ("filename", "url")
+            if self.metadata_.get(key)
+        )
+        if not metadata:
+            return ""
+        # Return the chunk metadata in the YAML front matter format [1].
+        # [1] https://jekyllrb.com/docs/front-matter/
+        front_matter = f"---\n{metadata}\n---"
+        return front_matter
+
+    @property
     def content(self) -> str:
-        """Return this chunk's contextual heading and body."""
-        return f"{self.headings.strip()}\n\n{self.body.strip()}".strip()
+        """Return this chunk's front matter, contextual heading, and body."""
+        return f"{self.front_matter}\n\n{self.headings.strip()}\n\n{self.body.strip()}".strip()
 
     def __str__(self) -> str:
         """Return this chunk's content."""
@@ -252,10 +268,11 @@ class ChunkSpan:
 
     @property
     def content(self) -> str:
-        """Return this chunk span's contextual heading and chunk bodies."""
+        """Return this chunk span's front matter, contextual heading, and chunk bodies."""
+        front_matter = self.chunks[0].front_matter if self.chunks else ""
         heading = self.chunks[0].headings.strip() if self.chunks else ""
         bodies = "".join(chunk.body for chunk in self.chunks)
-        return f"{heading}\n\n{bodies}".strip()
+        return f"{front_matter}\n\n{heading}\n\n{bodies}".strip()
 
     def __str__(self) -> str:
         """Return this chunk span's content."""

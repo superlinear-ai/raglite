@@ -14,11 +14,11 @@ from raglite._embed import embed_sentences, embed_strings, sentence_embedding_ty
 from raglite._markdown import document_to_markdown
 from raglite._split_chunks import split_chunks
 from raglite._split_sentences import split_sentences
-from raglite._typing import DocumentId, FloatMatrix
+from raglite._typing import FloatMatrix
 
 
 def _create_chunk_records(
-    document_id: DocumentId,
+    document: Document,
     chunks: list[str],
     chunk_embeddings: list[FloatMatrix],
     metadata: dict[str, str],
@@ -30,7 +30,7 @@ def _create_chunk_records(
     for i, chunk in enumerate(chunks):
         # Create and append the chunk record.
         record = Chunk.from_body(
-            document_id=document_id, index=i, body=chunk, headings=headings, **metadata
+            document=document, index=i, body=chunk, headings=headings, **metadata
         )
         chunk_records.append(record)
         # Update the Markdown headings with those of this chunk.
@@ -147,7 +147,7 @@ def insert_document(  # noqa: PLR0915
             session.add(document_record)
             for chunk_record, chunk_embedding_record_list in zip(
                 *_create_chunk_records(
-                    document_record.id, chunks, chunk_embeddings, metadata or {}, config
+                    document_record, chunks, chunk_embeddings, metadata or {}, config
                 ),
                 strict=True,
             ):
