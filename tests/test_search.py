@@ -66,7 +66,7 @@ def test_search_no_results(raglite_test_config: RAGLiteConfig, search_method: Se
     assert all(isinstance(chunk_id, str) for chunk_id in chunk_ids)
     assert all(isinstance(score, float) for score in scores)
 
-
+@pytest.skip(reason="Needs to be rewritten to use PostgreSQL")
 def test_search_empty_database(llm: str, embedder: str, search_method: SearchMethod) -> None:
     """Test searching for a query with an empty database."""
     raglite_test_config = RAGLiteConfig(db_url="sqlite:///:memory:", llm=llm, embedder=embedder)

@@ -27,7 +27,7 @@ class RAGLiteConfig:
     """RAGLite config."""
 
     # Database config.
-    db_url: str | URL = f"sqlite:///{(cache_path / 'raglite.db').as_posix()}"
+    db_url: str | URL = "postgresql:///raglite"
     # LLM config used for generation.
     llm: str = field(
         default_factory=lambda: (

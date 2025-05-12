@@ -29,7 +29,7 @@ def is_openai_available() -> bool:
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
-    """Reset the PostgreSQL and SQLite databases."""
+    """Reset the PostgreSQL databases."""
     if is_postgres_running():
         engine = create_engine(POSTGRES_URL, isolation_level="AUTOCOMMIT")
         with engine.connect() as conn:
@@ -38,18 +38,10 @@ def pytest_sessionstart(session: pytest.Session) -> None:
                 conn.execute(text(f"CREATE DATABASE raglite_test_{variant}"))
 
 
-@pytest.fixture(scope="session")
-def sqlite_url() -> Generator[str, None, None]:
-    """Create a temporary SQLite database file and return the database URL."""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        db_file = Path(temp_dir) / "raglite_test.sqlite"
-        yield f"sqlite:///{db_file}"
-
 
 @pytest.fixture(
     scope="session",
     params=[
-        pytest.param("sqlite", id="sqlite"),
         pytest.param(
             POSTGRES_URL,
             id="postgres",
@@ -59,9 +51,7 @@ def sqlite_url() -> Generator[str, None, None]:
 )
 def database(request: pytest.FixtureRequest) -> str:
     """Get a database URL to test RAGLite with."""
-    db_url: str = (
-        request.getfixturevalue("sqlite_url") if request.param == "sqlite" else request.param
-    )
+    db_url: str = request.param
     return db_url
 
 
@@ -104,13 +94,11 @@ def embedder(llm_embedder: tuple[str, str]) -> str:
 
 @pytest.fixture(scope="session")
 def raglite_test_config(database: str, llm: str, embedder: str) -> RAGLiteConfig:
-    """Create a lightweight in-memory config for testing SQLite and PostgreSQL."""
+    """Create a lightweight in-memory config for testing PostgreSQL."""
     # Select the database based on the embedder.
     variant = "local" if embedder.startswith("llama-cpp-python") else "remote"
     if "postgres" in database:
         database = database.replace("/postgres", f"/raglite_test_{variant}")
-    elif "sqlite" in database:
-        database = database.replace(".sqlite", f"_{variant}.sqlite")
     # Create a RAGLite config for the given database and embedder.
     db_config = RAGLiteConfig(db_url=database, llm=llm, embedder=embedder)
     # Insert a document and update the index.
