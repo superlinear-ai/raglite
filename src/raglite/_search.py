@@ -51,7 +51,7 @@ def vector_search(
         # Check that the selected metric is supported by pgvector.
         metrics = {"cosine": "<=>", "dot": "<#>", "euclidean": "<->", "l1": "<+>", "l2": "<->"}
         if config.vector_search_index_metric not in metrics:
-            error_message = f"Unsupported metric {config.vector_search_index_metric}."
+            error_message = f"Unsupported metric: {config.vector_search_index_metric}"
             raise ValueError(error_message)
         # With pgvector, we can obtain the nearest neighbours and similarities with a single query.
         engine = create_database_engine(config)
@@ -68,26 +68,10 @@ def vector_search(
             results = list(results)  # type: ignore[assignment]
             chunk_ids = np.asarray([result[0] for result in results])
             similarity = 1.0 - np.asarray([result[1] for result in results])
-    elif db_backend == "sqlite":
-        # Load the NNDescent index.
-        index = index_metadata.get("index")
-        ids = np.asarray(index_metadata.get("chunk_ids", []))
-        cumsum = np.cumsum(np.asarray(index_metadata.get("chunk_sizes", [])))
-        # Find the neighbouring multi-vector indices.
-        from pynndescent import NNDescent
-
-        if isinstance(index, NNDescent) and len(ids) and len(cumsum):
-            # Query the index.
-            multi_vector_indices, distance = index.query(
-                query_embedding[np.newaxis, :], k=oversample * num_results
-            )
-            similarity = 1 - distance[0, :]
-            # Transform the multi-vector indices into chunk indices, and then to chunk ids.
-            chunk_indices = np.searchsorted(cumsum, multi_vector_indices[0, :], side="right") + 1
-            chunk_ids = np.asarray([ids[chunk_index - 1] for chunk_index in chunk_indices])
-        else:
-            # Empty result set if there is no index or if no chunks are indexed.
-            chunk_ids, similarity = np.array([], dtype=np.intp), np.array([])
+    # Add new backends here.
+    else:
+        error_message = f"Unsupported database backend for vector search: {db_backend}"
+        raise ValueError(error_message)
     # Exit early if there are no search results.
     if not len(chunk_ids):
         return [], []
@@ -131,22 +115,10 @@ def keyword_search(
                 LIMIT :limit;
                 """)
             results = session.execute(statement, params={"query": tsv_query, "limit": num_results})
-        elif db_backend == "sqlite":
-            # Convert the query to an FTS5 query [1].
-            # [1] https://www.sqlite.org/fts5.html#full_text_query_syntax
-            query_escaped = re.sub(f"[{re.escape(string.punctuation)}]", " ", query)
-            fts5_query = " OR ".join(query_escaped.split())
-            # Perform keyword search with FTS5. In FTS5, BM25 scores are negative [1], so we
-            # negate them to make them positive.
-            # [1] https://www.sqlite.org/fts5.html#the_bm25_function
-            statement = text("""
-                SELECT chunk.id as chunk_id, -bm25(keyword_search_chunk_index) as score
-                FROM chunk JOIN keyword_search_chunk_index ON chunk.rowid = keyword_search_chunk_index.rowid
-                WHERE keyword_search_chunk_index MATCH :match
-                ORDER BY score DESC
-                LIMIT :limit;
-                """)
-            results = session.execute(statement, params={"match": fts5_query, "limit": num_results})
+        # Add new backends here.
+        else:
+            error_message = f"Unsupported database backend for keyword search: {db_backend}"
+            raise ValueError(error_message)
         # Unpack the results.
         results = list(results)  # type: ignore[assignment]
         chunk_ids = [result.chunk_id for result in results]

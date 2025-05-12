@@ -18,7 +18,7 @@ class RAGLiteCLIConfig(BaseSettings):
     )
 
     mcp_server_name: str = "RAGLite"
-    db_url: str = str(RAGLiteConfig().db_url)
+    db_url: str = "postgresql:///raglite"
     llm: str = RAGLiteConfig().llm
     embedder: str = RAGLiteConfig().embedder
 
