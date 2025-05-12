@@ -70,7 +70,7 @@ def database(request: pytest.FixtureRequest) -> str:
     params=[
         pytest.param(
             (
-                "llama-cpp-python/bartowski/Llama-3.2-3B-Instruct-GGUF/*Q4_K_M.gguf@4096",
+                "llama-cpp-python/bartowski/Llama-3.2-3B-Instruct-GGUF/*Q4_K_M.gguf@8192",
                 "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@1024",  # More context degrades performance.
             ),
             id="llama_3.2_3B-bge_m3",
