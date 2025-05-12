@@ -6,6 +6,9 @@ Changes:
     b. ✨ Add function descriptions to the system message so that tool use is better informed (fixes https://github.com/abetlen/llama-cpp-python/issues/1869).
     c. ✨ Replace `print` statements relating to JSON grammars with `RuntimeWarning` warnings.
     d. ✅ Add tests with fairly broad coverage of the different scenarios.
+    e. 🐛 Fix a 'content' KeyError in the prompt template.
+    f. ✨ Add support for Qwen3's <|endoftext|> separator.
+    g. ✨ Add support for Qwen3's <think>...</think> mode to (auto and fixed) function calling.
 4. Case "Tool choice by user":
     a. ✨ Add support for more than one function call by making this a special case of "Automatic tool choice" with a single tool (subsumes https://github.com/abetlen/llama-cpp-python/pull/1503).
 5. Case "Automatic tool choice -> respond with a message":
@@ -326,12 +329,13 @@ def chatml_function_calling_with_streaming(
 
     # Collect the llama.create_completion keyword arguments so we don't have to repeat these with
     # each completion call
+    default_stop = ["<|im_end|>", "<|endoftext|>"]
     stop = (
-        [stop, "<|im_end|>"]
+        [stop, *default_stop]
         if isinstance(stop, str)
-        else [*stop, "<|im_end|>"]
+        else [*stop, *default_stop]
         if stop
-        else ["<|im_end|>"]
+        else default_stop
     )
     grammar = (  # It is assumed the grammar applies to messages only, not tool calls
         grammar
@@ -398,11 +402,16 @@ def chatml_function_calling_with_streaming(
     )
     initial_gbnf_tool_grammar = (
         (
-            'root ::= "<function_calls>" "\\n" functions | "message:"\n'
+            'root ::= think? ("<function_calls>" "\\n" functions | "message:")\n'
             f"functions ::= {function_names}\n"
+            'think ::= "<think>" [^<]* "</think>" "\\n\\n"\n'
         )
         if tool_choice == "auto"
-        else f'root ::= "<function_calls>" "\\n" functions\nfunctions ::= {function_names}\n'
+        else (
+            f'root ::= think? "<function_calls>" "\\n" functions\n'
+            f"functions ::= {function_names}\n"
+            'think ::= "<think>" [^<]* "</think>" "\\n\\n"\n'
+        )
     )
     completion = cast(
         "llama_types.CreateCompletionResponse",
@@ -412,7 +421,6 @@ def chatml_function_calling_with_streaming(
                 **completion_kwargs,
                 "temperature": 0,
                 "stream": False,
-                "stop": [":"],
                 "max_tokens": None,
                 "grammar": llama_grammar.LlamaGrammar.from_string(
                     initial_gbnf_tool_grammar, verbose=llama.verbose
@@ -421,7 +429,15 @@ def chatml_function_calling_with_streaming(
         ),
     )
     text = completion["choices"][0]["text"]
-    tool_name = None if text.startswith("message") else text.split("\n")[-1][len("functions.") :]
+    if "</think>\n\n" in text:
+        think, text = text.split("</think>\n\n", maxsplit=1)
+        prompt += think + "</think>\n\n"
+    text = text.strip()
+    tool_name = (
+        None
+        if text.startswith("message")
+        else text.split("\n")[-1][len("functions.") :].rstrip(":")
+    )
 
     # Case 2 step 2A: Respond with a message
     if tool_name is None:
@@ -439,7 +455,8 @@ def chatml_function_calling_with_streaming(
 
     # Case 2 step 2B: One or more function calls
     follow_up_gbnf_tool_grammar = (
-        f'root ::= functions | "</function_calls>" | "<|im_end|>"\nfunctions ::= {function_names}\n'
+        'root ::= functions | "</function_calls>" | "<|im_end|>" | "<|endoftext|>"\n'
+        f"functions ::= {function_names}\n"
     )
     prompt += "<function_calls>\n"
     if stream:

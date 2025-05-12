@@ -25,7 +25,7 @@ dependencies = [
   "scipy (>=1.11.2,!=1.15.0.*,!=1.15.1,!=1.15.2)",
   "wtpsplit-lite (>=0.1.0)",
   # Large Language Models:
-  "huggingface-hub (>=0.22.0)",
+  "huggingface-hub[hf_xet] (>=0.30.0)",
   "litellm (>=1.60.2)",
   "pydantic (>=2.7.0)",
   # Approximate Nearest Neighbors:
@@ -82,7 +82,7 @@ dev = [
 # Frontend:
 chainlit = ["chainlit (>=2.0.0)"]
 # Large Language Models:
-llama-cpp-python = ["llama-cpp-python (>=0.3.4)"]
+llama-cpp-python = ["llama-cpp-python (>=0.3.9)"]
 # Markdown conversion:
 pandoc = ["pypandoc-binary (>=1.13)"]
 # Evaluation:

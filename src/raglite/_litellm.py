@@ -55,7 +55,7 @@ class LlamaCppPythonLLM(CustomLLM):
     from litellm import completion
 
     response = completion(
-        model="llama-cpp-python/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/*Q4_K_M.gguf@4092",
+        model="llama-cpp-python/unsloth/Qwen3-8B-GGUF/*Q4_K_M.gguf@8192",
         messages=[{"role": "user", "content": "Hello world!"}],
         # stream=True
     )
@@ -165,6 +165,17 @@ class LlamaCppPythonLLM(CustomLLM):
             }
         return llama_cpp_python_params
 
+    def _add_recommended_model_params(
+        self, model: str, llama_cpp_python_params: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Add recommended model settings."""
+        recommended_settings = {}
+        if "qwen3" in model.lower():
+            # Add the official recommended 'thinking mode' settings [1].
+            # [1] https://docs.unsloth.ai/basics/qwen3-how-to-run-and-fine-tune#official-recommended-settings
+            recommended_settings = {"temperature": 0.6, "min_p": 0.0, "top_p": 0.95, "top_k": 20}
+        return {**recommended_settings, **llama_cpp_python_params}
+
     def completion(  # noqa: PLR0913
         self,
         model: str,
@@ -186,6 +197,7 @@ class LlamaCppPythonLLM(CustomLLM):
     ) -> ModelResponse:
         llm = self.llm(model)
         llama_cpp_python_params = self._translate_openai_params(optional_params)
+        llama_cpp_python_params = self._add_recommended_model_params(model, llama_cpp_python_params)
         response = cast(
             "llama_types.CreateChatCompletionResponse",
             llm.create_chat_completion(messages=messages, **llama_cpp_python_params),
@@ -219,6 +231,7 @@ class LlamaCppPythonLLM(CustomLLM):
     ) -> Iterator[GenericStreamingChunk]:
         llm = self.llm(model)
         llama_cpp_python_params = self._translate_openai_params(optional_params)
+        llama_cpp_python_params = self._add_recommended_model_params(model, llama_cpp_python_params)
         stream = cast(
             "Iterator[llama_types.CreateChatCompletionStreamResponse]",
             llm.create_chat_completion(messages=messages, **llama_cpp_python_params, stream=True),
