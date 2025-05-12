@@ -47,7 +47,7 @@ class RAGLiteConfig:
     )
     embedder_normalize: bool = True
     # Chunk config used to partition documents into chunks.
-    chunk_max_size: int = 1440  # Max number of characters per chunk.
+    chunk_max_size: int = 2048  # Max number of characters per chunk.
     # Vector search config.
     vector_search_index_metric: Literal["cosine", "dot", "l1", "l2"] = "cosine"
     vector_search_query_adapter: bool = True  # Only supported for "cosine" and "dot" metrics.

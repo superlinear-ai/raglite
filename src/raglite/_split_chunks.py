@@ -12,7 +12,7 @@ from raglite._typing import FloatMatrix
 def split_chunks(  # noqa: C901
     chunklets: list[str],
     chunklet_embeddings: FloatMatrix,
-    max_size: int = 1440,
+    max_size: int = 2048,
 ) -> tuple[list[str], list[FloatMatrix]]:
     """Split chunklets into optimal semantic chunks with corresponding chunklet embeddings.
 
