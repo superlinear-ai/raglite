@@ -278,10 +278,10 @@ def chatml_function_calling_with_streaming(
         "\n</message>"
         "\n\nUse the following format to first make one or more function calls:"
         "\n\n<function_calls>"
-        "\nfunctions.<function_name>:"
-        '\n{"arg1": "value1", "arg2": "value2"}'
-        "\nfunctions.<function_name>:"
-        '\n{"arg1": "value1", "arg2": "value2"}'
+        "\nfunctions.function_name_1:"
+        '\n{ "arg1": "value1", "arg2": "value2", ... }'
+        "\nfunctions.function_name_2:"
+        '\n{ "arg1": "value1", "arg2": "value2", ... }'
         "\n</function_calls>"
         "{% endif %}"
         "<|im_end|>\n"
