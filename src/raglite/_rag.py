@@ -105,7 +105,7 @@ def _get_tools(
                 "type": "function",
                 "function": {
                     "name": "search_knowledge_base",
-                    "description": "Search the knowledge base. IMPORTANT: You MAY NOT use this function if the query can be answered with common knowledge or straightforward reasoning.",
+                    "description": "Search the knowledge base. IMPORTANT: You should only use this function if it would add significant value beyond using common knowledge or straightforward reasoning.",
                     "parameters": {
                         "type": "object",
                         "properties": {

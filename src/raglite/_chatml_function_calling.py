@@ -428,10 +428,11 @@ def chatml_function_calling_with_streaming(
             },
         ),
     )
-    text = completion["choices"][0]["text"]
+    think, text = "", completion["choices"][0]["text"]
     if "</think>\n\n" in text:
         think, text = text.split("</think>\n\n", maxsplit=1)
-        prompt += think + "</think>\n\n"
+        think += "</think>\n\n"
+        prompt += think
     text = text.strip()
     tool_name = (
         None
@@ -444,6 +445,7 @@ def chatml_function_calling_with_streaming(
         prompt = template_renderer.render(
             messages=messages, tools=[], tool_calls=None, add_generation_prompt=True
         )
+        prompt += think
         return llama_chat_format._convert_completion_to_chat(  # noqa: SLF001
             llama.create_completion(
                 prompt=prompt,
