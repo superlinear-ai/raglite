@@ -33,7 +33,7 @@ class RAGLiteConfig:
         default_factory=lambda: (
             "llama-cpp-python/unsloth/Qwen3-8B-GGUF/*Q4_K_M.gguf@8192"
             if llama_supports_gpu_offload()
-            else "llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@4096"
+            else "llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192"
         )
     )
     llm_max_tries: int = 4
