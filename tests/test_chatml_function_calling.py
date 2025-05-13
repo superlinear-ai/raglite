@@ -59,7 +59,7 @@ def is_accelerator_available() -> bool:
 @pytest.mark.parametrize(
     "llm_repo_id",
     [
-        pytest.param("bartowski/Llama-3.2-3B-Instruct-GGUF", id="llama_3.2_3B"),
+        pytest.param("unsloth/Qwen3-4B-GGUF", id="qwen3_4B"),
         pytest.param(
             "unsloth/Qwen3-8B-GGUF",
             id="qwen3_8B",
