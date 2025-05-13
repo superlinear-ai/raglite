@@ -105,16 +105,18 @@ def _get_tools(
                 "type": "function",
                 "function": {
                     "name": "search_knowledge_base",
-                    "description": "Search the knowledge base. IMPORTANT: You should only use this function if it would add significant value beyond using common knowledge or straightforward reasoning.",
+                    "description": (
+                        "Consult the knowledge base for questions beyond common knowledge.\n"
+                        "For multi-faceted questions, call this function once for each facet."
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "query": {
                                 "type": "string",
                                 "description": (
-                                    "The `query` string to search the knowledge base with.\n"
                                     "The `query` string MUST be a precise single-faceted question in the user's language.\n"
-                                    "The `query` string MUST resolve all pronouns to explicit nouns from the conversation history."
+                                    "The `query` string MUST resolve all pronouns to explicit nouns."
                                 ),
                             },
                         },
