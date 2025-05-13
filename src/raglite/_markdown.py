@@ -5,7 +5,6 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-import mdformat
 import numpy as np
 from pdftext.extraction import dictionary_output
 from sklearn.cluster import KMeans
