@@ -29,7 +29,7 @@ def vector_search(
     query: str | FloatMatrix,
     *,
     num_results: int = 3,
-    oversample: int = 8,
+    oversample: int = 4,
     config: RAGLiteConfig | None = None,
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks using ANN vector search."""
@@ -48,6 +48,7 @@ def vector_search(
         query_embedding = (Q @ query_embedding).astype(query_embedding.dtype)
     # Search for the multi-vector chunk embeddings that are most similar to the query embedding.
     p = config.vector_search_similarity_norm
+    num_hits = oversample * max(num_results, 10)
     if not (np.isfinite(p) and p >= 1):
         error_message = "The value of config.vector_search_similarity_norm must be in [1, ∞)."
         raise ValueError(error_message)
@@ -62,7 +63,7 @@ def vector_search(
                 select(ChunkEmbedding.chunk_id, sim)
                 .where(sim > 0)
                 .order_by(dist)
-                .limit(oversample * num_results)
+                .limit(num_hits)
                 .subquery()
             )
             sim_norm = func.pow(func.sum(func.pow(func.abs(top_vectors.c.sim), p)), 1.0 / p)
@@ -86,7 +87,7 @@ def vector_search(
         if isinstance(index, NNDescent) and len(ids) and len(cumsum):
             # Query the index.
             multivector_indices, dist = index.query(
-                query_embedding[np.newaxis, :], k=min(oversample * num_results, cumsum[-1])
+                query_embedding[np.newaxis, :], k=min(num_hits, cumsum[-1])
             )
             # Transform the multi-vector indices into chunk indices.
             chunk_indices = np.searchsorted(cumsum, multivector_indices[0, :], side="right")
