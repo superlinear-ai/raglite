@@ -31,14 +31,14 @@ def markdown_sentence_boundaries(doc: str) -> FloatVector:
         tokens = md.parse(doc)
         headings = []
         lines = doc.splitlines(keepends=True)
-        char_idx = [0]
+        line_start_char = [0]
         for line in lines:
-            char_idx.append(char_idx[-1] + len(line))
+            line_start_char.append(line_start_char[-1] + len(line))
         for token in tokens:
             if token.type == "heading_open":
                 start_line, end_line = token.map  # type: ignore[misc]
-                heading_start = char_idx[start_line]
-                heading_end = char_idx[end_line]
+                heading_start = line_start_char[start_line]
+                heading_end = line_start_char[end_line]
                 headings.append((heading_start, heading_end + 1))
         return headings
 
@@ -111,9 +111,9 @@ def split_sentences(
     doc
         The document to split into sentences.
     min_len
-        The minimum length of a sentence.
+        The minimum number of characters in a sentence.
     max_len
-        The maximum length of a sentence, with no maximum length by default.
+        The maximum number of characters in a sentence, with no maximum by default.
     boundary_probas
         Any known sentence boundary probabilities to override the model's predicted sentence
         boundary probabilities. If an element of the probability vector with index k is 1 (0), then

@@ -33,7 +33,7 @@ class RAGLiteConfig:
         default_factory=lambda: (
             "llama-cpp-python/unsloth/Qwen3-8B-GGUF/*Q4_K_M.gguf@8192"
             if llama_supports_gpu_offload()
-            else "llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@4096"
+            else "llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192"
         )
     )
     llm_max_tries: int = 4
@@ -46,9 +46,8 @@ class RAGLiteConfig:
         )
     )
     embedder_normalize: bool = True
-    embedder_sentence_window_size: int = 3
     # Chunk config used to partition documents into chunks.
-    chunk_max_size: int = 1440  # Max number of characters per chunk.
+    chunk_max_size: int = 2048  # Max number of characters per chunk.
     # Vector search config.
     vector_search_index_metric: Literal["cosine", "dot", "l1", "l2"] = "cosine"
     vector_search_query_adapter: bool = True  # Only supported for "cosine" and "dot" metrics.
@@ -61,8 +60,3 @@ class RAGLiteConfig:
         ),
         compare=False,  # Exclude the reranker from comparison to avoid lru_cache misses.
     )
-
-    def __post_init__(self) -> None:
-        # Late chunking with llama-cpp-python does not apply sentence windowing.
-        if self.embedder.startswith("llama-cpp-python"):
-            object.__setattr__(self, "embedder_sentence_window_size", 1)

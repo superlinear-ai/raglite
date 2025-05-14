@@ -271,16 +271,17 @@ def chatml_function_calling_with_streaming(
         "\nfunctions.{{ tool.function.name }}:\n"
         "{{ tool.function.parameters | tojson }}"
         "\n{% endfor %}"
-        "\nYou must respond to user messages with either a single message or with one or more function calls."
-        "\n\nTo respond with a message use the following format:"
-        "\n\nmessage:"
-        "\n<message>"
-        "\n\nTo respond with one or more function calls use the following format:"
+        "\nYou must decide whether to respond to the user directly, or to first make one or more function calls before responding."
+        "\nUse the following format to respond directly:"
+        "\n\n<message>"
+        "\n..."
+        "\n</message>"
+        "\n\nUse the following format to first make one or more function calls:"
         "\n\n<function_calls>"
-        "\nfunctions.<function_name>:"
-        '\n{ "arg1": "value1", "arg2": "value2" }'
-        "\nfunctions.<function_name>:"
-        '\n{ "arg1": "value1", "arg2": "value2" }'
+        "\nfunctions.function_name_1:"
+        '\n{ "arg1": "value1", "arg2": "value2", ... }'
+        "\nfunctions.function_name_2:"
+        '\n{ "arg1": "value1", "arg2": "value2", ... }'
         "\n</function_calls>"
         "{% endif %}"
         "<|im_end|>\n"
@@ -295,17 +296,22 @@ def chatml_function_calling_with_streaming(
         ## Regular message
         "{% if 'content' in message and message.content %}"
         "{% if tool_calls %}"
-        "message:\n"
+        "<message>\n"
         "{% endif %}"
         "{{ message.content }}"
+        "{% if tool_calls %}"
+        "\n</message>"
+        "{% endif %}"
         "<|im_end|>\n"
         "{% endif %}"
         ## Function calls
         "{% if 'tool_calls' in message %}"
+        "<function_calls>\n"
         "{% for tool_call in message.tool_calls %}"
         "functions.{{ tool_call.function.name }}:\n"
         "{{ tool_call.function.arguments }}"
         "{% endfor %}"
+        "\n<function_calls>"
         "<|im_end|>\n"
         "{% endif %}"
         "{% endif %}"
@@ -402,7 +408,7 @@ def chatml_function_calling_with_streaming(
     )
     initial_gbnf_tool_grammar = (
         (
-            'root ::= think? ("<function_calls>" "\\n" functions | "message:")\n'
+            'root ::= think? ("<function_calls>" "\\n" functions | "<message>")\n'
             f"functions ::= {function_names}\n"
             'think ::= "<think>" [^<]* "</think>" "\\n\\n"\n'
         )
@@ -428,14 +434,15 @@ def chatml_function_calling_with_streaming(
             },
         ),
     )
-    text = completion["choices"][0]["text"]
+    think, text = "", completion["choices"][0]["text"]
     if "</think>\n\n" in text:
         think, text = text.split("</think>\n\n", maxsplit=1)
-        prompt += think + "</think>\n\n"
+        think += "</think>\n\n"
+        prompt += think
     text = text.strip()
     tool_name = (
         None
-        if text.startswith("message")
+        if text.startswith("<message>")
         else text.split("\n")[-1][len("functions.") :].rstrip(":")
     )
 
@@ -444,6 +451,7 @@ def chatml_function_calling_with_streaming(
         prompt = template_renderer.render(
             messages=messages, tools=[], tool_calls=None, add_generation_prompt=True
         )
+        prompt += think
         return llama_chat_format._convert_completion_to_chat(  # noqa: SLF001
             llama.create_completion(
                 prompt=prompt,

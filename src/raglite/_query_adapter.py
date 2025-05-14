@@ -7,7 +7,7 @@ from tqdm.auto import tqdm
 
 from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, ChunkEmbedding, Eval, IndexMetadata, create_database_engine
-from raglite._embed import embed_sentences
+from raglite._embed import embed_strings
 from raglite._search import vector_search
 
 
@@ -88,7 +88,7 @@ def update_query_adapter(  # noqa: PLR0915, C901
             evals, desc="Extracting triplets from evals", unit="eval", dynamic_ncols=True
         ):
             # Embed the question.
-            question_embedding = embed_sentences([eval_.question], config=config)
+            question_embedding = embed_strings([eval_.question], config=config)
             # Retrieve chunks that would be used to answer the question.
             chunk_ids, _ = vector_search(
                 question_embedding, num_results=optimize_top_k, config=config_no_query_adapter

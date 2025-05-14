@@ -10,8 +10,9 @@ from tqdm.auto import tqdm
 
 from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, ChunkEmbedding, Document, IndexMetadata, create_database_engine
-from raglite._embed import embed_sentences, embed_strings, sentence_embedding_type
+from raglite._embed import embed_strings, embed_strings_without_late_chunking, embedding_type
 from raglite._markdown import document_to_markdown
+from raglite._split_chunklets import split_chunklets
 from raglite._split_chunks import split_chunks
 from raglite._split_sentences import split_sentences
 from raglite._typing import FloatMatrix
@@ -37,24 +38,23 @@ def _create_chunk_records(
         headings = record.extract_headings()
     # Create the chunk embedding records.
     chunk_embedding_records = []
-    if sentence_embedding_type(config=config) == "late_chunking":
+    if embedding_type(config=config) == "late_chunking":
         # Every chunk record is associated with a list of chunk embedding records, one for each of
-        # the sentences in the chunk.
+        # the chunklets in the chunk.
         for chunk_record, chunk_embedding in zip(chunk_records, chunk_embeddings, strict=True):
             chunk_embedding_records.append(
                 [
-                    ChunkEmbedding(chunk_id=chunk_record.id, embedding=sentence_embedding)
-                    for sentence_embedding in chunk_embedding
+                    ChunkEmbedding(chunk_id=chunk_record.id, embedding=chunklet_embedding)
+                    for chunklet_embedding in chunk_embedding
                 ]
             )
     else:
         # Embed the full chunks, including the current Markdown headings.
-        full_chunk_embeddings = embed_strings(
+        full_chunk_embeddings = embed_strings_without_late_chunking(
             [chunk_record.content for chunk_record in chunk_records], config=config
         )
-
         # Every chunk record is associated with a list of chunk embedding records. The chunk
-        # embedding records each correspond to a linear combination of a sentence embedding and an
+        # embedding records each correspond to a linear combination of a chunklet embedding and an
         # embedding of the full chunk with Markdown headings.
         α = 0.382  # Golden ratio.  # noqa: PLC2401
         for chunk_record, chunk_embedding, full_chunk_embedding in zip(
@@ -65,9 +65,9 @@ def _create_chunk_records(
                     [
                         ChunkEmbedding(
                             chunk_id=chunk_record.id,
-                            embedding=α * sentence_embedding + (1 - α) * full_chunk_embedding,
+                            embedding=α * chunklet_embedding + (1 - α) * full_chunk_embedding,
                         )
-                        for sentence_embedding in chunk_embedding
+                        for chunklet_embedding in chunk_embedding
                     ]
                 )
             else:
@@ -110,7 +110,8 @@ def insert_document(  # noqa: PLR0915
     # Use the default config if not provided.
     config = config or RAGLiteConfig()
     # Preprocess the document into chunks and chunk embeddings.
-    with tqdm(total=6, unit="step", dynamic_ncols=True) as pbar:
+    total_steps = 7
+    with tqdm(total=total_steps, unit="step", dynamic_ncols=True) as pbar:
         pbar.set_description("Initializing database")
         engine = create_database_engine(config)
         pbar.update(1)
@@ -124,21 +125,23 @@ def insert_document(  # noqa: PLR0915
         with Session(engine) as session:  # Exit early if the document is already in the database.
             if session.get(Document, document_record.id) is not None:
                 pbar.set_description("Document already in database")
-                pbar.update(5)
+                pbar.update(total_steps - 1)
                 pbar.close()
                 return
         pbar.update(1)
         pbar.set_description("Splitting sentences")
         sentences = split_sentences(doc, max_len=config.chunk_max_size)
         pbar.update(1)
-        pbar.set_description("Embedding sentences")
-        sentence_embeddings = embed_sentences(sentences, config=config)
+        pbar.set_description("Splitting chunklets")
+        chunklets = split_chunklets(sentences, max_size=config.chunk_max_size)
+        pbar.update(1)
+        pbar.set_description("Embedding chunklets")
+        chunklet_embeddings = embed_strings(chunklets, config=config)
         pbar.update(1)
         pbar.set_description("Splitting chunks")
         chunks, chunk_embeddings = split_chunks(
-            sentences=sentences,
-            sentence_embeddings=sentence_embeddings,
-            sentence_window_size=config.embedder_sentence_window_size,
+            chunklets=chunklets,
+            chunklet_embeddings=chunklet_embeddings,
             max_size=config.chunk_max_size,
         )
         pbar.update(1)
