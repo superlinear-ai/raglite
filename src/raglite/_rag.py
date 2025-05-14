@@ -106,7 +106,8 @@ def _get_tools(
                 "function": {
                     "name": "search_knowledge_base",
                     "description": (
-                        "Consult the knowledge base for questions beyond common knowledge.\n"
+                        "Search the knowledge base.\n"
+                        "IMPORTANT: You MAY NOT use this function if the question can be answered with common knowledge or straightforward reasoning.\n"
                         "For multi-faceted questions, call this function once for each facet."
                     ),
                     "parameters": {
