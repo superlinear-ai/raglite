@@ -51,7 +51,6 @@ class RAGLiteConfig:
     # Vector search config.
     vector_search_index_metric: Literal["cosine"] = "cosine"
     vector_search_multivector: bool = True
-    vector_search_similarity_norm: int = 2
     vector_search_query_adapter: bool = True  # Only supported for "cosine" and "dot" metrics.
     # Reranking config.
     reranker: BaseRanker | tuple[tuple[str, BaseRanker], ...] | None = field(

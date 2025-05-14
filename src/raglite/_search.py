@@ -47,26 +47,18 @@ def vector_search(
     if config.vector_search_query_adapter and Q is not None:
         query_embedding = (Q @ query_embedding).astype(query_embedding.dtype)
     # Search for the multi-vector chunk embeddings that are most similar to the query embedding.
-    p = config.vector_search_similarity_norm
     num_hits = oversample * max(num_results, 10)
-    if not (np.isfinite(p) and p >= 1):
-        error_message = "The value of config.vector_search_similarity_norm must be in [1, ∞)."
-        raise ValueError(error_message)
     if db_backend == "postgresql":
-        # Rank the chunks by relevance according to the Lp-norm of the similarities of the
+        # Rank the chunks by relevance according to the L∞-norm of the similarities of the
         # multi-vector chunk embeddings to the query embedding with a single query.
         engine = create_database_engine(config)
         with Session(engine) as session:
             dist = ChunkEmbedding.embedding.cosine_distance(query_embedding).label("dist")  # type: ignore[attr-defined]
             sim = (1.0 - dist).label("sim")
             top_vectors = (
-                select(ChunkEmbedding.chunk_id, sim)
-                .where(sim > 0)
-                .order_by(dist)
-                .limit(num_hits)
-                .subquery()
+                select(ChunkEmbedding.chunk_id, sim).order_by(dist).limit(num_hits).subquery()
             )
-            sim_norm = func.pow(func.sum(func.pow(func.abs(top_vectors.c.sim), p)), 1.0 / p)
+            sim_norm = func.max(top_vectors.c.sim).label("sim_norm")
             statement = (
                 select(top_vectors.c.chunk_id, sim_norm)
                 .group_by(top_vectors.c.chunk_id)
@@ -91,10 +83,10 @@ def vector_search(
             )
             # Transform the multi-vector indices into chunk indices.
             chunk_indices = np.searchsorted(cumsum, multivector_indices[0, :], side="right")
-            # Compute the Lp-norm of the similarities of the multi-vector chunk embeddings.
+            # Compute the L∞-norm of the similarities of the multi-vector chunk embeddings.
             sim_clip = np.maximum(1 - dist[0], 0.0)
-            lp_norm = np.bincount(chunk_indices, weights=np.abs(sim_clip) ** p, minlength=len(ids))
-            lp_norm = np.power(lp_norm, 1.0 / p)
+            lp_norm = np.zeros(len(ids), dtype=sim_clip.dtype)
+            np.maximum.at(lp_norm, chunk_indices, sim_clip)
             # Efficiently find the top chunks.
             num_results = min(num_results, len(ids))
             top_k = np.argpartition(lp_norm, -num_results)[-num_results:]

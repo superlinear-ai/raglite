@@ -81,26 +81,13 @@ pip install raglite[ragas]
 
 ### Overview
 
-- [🥤 RAGLite](#-raglite)
-  - [Features](#features)
-        - [Configurable](#configurable)
-        - [Fast and permissive](#fast-and-permissive)
-        - [Unhobbled](#unhobbled)
-        - [Extensible](#extensible)
-  - [Installing](#installing)
-  - [Using](#using)
-    - [Overview](#overview)
-    - [1. Configuring RAGLite](#1-configuring-raglite)
-    - [2. Inserting documents](#2-inserting-documents)
-    - [3. Retrieval-Augmented Generation (RAG)](#3-retrieval-augmented-generation-rag)
-      - [3.1 Adaptive RAG](#31-adaptive-rag)
-      - [3.2 Programmable RAG](#32-programmable-rag)
-    - [4. Computing and using an optimal query adapter](#4-computing-and-using-an-optimal-query-adapter)
-    - [5. Evaluation of retrieval and generation](#5-evaluation-of-retrieval-and-generation)
-    - [6. Running a Model Context Protocol (MCP) server](#6-running-a-model-context-protocol-mcp-server)
-    - [7. Serving a customizable ChatGPT-like frontend](#7-serving-a-customizable-chatgpt-like-frontend)
-  - [Contributing](#contributing)
-  - [Star History](#star-history)
+1. [Configuring RAGLite](#1-configuring-raglite)
+2. [Inserting documents](#2-inserting-documents)
+3. [Retrieval-Augmented Generation (RAG)](#3-retrieval-augmented-generation-rag)
+4. [Computing and using an optimal query adapter](#4-computing-and-using-an-optimal-query-adapter)
+5. [Evaluation of retrieval and generation](#5-evaluation-of-retrieval-and-generation)
+6. [Running a Model Context Protocol (MCP) server](#6-running-a-model-context-protocol-mcp-server)
+7. [Serving a customizable ChatGPT-like frontend](#7-serving-a-customizable-chatgpt-like-frontend)
 
 ### 1. Configuring RAGLite
 
