@@ -441,7 +441,7 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
                     (embedding::halfvec({embedding_dim}))
                     halfvec_{metrics[config.vector_search_index_metric]}_ops
                 );
-                SET hnsw.ef_search = {20 * 4 * 8};
+                SET hnsw.ef_search = {(10 * 4) * 4};
             """
             # Enable iterative scan for pgvector v0.8.0 and up.
             pgvector_version = _pgvector_version(session)
