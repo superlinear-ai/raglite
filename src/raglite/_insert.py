@@ -56,7 +56,7 @@ def _create_chunk_records(
         # Every chunk record is associated with a list of chunk embedding records. The chunk
         # embedding records each correspond to a linear combination of a chunklet embedding and an
         # embedding of the full chunk with Markdown headings.
-        α = 0.382  # Golden ratio.  # noqa: PLC2401
+        α = 0.15  # Golden ratio.  # noqa: PLC2401
         for chunk_record, chunk_embedding, full_chunk_embedding in zip(
             chunk_records, chunk_embeddings, full_chunk_embeddings, strict=True
         ):
