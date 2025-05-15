@@ -4,6 +4,7 @@ services:
     build:
       target: dev
     environment:
+      - CI
       - OPENAI_API_KEY
     depends_on:
       - postgres
