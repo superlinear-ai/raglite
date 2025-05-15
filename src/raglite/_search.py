@@ -29,7 +29,7 @@ def vector_search(
     query: str | FloatMatrix,
     *,
     num_results: int = 3,
-    oversample: int = 8,
+    oversample: int = 4,
     config: RAGLiteConfig | None = None,
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks using ANN vector search."""
