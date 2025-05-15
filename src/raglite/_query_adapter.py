@@ -146,15 +146,15 @@ def update_query_adapter(  # noqa: PLR0915, C901
         MT = (α[:, np.newaxis] * (P - N)).T @ Q  # noqa: N806
         s = np.linalg.norm(MT, ord="fro") / np.sqrt(MT.shape[0])
         MT = np.mean(α) * (MT / s) + np.mean(1 - α) * np.eye(Q.shape[1])  # noqa: N806
-        if config.vector_search_index_metric == "dot":
+        if config.vector_search_index_metric == "dot":  # type: ignore[comparison-overlap]
             # Use the relaxed Procrustes solution.
-            A_star = MT / np.linalg.norm(MT, ord="fro")  # noqa: N806
+            A_star = MT / np.linalg.norm(MT, ord="fro")  # type: ignore[unreachable]  # noqa: N806
         elif config.vector_search_index_metric == "cosine":
             # Use the orthogonal Procrustes solution.
             U, _, VT = np.linalg.svd(MT, full_matrices=False)  # noqa: N806
             A_star = U @ VT  # noqa: N806
         else:
-            error_message = f"Unsupported ANN metric: {config.vector_search_index_metric}"
+            error_message = f"Unsupported ANN metric: {config.vector_search_index_metric}"  # type: ignore[unreachable]
             raise ValueError(error_message)
         # Store the optimal query adapter in the database.
         index_metadata = session.get(IndexMetadata, "default") or IndexMetadata(id="default")

@@ -11,7 +11,7 @@ import numpy as np
 from langdetect import LangDetectException, detect
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import joinedload
-from sqlmodel import Session, and_, col, or_, select, text
+from sqlmodel import Session, and_, col, func, or_, select, text
 
 from raglite._config import RAGLiteConfig
 from raglite._database import (
@@ -47,27 +47,27 @@ def vector_search(
     if config.vector_search_query_adapter and Q is not None:
         query_embedding = (Q @ query_embedding).astype(query_embedding.dtype)
     # Search for the multi-vector chunk embeddings that are most similar to the query embedding.
+    num_hits = oversample * max(num_results, 10)
     if db_backend == "postgresql":
-        # Check that the selected metric is supported by pgvector.
-        metrics = {"cosine": "<=>", "dot": "<#>", "euclidean": "<->", "l1": "<+>", "l2": "<->"}
-        if config.vector_search_index_metric not in metrics:
-            error_message = f"Unsupported metric {config.vector_search_index_metric}."
-            raise ValueError(error_message)
-        # With pgvector, we can obtain the nearest neighbours and similarities with a single query.
+        # Rank the chunks by relevance according to the L∞-norm of the similarities of the
+        # multi-vector chunk embeddings to the query embedding with a single query.
         engine = create_database_engine(config)
         with Session(engine) as session:
-            distance_func = getattr(
-                ChunkEmbedding.embedding, f"{config.vector_search_index_metric}_distance"
+            dist = ChunkEmbedding.embedding.cosine_distance(query_embedding).label("dist")  # type: ignore[attr-defined]
+            sim = (1.0 - dist).label("sim")
+            top_vectors = (
+                select(ChunkEmbedding.chunk_id, sim).order_by(dist).limit(num_hits).subquery()
             )
-            distance = distance_func(query_embedding).label("distance")
-            results = session.exec(
-                select(ChunkEmbedding.chunk_id, distance)
-                .order_by(distance)
-                .limit(oversample * num_results)
+            sim_norm = func.max(top_vectors.c.sim).label("sim_norm")
+            statement = (
+                select(top_vectors.c.chunk_id, sim_norm)
+                .group_by(top_vectors.c.chunk_id)
+                .order_by(sim_norm.desc())
+                .limit(num_results)
             )
-            results = list(results)  # type: ignore[assignment]
-            chunk_ids = np.asarray([result[0] for result in results])
-            similarity = 1.0 - np.asarray([result[1] for result in results])
+            rows = session.exec(statement).all()
+            chunk_ids = [row[0] for row in rows]
+            similarity = [float(row[1]) for row in rows]
     elif db_backend == "sqlite":
         # Load the NNDescent index.
         index = index_metadata.get("index")
@@ -78,33 +78,25 @@ def vector_search(
 
         if isinstance(index, NNDescent) and len(ids) and len(cumsum):
             # Query the index.
-            multi_vector_indices, distance = index.query(
-                query_embedding[np.newaxis, :], k=oversample * num_results
+            multivector_indices, dist = index.query(
+                query_embedding[np.newaxis, :], k=min(num_hits, cumsum[-1])
             )
-            similarity = 1 - distance[0, :]
-            # Transform the multi-vector indices into chunk indices, and then to chunk ids.
-            chunk_indices = np.searchsorted(cumsum, multi_vector_indices[0, :], side="right") + 1
-            chunk_ids = np.asarray([ids[chunk_index - 1] for chunk_index in chunk_indices])
+            # Transform the multi-vector indices into chunk indices.
+            chunk_indices = np.searchsorted(cumsum, multivector_indices[0, :], side="right")
+            # Compute the L∞-norm of the similarities of the multi-vector chunk embeddings.
+            sim_clip = np.maximum(1 - dist[0], 0.0)
+            lp_norm = np.zeros(len(ids), dtype=sim_clip.dtype)
+            np.maximum.at(lp_norm, chunk_indices, sim_clip)
+            # Efficiently find the top chunks.
+            num_results = min(num_results, len(ids))
+            top_k = np.argpartition(lp_norm, -num_results)[-num_results:]
+            top_k = top_k[np.argsort(lp_norm[top_k])[::-1]]
+            chunk_ids = [i for i, s in zip(ids[top_k], lp_norm[top_k], strict=True) if s > 0]
+            similarity = [float(s) for s in lp_norm[top_k] if s > 0]
         else:
             # Empty result set if there is no index or if no chunks are indexed.
-            chunk_ids, similarity = np.array([], dtype=np.intp), np.array([])
-    # Exit early if there are no search results.
-    if not len(chunk_ids):
-        return [], []
-    # Score each unique chunk id as the mean similarity of its multi-vector hits. Chunk ids with
-    # fewer hits are padded with the minimum similarity of the result set.
-    unique_chunk_ids, counts = np.unique(chunk_ids, return_counts=True)
-    score = np.full(
-        (len(unique_chunk_ids), np.max(counts)), np.min(similarity), dtype=similarity.dtype
-    )
-    for i, (unique_chunk_id, count) in enumerate(zip(unique_chunk_ids, counts, strict=True)):
-        score[i, :count] = similarity[chunk_ids == unique_chunk_id]
-    pooled_similarity = np.mean(score, axis=1)
-    # Sort the chunk ids by their adjusted similarity.
-    sorted_indices = np.argsort(pooled_similarity)[::-1]
-    unique_chunk_ids = unique_chunk_ids[sorted_indices][:num_results]
-    pooled_similarity = pooled_similarity[sorted_indices][:num_results]
-    return unique_chunk_ids.tolist(), pooled_similarity.tolist()
+            chunk_ids, similarity = [], []
+    return chunk_ids, similarity
 
 
 def keyword_search(
