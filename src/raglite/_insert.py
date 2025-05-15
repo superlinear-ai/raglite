@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-import mdformat
 import numpy as np
 from sqlalchemy.engine import make_url
 from sqlmodel import Session, select
@@ -115,11 +114,11 @@ def insert_document(  # noqa: PLR0915
         engine = create_database_engine(config)
         pbar.update(1)
         # Create document record based on input type.
-        pbar.set_description("Converting and formatting Markdown")
+        pbar.set_description("Converting to Markdown")
         document_record, doc = (
             (Document.from_path(source), document_to_markdown(source))
             if isinstance(source, Path)
-            else (Document.from_markdown(source, filename=filename), mdformat.text(source))
+            else (Document.from_markdown(source, filename=filename), source)
         )
         with Session(engine) as session:  # Exit early if the document is already in the database.
             if session.get(Document, document_record.id) is not None:
