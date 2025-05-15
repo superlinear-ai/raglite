@@ -19,7 +19,11 @@ from raglite._lazy_llama import (
 
 def is_accelerator_available() -> bool:
     """Check if an accelerator is available."""
-    return llama_supports_gpu_offload() or (os.cpu_count() or 1) >= 8  # noqa: PLR2004
+    if llama_supports_gpu_offload():
+        return True
+    if os.environ.get("CI"):
+        return False
+    return (os.cpu_count() or 1) >= 8  # noqa: PLR2004
 
 
 @pytest.mark.parametrize(

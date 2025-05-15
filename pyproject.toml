@@ -17,9 +17,8 @@ dependencies = [
   # Markdown conversion:
   "pdftext (>=0.4.1)",
   "scikit-learn (>=1.4.2)",
-  # Markdown formatting:
+  # Markdown parsing:
   "markdown-it-py (>=3.0.0)",
-  "mdformat-gfm (>=0.3.6)",
   # Sentence and chunk splitting:
   "numpy (>=1.26.4,<2.0.0)",
   "scipy (>=1.11.2,!=1.15.0.*,!=1.15.1,!=1.15.2)",

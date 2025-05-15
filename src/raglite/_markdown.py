@@ -5,7 +5,6 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-import mdformat
 import numpy as np
 from pdftext.extraction import dictionary_output
 from sklearn.cluster import KMeans
@@ -202,7 +201,7 @@ def document_to_markdown(doc_path: Path) -> str:
         # Parse the PDF with pdftext and convert it to Markdown.
         pages = dictionary_output(doc_path, sort=True, keep_chars=False)
         doc = "\n\n".join(parsed_pdf_to_markdown(pages))
-    elif doc_path.suffix == ".md":
+    elif doc_path.suffix in (".md", ".txt"):
         # Read the Markdown file.
         doc = doc_path.read_text()
     else:
@@ -219,6 +218,4 @@ def document_to_markdown(doc_path: Path) -> str:
         except RuntimeError:
             # File format not supported, fall back to reading the text.
             doc = doc_path.read_text()
-    # Improve Markdown quality.
-    doc = mdformat.text(doc)
     return doc
