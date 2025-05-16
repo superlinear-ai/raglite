@@ -6,11 +6,11 @@ from pathlib import Path
 import chainlit as cl
 from chainlit.input_widget import Switch, TextInput
 
-from raglite import RAGLiteConfig, async_rag, hybrid_search, insert_document, rerank_chunks
+from raglite import RAGLiteConfig, async_rag, insert_document, rerank_chunks, search
 from raglite._markdown import document_to_markdown
 
 async_insert_document = cl.make_async(insert_document)
-async_hybrid_search = cl.make_async(hybrid_search)
+async_search = cl.make_async(search)
 async_rerank_chunks = cl.make_async(rerank_chunks)
 
 
@@ -53,7 +53,7 @@ async def update_config(settings: cl.ChatSettings) -> None:
     if str(config.db_url).startswith("sqlite") or config.embedder.startswith("llama-cpp-python"):
         # async with cl.Step(name="initialize", type="retrieval"):
         query = "Hello world"
-        chunk_ids, _ = await async_hybrid_search(query=query, config=config)
+        chunk_ids, _ = await async_search(query=query, config=config)
         _ = await async_rerank_chunks(query=query, chunk_ids=chunk_ids, config=config)
 
 
