@@ -147,16 +147,19 @@ def keyword_search(
 
 
 def reciprocal_rank_fusion(
-    rankings: list[list[ChunkId]], *, k: int = 60
+    rankings: list[list[ChunkId]], *, k: int = 60, weights: list[float] | None = None
 ) -> tuple[list[ChunkId], list[float]]:
     """Reciprocal Rank Fusion."""
+    if weights is None:
+        weights = [1.0] * len(rankings)
+    if len(weights) != len(rankings):
+        error = "Weights do not match rankings"
+        raise ValueError(error)
     # Compute the RRF score.
-    chunk_ids = {chunk_id for ranking in rankings for chunk_id in ranking}
     chunk_id_score: defaultdict[str, float] = defaultdict(float)
-    for ranking in rankings:
-        chunk_id_index = {chunk_id: i for i, chunk_id in enumerate(ranking)}
-        for chunk_id in chunk_ids:
-            chunk_id_score[chunk_id] += 1 / (k + chunk_id_index.get(chunk_id, len(chunk_id_index)))
+    for ranking, weight in zip(rankings, weights, strict=False):
+        for i, chunk_id in enumerate(ranking):
+            chunk_id_score[chunk_id] += weight / (k + i)
     # Exit early if there are no results to fuse.
     if not chunk_id_score:
         return [], []
