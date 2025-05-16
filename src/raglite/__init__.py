@@ -11,6 +11,7 @@ from raglite._search import (
     rerank_chunks,
     retrieve_chunk_spans,
     retrieve_chunks,
+    search,
     vector_search,
 )
 
@@ -20,6 +21,7 @@ __all__ = [
     # Insert
     "insert_document",
     # Search
+    "search",
     "hybrid_search",
     "keyword_search",
     "vector_search",
