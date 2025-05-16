@@ -13,8 +13,7 @@ from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, Document, Eval, create_database_engine
 from raglite._extract import extract_with_llm
 from raglite._rag import create_rag_instruction, rag, retrieve_rag_context
-from raglite._search import hybrid_search, retrieve_chunk_spans, vector_search
-from raglite._typing import SearchMethod
+from raglite._search import retrieve_chunk_spans, search, vector_search
 
 
 def insert_evals(  # noqa: C901
@@ -93,7 +92,7 @@ The question MUST satisfy ALL of the following criteria:
             else:
                 question = question_response.question
             # Search for candidate chunks to answer the generated question.
-            candidate_chunk_ids, _ = hybrid_search(
+            candidate_chunk_ids, _ = search(
                 query=question, num_results=max_contexts_per_eval, config=config
             )
             candidate_chunks = [session.get(Chunk, chunk_id) for chunk_id in candidate_chunk_ids]
@@ -175,7 +174,6 @@ The answer MUST satisfy ALL of the following criteria:
 
 def answer_evals(
     num_evals: int = 100,
-    search: SearchMethod = hybrid_search,
     *,
     config: RAGLiteConfig | None = None,
 ) -> pd.DataFrame:
@@ -189,7 +187,7 @@ def answer_evals(
     answers: list[str] = []
     contexts: list[list[str]] = []
     for eval_ in tqdm(evals, desc="Answering evals", unit="eval", dynamic_ncols=True):
-        chunk_spans = retrieve_rag_context(query=eval_.question, search=search, config=config)
+        chunk_spans = retrieve_rag_context(query=eval_.question, config=config)
         messages = [create_rag_instruction(user_prompt=eval_.question, context=chunk_spans)]
         response = rag(messages, config=config)
         answer = "".join(response)

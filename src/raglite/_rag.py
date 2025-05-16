@@ -16,8 +16,7 @@ from litellm import (  # type: ignore[attr-defined]
 from raglite._config import RAGLiteConfig
 from raglite._database import ChunkSpan
 from raglite._litellm import get_context_size
-from raglite._search import hybrid_search, rerank_chunks, retrieve_chunk_spans
-from raglite._typing import SearchMethod
+from raglite._search import rerank_chunks, retrieve_chunk_spans, search
 
 # The default RAG instruction template follows Anthropic's best practices [1].
 # [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
@@ -38,7 +37,6 @@ def retrieve_rag_context(
     *,
     num_chunks: int = 5,
     chunk_neighbors: tuple[int, ...] | None = (-1, 1),
-    search: SearchMethod = hybrid_search,
     config: RAGLiteConfig | None = None,
 ) -> list[ChunkSpan]:
     """Retrieve context for RAG."""

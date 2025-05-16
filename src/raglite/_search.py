@@ -180,6 +180,17 @@ def hybrid_search(
     return chunk_ids, hybrid_score
 
 
+def search(
+    query: str, *, num_results: int = 3, oversample: int = 4, config: RAGLiteConfig | None = None
+) -> tuple[list[ChunkId], list[float]]:
+    config = config or RAGLiteConfig()
+    if config.hybrid_vector_search:
+        return hybrid_search(
+            query=query, num_results=num_results, oversample=oversample, config=config
+        )
+    return vector_search(query=query, num_results=num_results, oversample=oversample, config=config)
+
+
 def retrieve_chunks(
     chunk_ids: list[ChunkId], *, config: RAGLiteConfig | None = None
 ) -> list[Chunk]:
