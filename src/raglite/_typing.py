@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 from sqlalchemy.engine import Dialect
+from sqlalchemy.sql import func
 from sqlalchemy.sql.operators import Operators
 from sqlalchemy.types import Float, LargeBinary, TypeDecorator, TypeEngine, UserDefinedType
 
@@ -78,27 +79,51 @@ class PickledObject(TypeDecorator[object]):
         return pickle.loads(value, fix_imports=False)  # type: ignore[no-any-return]  # noqa: S301
 
 
-class HalfVecComparatorMixin(UserDefinedType.Comparator[FloatVector]):
-    """A mixin that provides comparison operators for halfvecs."""
+class EmbeddingComparator(UserDefinedType.Comparator[FloatVector]):
+    """A comparator that provides distance operations."""
+
+    def _is_postgres(self) -> bool:
+        return isinstance(self.type, HalfVec)
+
+    def _is_duckdb(self) -> bool:
+        return isinstance(self.type, DuckDBVec)
 
     def cosine_distance(self, other: FloatVector) -> Operators:
         """Compute the cosine distance."""
+        if self._is_postgres():
+            return self.op("<=>", return_type=Float)(other)
+        if self._is_duckdb():
+            return func.array_cosine_distance(self.expr, other)
         return self.op("<=>", return_type=Float)(other)
 
     def dot_distance(self, other: FloatVector) -> Operators:
         """Compute the dot product distance."""
+        if self._is_postgres():
+            return self.op("<#>", return_type=Float)(other)
+        if self._is_duckdb():
+            return func.array_negative_inner_product(self.expr, other)
         return self.op("<#>", return_type=Float)(other)
 
     def euclidean_distance(self, other: FloatVector) -> Operators:
         """Compute the Euclidean distance."""
+        if self._is_postgres():
+            return self.op("<->", return_type=Float)(other)
+        if self._is_duckdb():
+            return func.array_distance(self.expr, other)
         return self.op("<->", return_type=Float)(other)
 
     def l1_distance(self, other: FloatVector) -> Operators:
         """Compute the L1 distance."""
-        return self.op("<+>", return_type=Float)(other)
+        if self._is_postgres():
+            return self.op("<+>", return_type=Float)(other)
+        return func.abs(func.sum(self.expr - other))
 
     def l2_distance(self, other: FloatVector) -> Operators:
         """Compute the L2 distance."""
+        if self._is_postgres():
+            return self.op("<->", return_type=Float)(other)
+        if self._is_duckdb():
+            return func.array_distance(self.expr, other)
         return self.op("<->", return_type=Float)(other)
 
 
@@ -134,7 +159,39 @@ class HalfVec(UserDefinedType[FloatVector]):
 
         return process
 
-    class comparator_factory(HalfVecComparatorMixin):  # noqa: N801
+    class comparator_factory(EmbeddingComparator):  # noqa: N801
+        ...
+
+
+class DuckDBVec(UserDefinedType[FloatVector]):
+    """A DuckDB floating point array column type for SQLAlchemy."""
+
+    cache_ok = True
+
+    def __init__(self, dim: int | None = None) -> None:
+        super().__init__()
+        self.dim = dim
+
+    def get_col_spec(self, **kwargs: Any) -> str:
+        return f"FLOAT[{self.dim}]" if self.dim is not None else "FLOAT[]"
+
+    def bind_processor(
+        self, dialect: Dialect
+    ) -> Callable[[FloatVector | None], list[float] | None]:
+        def process(value: FloatVector | None) -> list[float] | None:
+            return value.tolist() if value is not None else None
+
+        return process
+
+    def result_processor(
+        self, dialect: Dialect, coltype: Any
+    ) -> Callable[[list[float] | None], FloatVector | None]:
+        def process(value: list[float] | None) -> FloatVector | None:
+            return np.asarray(value, dtype=np.float32) if value is not None else None
+
+        return process
+
+    class comparator_factory(EmbeddingComparator):  # noqa: N801
         ...
 
 
@@ -152,7 +209,9 @@ class Embedding(TypeDecorator[FloatVector]):
     def load_dialect_impl(self, dialect: Dialect) -> TypeEngine[FloatVector]:
         if dialect.name == "postgresql":
             return dialect.type_descriptor(HalfVec(self.dim))
+        if dialect.name == "duckdb":
+            return dialect.type_descriptor(DuckDBVec(self.dim))
         return dialect.type_descriptor(NumpyArray())
 
-    class comparator_factory(HalfVecComparatorMixin):  # noqa: N801
+    class comparator_factory(EmbeddingComparator):  # noqa: N801
         ...

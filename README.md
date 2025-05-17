@@ -2,14 +2,14 @@
 
 # 🥤 RAGLite
 
-RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with PostgreSQL or SQLite.
+RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with PostgreSQL or DuckDB.
 
 ## Features
 
 ##### Configurable
 
 - 🧠 Choose any LLM provider with [LiteLLM](https://github.com/BerriAI/litellm), including local [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) models
-- 💾 Choose either [PostgreSQL](https://github.com/postgres/postgres) or [SQLite](https://github.com/sqlite/sqlite) as a keyword & vector search database
+- 💾 Choose either [PostgreSQL](https://github.com/postgres/postgres) or [DuckDB](https://duckdb.org) as a keyword & vector search database
 - 🥇 Choose any reranker with [rerankers](https://github.com/AnswerDotAI/rerankers), including multilingual [FlashRank](https://github.com/PrithivirajDamodaran/FlashRank) as the default
 
 ##### Fast and permissive
@@ -23,7 +23,7 @@ RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with Postgr
 - 🧬 Multi-vector chunk embedding with [late chunking](https://weaviate.io/blog/late-chunking) and [contextual chunk headings](https://d-star.ai/solving-the-out-of-context-chunk-problem-for-rag)
 - ✏️ Optimal sentence splitting with [wtpsplit-lite](https://github.com/superlinear-ai/wtpsplit-lite) by solving a [binary integer programming problem](https://en.wikipedia.org/wiki/Integer_programming)
 - ✂️ Optimal [semantic chunking](https://www.youtube.com/watch?v=8OJC21T2SL4&t=1930s) by solving a [binary integer programming problem](https://en.wikipedia.org/wiki/Integer_programming)
-- 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) with the database's native keyword & vector search ([tsvector](https://www.postgresql.org/docs/current/datatype-textsearch.html)+[pgvector](https://github.com/pgvector/pgvector), [FTS5](https://www.sqlite.org/fts5.html)+[sqlite-vec](https://github.com/asg017/sqlite-vec)[^1])
+- 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) with the database's native keyword & vector search ([tsvector](https://www.postgresql.org/docs/current/datatype-textsearch.html)+[pgvector](https://github.com/pgvector/pgvector), [FTS](https://duckdb.org/docs/stable/extensions/full_text_search)+[VSS](https://duckdb.org/docs/stable/extensions/vss))
 - 💭 [Adaptive retrieval](https://arxiv.org/abs/2403.14403) where the LLM decides whether to and what to retrieve based on the query
 - 💰 Improved cost and latency with a [prompt caching-aware message array structure](https://platform.openai.com/docs/guides/prompt-caching)
 - 🍰 Improved output quality with [Anthropic's long-context prompt format](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips)
@@ -36,7 +36,6 @@ RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with Postgr
 - ✍️ Optional conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
 - ✅ Optional evaluation of retrieval and generation performance with [Ragas](https://github.com/explodinggradients/ragas)
 
-[^1]: We use [PyNNDescent](https://github.com/lmcinnes/pynndescent) until [sqlite-vec](https://github.com/asg017/sqlite-vec) is more mature.
 
 ## Installing
 
@@ -109,9 +108,9 @@ my_config = RAGLiteConfig(
     embedder="text-embedding-3-large",  # Or any embedder supported by LiteLLM
 )
 
-# Example 'local' config with a SQLite database and a llama.cpp LLM:
+# Example 'local' config with a DuckDB database and a llama.cpp LLM:
 my_config = RAGLiteConfig(
-    db_url="sqlite:///raglite.db",
+    db_url="duckdb:///raglite.db",
     llm="llama-cpp-python/unsloth/Qwen3-8B-GGUF/*Q4_K_M.gguf@8192",
     embedder="llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512", # More than 512 tokens degrades bge-m3's performance
 )
@@ -130,7 +129,7 @@ my_config = RAGLiteConfig(
 
 # Example local cross-encoder reranker per language (this is the default):
 my_config = RAGLiteConfig(
-    db_url="sqlite:///raglite.db",
+    db_url="duckdb:///raglite.db",
     reranker={
         "en": Reranker("ms-marco-MiniLM-L-12-v2", model_type="flashrank"),  # English
         "other": Reranker("ms-marco-MultiBERT-L-12", model_type="flashrank"),  # Other languages
@@ -311,7 +310,7 @@ RAGLite comes with an [MCP server](https://modelcontextprotocol.io) implemented 
 
 ```
 raglite \
-    --db-url sqlite:///raglite.db \
+    --db-url duckdb:///raglite.db \
     --llm llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192 \
     --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512 \
     mcp install
@@ -347,7 +346,7 @@ You can specify the database URL, LLM, and embedder directly in the Chainlit fro
 
 ```sh
 raglite \
-    --db-url sqlite:///raglite.db \
+    --db-url duckdb:///raglite.db \
     --llm llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192 \
     --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512 \
     chainlit

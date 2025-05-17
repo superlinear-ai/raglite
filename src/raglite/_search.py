@@ -35,7 +35,7 @@ def vector_search(
     # Read the config.
     config = config or RAGLiteConfig()
     db_backend = make_url(config.db_url).get_backend_name()
-    # Get the index metadata (including the query adapter, and in the case of SQLite, the index).
+    # Get the index metadata (including the query adapter).
     index_metadata = IndexMetadata.get("default", config=config)
     # Embed the query.
     query_embedding = (
@@ -67,34 +67,24 @@ def vector_search(
             rows = session.exec(statement).all()
             chunk_ids = [row[0] for row in rows]
             similarity = [float(row[1]) for row in rows]
-    elif db_backend == "sqlite":
-        # Load the NNDescent index.
-        index = index_metadata.get("index")
-        ids = np.asarray(index_metadata.get("chunk_ids", []))
-        cumsum = np.cumsum(np.asarray(index_metadata.get("chunk_sizes", [])))
-        # Find the neighbouring multi-vector indices.
-        from pynndescent import NNDescent
-
-        if isinstance(index, NNDescent) and len(ids) and len(cumsum):
-            # Query the index.
-            multivector_indices, dist = index.query(
-                query_embedding[np.newaxis, :], k=min(num_hits, cumsum[-1])
+    elif db_backend == "duckdb":
+        engine = create_database_engine(config)
+        with Session(engine) as session:
+            dist = ChunkEmbedding.embedding.cosine_distance(query_embedding).label("dist")  # type: ignore[attr-defined]
+            sim = (1.0 - dist).label("sim")
+            top_vectors = (
+                select(ChunkEmbedding.chunk_id, sim).order_by(dist).limit(num_hits).subquery()
             )
-            # Transform the multi-vector indices into chunk indices.
-            chunk_indices = np.searchsorted(cumsum, multivector_indices[0, :], side="right")
-            # Compute the L∞-norm of the similarities of the multi-vector chunk embeddings.
-            sim_clip = np.maximum(1 - dist[0], 0.0)
-            lp_norm = np.zeros(len(ids), dtype=sim_clip.dtype)
-            np.maximum.at(lp_norm, chunk_indices, sim_clip)
-            # Efficiently find the top chunks.
-            num_results = min(num_results, len(ids))
-            top_k = np.argpartition(lp_norm, -num_results)[-num_results:]
-            top_k = top_k[np.argsort(lp_norm[top_k])[::-1]]
-            chunk_ids = [i for i, s in zip(ids[top_k], lp_norm[top_k], strict=True) if s > 0]
-            similarity = [float(s) for s in lp_norm[top_k] if s > 0]
-        else:
-            # Empty result set if there is no index or if no chunks are indexed.
-            chunk_ids, similarity = [], []
+            sim_norm = func.max(top_vectors.c.sim).label("sim_norm")
+            statement = (
+                select(top_vectors.c.chunk_id, sim_norm)
+                .group_by(top_vectors.c.chunk_id)
+                .order_by(sim_norm.desc())
+                .limit(num_results)
+            )
+            rows = session.exec(statement).all()
+            chunk_ids = [row[0] for row in rows]
+            similarity = [float(row[1]) for row in rows]
     return chunk_ids, similarity
 
 
@@ -122,22 +112,20 @@ def keyword_search(
                 LIMIT :limit;
                 """)
             results = session.execute(statement, params={"query": tsv_query, "limit": num_results})
-        elif db_backend == "sqlite":
-            # Convert the query to an FTS5 query [1].
-            # [1] https://www.sqlite.org/fts5.html#full_text_query_syntax
-            query_escaped = re.sub(f"[{re.escape(string.punctuation)}]", " ", query)
-            fts5_query = " OR ".join(query_escaped.split())
-            # Perform keyword search with FTS5. In FTS5, BM25 scores are negative [1], so we
-            # negate them to make them positive.
-            # [1] https://www.sqlite.org/fts5.html#the_bm25_function
-            statement = text("""
-                SELECT chunk.id as chunk_id, -bm25(keyword_search_chunk_index) as score
-                FROM chunk JOIN keyword_search_chunk_index ON chunk.rowid = keyword_search_chunk_index.rowid
-                WHERE keyword_search_chunk_index MATCH :match
+        elif db_backend == "duckdb":
+            statement = text(
+                """
+                SELECT id as chunk_id, score
+                FROM (
+                    SELECT *, fts_main_chunk.match_bm25(id, :query) AS score
+                    FROM chunk
+                ) sq
+                WHERE score IS NOT NULL
                 ORDER BY score DESC
                 LIMIT :limit;
-                """)
-            results = session.execute(statement, params={"match": fts5_query, "limit": num_results})
+                """
+            )
+            results = session.execute(statement, params={"query": query, "limit": num_results})
         # Unpack the results.
         results = list(results)  # type: ignore[assignment]
         chunk_ids = [result.chunk_id for result in results]

@@ -1,4 +1,4 @@
-"""PostgreSQL or SQLite database tables for RAGLite."""
+"""PostgreSQL or DuckDB database tables for RAGLite."""
 
 import contextlib
 import datetime
@@ -403,15 +403,14 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
             if query.pop("sslmode") != "disable":
                 connect_args["ssl_context"] = True
             db_url = db_url.set(query=query)
-    elif db_backend == "sqlite":
-        # Optimize SQLite performance.
-        pragmas = {"journal_mode": "WAL", "synchronous": "NORMAL"}
-        db_url = db_url.update_query_dict(pragmas, append=True)
-        # Create the database path if it doesn't exist.
+    elif db_backend == "duckdb":
+        if "+" not in db_url.drivername:
+            db_url = db_url.set(drivername="duckdb")
         with contextlib.suppress(Exception):
-            Path(db_url.database).parent.mkdir(parents=True, exist_ok=True)  # type: ignore[arg-type]
+            if db_url.database and db_url.database != ":memory:":
+                Path(db_url.database).parent.mkdir(parents=True, exist_ok=True)  # type: ignore[arg-type]
     else:
-        error_message = "RAGLite only supports PostgreSQL and SQLite."
+        error_message = "RAGLite only supports PostgreSQL and DuckDB."
         raise ValueError(error_message)
     # Create the engine.
     engine = create_engine(db_url, pool_pre_ping=True, connect_args=connect_args)
@@ -449,37 +448,13 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
                 create_vector_index_sql += f"\nSET hnsw.iterative_scan = {'relaxed_order' if config.reranker else 'strict_order'};"
             session.execute(text(create_vector_index_sql))
             session.commit()
-    elif db_backend == "sqlite":
-        # Create a virtual table for keyword search on the chunk table.
-        # We use the chunk table as an external content table [1] to avoid duplicating the data.
-        # [1] https://www.sqlite.org/fts5.html#external_content_tables
+    elif db_backend == "duckdb":
         with Session(engine) as session:
-            session.execute(
-                text("""
-                CREATE VIRTUAL TABLE IF NOT EXISTS keyword_search_chunk_index USING fts5(body, content='chunk', content_rowid='rowid');
-                """)
-            )
-            session.execute(
-                text("""
-                CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_insert AFTER INSERT ON chunk BEGIN
-                    INSERT INTO keyword_search_chunk_index(rowid, body) VALUES (new.rowid, new.body);
-                END;
-                """)
-            )
-            session.execute(
-                text("""
-                CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_delete AFTER DELETE ON chunk BEGIN
-                    INSERT INTO keyword_search_chunk_index(keyword_search_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
-                END;
-                """)
-            )
-            session.execute(
-                text("""
-                CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_update AFTER UPDATE ON chunk BEGIN
-                    INSERT INTO keyword_search_chunk_index(keyword_search_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
-                    INSERT INTO keyword_search_chunk_index(rowid, body) VALUES (new.rowid, new.body);
-                END;
-                """)
-            )
+            metrics = {"cosine": "cosine", "dot": "ip", "euclidean": "l2sq", "l1": "l2sq", "l2": "l2sq"}
+            session.execute(text("INSTALL fts; LOAD fts;"))
+            session.execute(text("INSTALL vss; LOAD vss;"))
+            session.execute(text("PRAGMA create_fts_index('chunk', 'id', 'body');"))
+            session.execute(text(f"CREATE INDEX IF NOT EXISTS vector_search_chunk_index ON chunk_embedding USING HNSW (embedding) WITH (metric='{metrics[config.vector_search_index_metric]}');"))
+            session.execute(text(f"SET hnsw_ef_search = {(10 * 4) * 4};"))
             session.commit()
     return engine
