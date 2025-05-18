@@ -200,7 +200,7 @@ from raglite import add_context, hybrid_search, rag, retrieve_context
 
 # Choose a search method
 from dataclasses import replace
-my_config = replace(search_method=hybrid_search)  # Or `vector_search`, `search_and_rerank_chunks`, ...
+my_config = replace(my_config, search_method=hybrid_search)  # Or `vector_search`, `search_and_rerank_chunks`, ...
 
 # Retrieve relevant chunk spans with the configured search method
 user_prompt = "How is intelligence measured?"

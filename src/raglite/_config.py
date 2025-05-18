@@ -66,7 +66,7 @@ class RAGLiteConfig:
     vector_search_multivector: bool = True
     vector_search_query_adapter: bool = True  # Only supported for "cosine" and "dot" metrics.
     # Reranking config.
-    reranker: BaseRanker | tuple[dict[str, BaseRanker], ...] | None = field(
+    reranker: BaseRanker | dict[str, BaseRanker] | None = field(
         default_factory=lambda: {
             "en": FlashRankRanker("ms-marco-MiniLM-L-12-v2", verbose=0, cache_dir=cache_path),
             "other": FlashRankRanker("ms-marco-MultiBERT-L-12", verbose=0, cache_dir=cache_path),

@@ -49,6 +49,8 @@ def retrieve_context(
         chunk_spans = retrieve_chunk_spans(results[0], config=config)
     elif all(isinstance(result, Chunk) for result in results):
         chunk_spans = retrieve_chunk_spans(results, config=config)  # type: ignore[arg-type]
+    elif all(isinstance(result, ChunkSpan) for result in results):
+        chunk_spans = results  # type: ignore[assignment]
     return chunk_spans
 
 
