@@ -11,10 +11,10 @@ from platformdirs import user_data_dir
 from sqlalchemy.engine import URL
 
 from raglite._lazy_llama import llama_supports_gpu_offload
+from raglite._typing import SearchMethod
 
 if TYPE_CHECKING:
     from raglite._database import ChunkSpan
-    from raglite._typing import SearchMethod
 
 # Suppress rerankers output on import until [1] is fixed.
 # [1] https://github.com/AnswerDotAI/rerankers/issues/36
