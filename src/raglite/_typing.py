@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any, Literal, Protocol
 
 import numpy as np
+from sqlalchemy import literal
 from sqlalchemy.engine import Dialect
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql.functions import FunctionElement
@@ -95,7 +96,7 @@ def _embedding_distance_postgresql(element: EmbeddingDistance, compiler: Any, **
     }
     left, right = list(element.clauses)
     operator = op_map[element.metric]
-    return f"{compiler.process(left)} {operator} {compiler.process(right)}"
+    return f"({compiler.process(left)} {operator} {compiler.process(right)})"
 
 
 @compiles(EmbeddingDistance, "duckdb")
@@ -116,7 +117,8 @@ class EmbeddingComparator(UserDefinedType.Comparator[FloatVector]):
     """An embedding distance comparator."""
 
     def distance(self, other: FloatVector, *, metric: DistanceMetric) -> Operators:
-        return EmbeddingDistance(self.expr, other, metric)
+        rhs = literal(other, type_=self.expr.type)
+        return EmbeddingDistance(self.expr, rhs, metric)
 
 
 class PostgresHalfVec(UserDefinedType[FloatVector]):
