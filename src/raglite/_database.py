@@ -501,8 +501,6 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
             if not vss_index_exists:
                 metrics = {"cosine": "cosine", "dot": "ip", "l2": "l2sq"}
                 create_vector_index_sql = f"""
-                    SET hnsw_ef_search = {ef_search};
-                    SET hnsw_enable_experimental_persistence = true;
                     CREATE INDEX vector_search_chunk_index
                     ON chunk_embedding
                     USING HNSW (embedding)
