@@ -15,6 +15,7 @@ from markdown_it import MarkdownIt
 from packaging import version
 from pydantic import ConfigDict
 from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.exc import ProgrammingError
 from sqlmodel import (
     JSON,
     Column,
@@ -443,12 +444,12 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
     if db_backend == "postgresql":
         # Create a keyword search index with `tsvector` and a vector search index with `pgvector`.
         with Session(engine) as session:
-            metrics = {"cosine": "cosine", "dot": "ip", "euclidean": "l2", "l1": "l1", "l2": "l2"}
             session.execute(
                 text("""
                 CREATE INDEX IF NOT EXISTS keyword_search_chunk_index ON chunk USING GIN (to_tsvector('simple', body));
                 """)
             )
+            metrics = {"cosine": "cosine", "dot": "ip", "l1": "l1", "l2": "l2"}
             create_vector_index_sql = f"""
                 CREATE INDEX IF NOT EXISTS vector_search_chunk_index ON chunk_embedding
                 USING hnsw (
@@ -467,19 +468,20 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
             session.commit()
     elif db_backend == "duckdb":
         with Session(engine) as session:
-            # Create a keyword search index with FTS if it doesn't exist. DuckDB stores the index in
-            # a separate schema called `fts_main_chunk` [1], where `fts` is the extension, `main` is
-            # the current schema, and `chunk` is the table name.
-            # [1] https://duckdb.org/docs/stable/extensions/full_text_search.html#pragma-create_fts_index
-            fts_index_exists = session.execute(
-                text("""
-                SELECT COUNT(*) > 0
-                FROM duckdb_schemas()
-                WHERE schema_name = 'fts_main_chunk'
-                """)
-            ).scalar_one()
-            if not fts_index_exists:
-                session.execute(text("PRAGMA create_fts_index('chunk', 'id', 'body');"))
+            # Create a keyword search index with FTS if it is missing or out of date. DuckDB does
+            # not automatically update the FTS index when the table is modified, so we take the
+            # opportunity to update it here on engine creation.
+            num_chunks = session.execute(text("SELECT COUNT(*) FROM chunk")).scalar_one()
+            try:
+                num_indexed_chunks = session.execute(
+                    text("SELECT COUNT(*) FROM fts_main_chunk.docs")
+                ).scalar_one()
+            except ProgrammingError:
+                num_indexed_chunks = 0
+            if num_indexed_chunks == 0 or num_indexed_chunks != num_chunks:
+                session.execute(
+                    text("PRAGMA create_fts_index('chunk', 'id', 'body', overwrite = 1);")
+                )
             # Create a vector search index with VSS if it doesn't exist.
             session.execute(
                 text(f"""
@@ -497,7 +499,7 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
                 """)
             ).scalar_one()
             if not vss_index_exists:
-                metrics = {"cosine": "cosine", "dot": "ip", "euclidean": "l2sq", "l2": "l2sq"}
+                metrics = {"cosine": "cosine", "dot": "ip", "l2": "l2sq"}
                 create_vector_index_sql = f"""
                     SET hnsw_ef_search = {ef_search};
                     SET hnsw_enable_experimental_persistence = true;
