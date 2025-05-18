@@ -7,16 +7,26 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from xml.sax.saxutils import escape
 
 import numpy as np
 from markdown_it import MarkdownIt
 from packaging import version
-from packaging.version import Version
 from pydantic import ConfigDict
 from sqlalchemy.engine import Engine, make_url
-from sqlmodel import JSON, Column, Field, Relationship, Session, SQLModel, create_engine, text
+from sqlmodel import (
+    JSON,
+    Column,
+    Field,
+    Integer,
+    Relationship,
+    Sequence,
+    Session,
+    SQLModel,
+    create_engine,
+    text,
+)
 
 from raglite._config import RAGLiteConfig
 from raglite._litellm import get_embedding_dim
@@ -100,7 +110,7 @@ class Chunk(SQLModel, table=True):
 
     # Table columns.
     id: ChunkId = Field(..., primary_key=True)
-    document_id: DocumentId = Field(..., foreign_key="document.id", index=True, ondelete="CASCADE")
+    document_id: DocumentId = Field(..., foreign_key="document.id", index=True)
     index: int = Field(..., index=True)
     headings: str
     body: str
@@ -279,6 +289,11 @@ class ChunkSpan:
         return self.content
 
 
+# We manually create an auto-incrementing sequence for `chunk_embedding.id` here because DuckDB
+# doesn't support `id SERIAL` out of the box.
+chunk_embedding_id_seq = Sequence("chunk_embedding_id_seq")
+
+
 class ChunkEmbedding(SQLModel, table=True):
     """A (sub-)chunk embedding."""
 
@@ -288,8 +303,16 @@ class ChunkEmbedding(SQLModel, table=True):
     model_config = ConfigDict(arbitrary_types_allowed=True)  # type: ignore[assignment]
 
     # Table columns.
-    id: int = Field(..., primary_key=True)
-    chunk_id: ChunkId = Field(..., foreign_key="chunk.id", index=True, ondelete="CASCADE")
+    id: int | None = Field(
+        default=None,
+        sa_column=Column(
+            Integer,
+            chunk_embedding_id_seq,
+            primary_key=True,
+            server_default=chunk_embedding_id_seq.next_value(),
+        ),
+    )
+    chunk_id: ChunkId = Field(..., foreign_key="chunk.id", index=True)
     embedding: FloatVector = Field(..., sa_column=Column(Embedding(dim=-1)))
 
     # Add relationship so we can access embedding.chunk.
@@ -344,7 +367,7 @@ class Eval(SQLModel, table=True):
 
     # Table columns.
     id: EvalId = Field(..., primary_key=True)
-    document_id: DocumentId = Field(..., foreign_key="document.id", index=True, ondelete="CASCADE")
+    document_id: DocumentId = Field(..., foreign_key="document.id", index=True)
     chunk_ids: list[ChunkId] = Field(default_factory=list, sa_column=Column(JSON))
     question: str
     contexts: list[str] = Field(default_factory=list, sa_column=Column(JSON))
@@ -372,20 +395,8 @@ class Eval(SQLModel, table=True):
         )
 
 
-def _pgvector_version(session: Session) -> Version:
-    try:
-        result = session.execute(
-            text("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
-        )
-        pgvector_version = version.parse(cast("str", result.scalar_one()))
-    except Exception as e:
-        error_message = "Unable to parse pgvector version, is pgvector installed?"
-        raise ValueError(error_message) from e
-    return pgvector_version
-
-
 @lru_cache(maxsize=1)
-def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
+def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # noqa: C901, PLR0912, PLR0915
     """Create a database engine and initialize it."""
     # Parse the database URL and validate that the database backend is supported.
     config = config or RAGLiteConfig()
@@ -404,11 +415,9 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
                 connect_args["ssl_context"] = True
             db_url = db_url.set(query=query)
     elif db_backend == "duckdb":
-        if "+" not in db_url.drivername:
-            db_url = db_url.set(drivername="duckdb")
         with contextlib.suppress(Exception):
             if db_url.database and db_url.database != ":memory:":
-                Path(db_url.database).parent.mkdir(parents=True, exist_ok=True)  # type: ignore[arg-type]
+                Path(db_url.database).parent.mkdir(parents=True, exist_ok=True)
     else:
         error_message = "RAGLite only supports PostgreSQL and DuckDB."
         raise ValueError(error_message)
@@ -419,12 +428,18 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
         with Session(engine) as session:
             session.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
             session.commit()
+    elif db_backend == "duckdb":
+        with Session(engine) as session:
+            session.execute(text("INSTALL fts; LOAD fts;"))
+            session.execute(text("INSTALL vss; LOAD vss;"))
+            session.commit()
     # Get the embedding dimension.
     embedding_dim = get_embedding_dim(config)
     # Create all SQLModel tables.
     ChunkEmbedding.set_embedding_dim(embedding_dim)
     SQLModel.metadata.create_all(engine)
     # Create backend-specific indexes.
+    ef_search = (10 * 4) * 4  # This is (number of results with reranking) * oversampling factor.
     if db_backend == "postgresql":
         # Create a keyword search index with `tsvector` and a vector search index with `pgvector`.
         with Session(engine) as session:
@@ -440,21 +455,57 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
                     (embedding::halfvec({embedding_dim}))
                     halfvec_{metrics[config.vector_search_index_metric]}_ops
                 );
-                SET hnsw.ef_search = {(10 * 4) * 4};
+                SET hnsw.ef_search = {ef_search};
             """
             # Enable iterative scan for pgvector v0.8.0 and up.
-            pgvector_version = _pgvector_version(session)
-            if pgvector_version and pgvector_version >= version.parse("0.8.0"):
+            pgvector_version = session.execute(
+                text("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+            ).scalar_one()
+            if pgvector_version and version.parse(pgvector_version) >= version.parse("0.8.0"):
                 create_vector_index_sql += f"\nSET hnsw.iterative_scan = {'relaxed_order' if config.reranker else 'strict_order'};"
             session.execute(text(create_vector_index_sql))
             session.commit()
     elif db_backend == "duckdb":
         with Session(engine) as session:
-            metrics = {"cosine": "cosine", "dot": "ip", "euclidean": "l2sq", "l1": "l2sq", "l2": "l2sq"}
-            session.execute(text("INSTALL fts; LOAD fts;"))
-            session.execute(text("INSTALL vss; LOAD vss;"))
-            session.execute(text("PRAGMA create_fts_index('chunk', 'id', 'body');"))
-            session.execute(text(f"CREATE INDEX IF NOT EXISTS vector_search_chunk_index ON chunk_embedding USING HNSW (embedding) WITH (metric='{metrics[config.vector_search_index_metric]}');"))
-            session.execute(text(f"SET hnsw_ef_search = {(10 * 4) * 4};"))
+            # Create a keyword search index with FTS if it doesn't exist. DuckDB stores the index in
+            # a separate schema called `fts_main_chunk` [1], where `fts` is the extension, `main` is
+            # the current schema, and `chunk` is the table name.
+            # [1] https://duckdb.org/docs/stable/extensions/full_text_search.html#pragma-create_fts_index
+            fts_index_exists = session.execute(
+                text("""
+                SELECT COUNT(*) > 0
+                FROM duckdb_schemas()
+                WHERE schema_name = 'fts_main_chunk'
+                """)
+            ).scalar_one()
+            if not fts_index_exists:
+                session.execute(text("PRAGMA create_fts_index('chunk', 'id', 'body');"))
+            # Create a vector search index with VSS if it doesn't exist.
+            session.execute(
+                text(f"""
+                SET hnsw_ef_search = {ef_search};
+                SET hnsw_enable_experimental_persistence = true;
+                """)
+            )
+            vss_index_exists = session.execute(
+                text("""
+                SELECT COUNT(*) > 0
+                FROM duckdb_indexes()
+                WHERE schema_name = current_schema()
+                AND table_name = 'chunk_embedding'
+                AND index_name = 'vector_search_chunk_index'
+                """)
+            ).scalar_one()
+            if not vss_index_exists:
+                metrics = {"cosine": "cosine", "dot": "ip", "euclidean": "l2sq", "l2": "l2sq"}
+                create_vector_index_sql = f"""
+                    SET hnsw_ef_search = {ef_search};
+                    SET hnsw_enable_experimental_persistence = true;
+                    CREATE INDEX vector_search_chunk_index
+                    ON chunk_embedding
+                    USING HNSW (embedding)
+                    WITH (metric = '{metrics[config.vector_search_index_metric]}');
+                """
+                session.execute(text(create_vector_index_sql))
             session.commit()
     return engine
