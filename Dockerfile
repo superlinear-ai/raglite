@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/var/cache/apt/ \
     groupadd --gid 1000 user && \
     useradd --create-home --no-log-init --gid 1000 --uid 1000 --shell /usr/bin/bash user && \
     chown user:user /opt/ && \
-    apt-get update && apt-get install --no-install-recommends --yes sudo && \
+    apt-get update && apt-get install --no-install-recommends --yes sudo clang libomp-dev && \
     echo 'user ALL=(root) NOPASSWD:ALL' > /etc/sudoers.d/user && chmod 0440 /etc/sudoers.d/user
 USER user
 
@@ -29,5 +29,5 @@ RUN mkdir ~/.history/ && \
     echo 'eval "$(starship init bash)"' >> ~/.bashrc
 
 # Explicitly configure compilers for llama-cpp-python.
-ENV CMAKE_C_COMPILER=/usr/bin/gcc
-ENV CMAKE_CXX_COMPILER=/usr/bin/g++
+ENV CC=clang
+ENV CXX=clang++
