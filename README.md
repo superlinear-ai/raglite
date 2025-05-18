@@ -2,7 +2,7 @@
 
 # 🥤 RAGLite
 
-RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with PostgreSQL or DuckDB.
+RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with DuckDB or PostgreSQL.
 
 ## Features
 
@@ -95,7 +95,7 @@ pip install raglite[ragas]
 > [!TIP]
 > 💾 You can create a PostgreSQL database in a few clicks at [neon.tech](https://neon.tech).
 
-First, configure RAGLite with your preferred PostgreSQL or DuckDB database and [any LLM supported by LiteLLM](https://docs.litellm.ai/docs/providers/openai):
+First, configure RAGLite with your preferred DuckDB or PostgreSQL database and [any LLM supported by LiteLLM](https://docs.litellm.ai/docs/providers/openai):
 
 ```python
 from raglite import RAGLiteConfig

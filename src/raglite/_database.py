@@ -1,4 +1,4 @@
-"""PostgreSQL or DuckDB database tables for RAGLite."""
+"""DuckDB or PostgreSQL database tables for RAGLite."""
 
 import contextlib
 import datetime
@@ -420,7 +420,7 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
             if db_url.database and db_url.database != ":memory:":
                 Path(db_url.database).parent.mkdir(parents=True, exist_ok=True)
     else:
-        error_message = "RAGLite only supports PostgreSQL and DuckDB."
+        error_message = "RAGLite only supports DuckDB or PostgreSQL."
         raise ValueError(error_message)
     # Create the engine.
     engine = create_engine(db_url, pool_pre_ping=True, connect_args=connect_args)

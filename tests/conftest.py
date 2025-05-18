@@ -29,7 +29,7 @@ def is_openai_available() -> bool:
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
-    """Reset the PostgreSQL and DuckDB databases."""
+    """Reset the PostgreSQL database."""
     if is_postgres_running():
         engine = create_engine(POSTGRES_URL, isolation_level="AUTOCOMMIT")
         with engine.connect() as conn:
