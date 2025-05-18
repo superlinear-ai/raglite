@@ -9,7 +9,7 @@ RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with DuckDB
 ##### Configurable
 
 - 🧠 Choose any LLM provider with [LiteLLM](https://github.com/BerriAI/litellm), including local [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) models
-- 💾 Choose either [PostgreSQL](https://github.com/postgres/postgres) or [DuckDB](https://duckdb.org) as a keyword & vector search database
+- 💾 Choose either [DuckDB](https://duckdb.org) or [PostgreSQL](https://github.com/postgres/postgres) as a keyword & vector search database
 - 🥇 Choose any reranker with [rerankers](https://github.com/AnswerDotAI/rerankers), including multilingual [FlashRank](https://github.com/PrithivirajDamodaran/FlashRank) as the default
 
 ##### Fast and permissive
