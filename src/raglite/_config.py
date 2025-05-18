@@ -5,12 +5,16 @@ import os
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from platformdirs import user_data_dir
 from sqlalchemy.engine import URL
 
 from raglite._lazy_llama import llama_supports_gpu_offload
+
+if TYPE_CHECKING:
+    from raglite._database import ChunkSpan
+    from raglite._typing import SearchMethod
 
 # Suppress rerankers output on import until [1] is fixed.
 # [1] https://github.com/AnswerDotAI/rerankers/issues/36
@@ -20,6 +24,15 @@ with contextlib.redirect_stdout(StringIO()):
 
 
 cache_path = Path(user_data_dir("raglite", ensure_exists=True))
+
+
+# Lazily load the default search method to avoid circular imports.
+def _search_and_rerank_chunk_spans(
+    query: str, *, num_results: int = 10, config: "RAGLiteConfig | None" = None
+) -> list["ChunkSpan"]:
+    from raglite._search import search_and_rerank_chunk_spans
+
+    return search_and_rerank_chunk_spans(query, num_results=num_results, config=config)
 
 
 @dataclass(frozen=True)
@@ -53,10 +66,12 @@ class RAGLiteConfig:
     vector_search_multivector: bool = True
     vector_search_query_adapter: bool = True  # Only supported for "cosine" and "dot" metrics.
     # Reranking config.
-    reranker: BaseRanker | tuple[tuple[str, BaseRanker], ...] | None = field(
-        default_factory=lambda: (
-            ("en", FlashRankRanker("ms-marco-MiniLM-L-12-v2", verbose=0, cache_dir=cache_path)),
-            ("other", FlashRankRanker("ms-marco-MultiBERT-L-12", verbose=0, cache_dir=cache_path)),
-        ),
+    reranker: BaseRanker | tuple[dict[str, BaseRanker], ...] | None = field(
+        default_factory=lambda: {
+            "en": FlashRankRanker("ms-marco-MiniLM-L-12-v2", verbose=0, cache_dir=cache_path),
+            "other": FlashRankRanker("ms-marco-MultiBERT-L-12", verbose=0, cache_dir=cache_path),
+        },
         compare=False,  # Exclude the reranker from comparison to avoid lru_cache misses.
     )
+    # A search method that returns (list[ChunkId], list[float]), or list[Chunk], or list[ChunkSpan].
+    search_method: SearchMethod = field(default=_search_and_rerank_chunk_spans, compare=False)

@@ -4,7 +4,6 @@ import contextlib
 import re
 import string
 from collections import defaultdict
-from collections.abc import Sequence
 from itertools import groupby
 
 import numpy as np
@@ -22,7 +21,7 @@ from raglite._database import (
     create_database_engine,
 )
 from raglite._embed import embed_strings
-from raglite._typing import ChunkId, FloatMatrix
+from raglite._typing import BasicSearchMethod, ChunkId, FloatMatrix
 
 
 def vector_search(
@@ -170,15 +169,23 @@ def reciprocal_rank_fusion(
     return list(rrf_chunk_ids), list(rrf_score)
 
 
-def hybrid_search(
-    query: str, *, num_results: int = 3, oversample: int = 4, config: RAGLiteConfig | None = None
+def hybrid_search(  # noqa: PLR0913
+    query: str,
+    *,
+    num_results: int = 3,
+    oversample: int = 4,
+    vector_search_weight: float = 0.75,
+    keyword_search_weight: float = 0.25,
+    config: RAGLiteConfig | None = None,
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks by combining ANN vector search with BM25 keyword search."""
     # Run both searches.
     vs_chunk_ids, _ = vector_search(query, num_results=oversample * num_results, config=config)
     ks_chunk_ids, _ = keyword_search(query, num_results=oversample * num_results, config=config)
     # Combine the results with Reciprocal Rank Fusion (RRF).
-    chunk_ids, hybrid_score = reciprocal_rank_fusion([vs_chunk_ids, ks_chunk_ids])
+    chunk_ids, hybrid_score = reciprocal_rank_fusion(
+        [vs_chunk_ids, ks_chunk_ids], weights=[vector_search_weight, keyword_search_weight]
+    )
     chunk_ids, hybrid_score = chunk_ids[:num_results], hybrid_score[:num_results]
     return chunk_ids, hybrid_score
 
@@ -201,42 +208,6 @@ def retrieve_chunks(
             ).all()
         )
     chunks = sorted(chunks, key=lambda chunk: chunk_ids.index(chunk.id))
-    return chunks
-
-
-def rerank_chunks(
-    query: str, chunk_ids: list[ChunkId] | list[Chunk], *, config: RAGLiteConfig | None = None
-) -> list[Chunk]:
-    """Rerank chunks according to their relevance to a given query."""
-    # Retrieve the chunks.
-    config = config or RAGLiteConfig()
-    chunks: list[Chunk] = (
-        retrieve_chunks(chunk_ids, config=config)  # type: ignore[arg-type,assignment]
-        if all(isinstance(chunk_id, ChunkId) for chunk_id in chunk_ids)
-        else chunk_ids
-    )
-    # Exit early if no reranker is configured or if the input is empty.
-    if not config.reranker or not chunks:
-        return chunks
-    # Select the reranker.
-    if isinstance(config.reranker, Sequence):
-        # Detect the languages of the chunks and queries.
-        with contextlib.suppress(LangDetectException):
-            langs = {detect(str(chunk)) for chunk in chunks}
-            langs.add(detect(query))
-        # If all chunks and the query are in the same language, use a language-specific reranker.
-        rerankers = dict(config.reranker)
-        if len(langs) == 1 and (lang := next(iter(langs))) in rerankers:
-            reranker = rerankers[lang]
-        else:
-            reranker = rerankers.get("other")
-    else:
-        # A specific reranker was configured.
-        reranker = config.reranker
-    # Rerank the chunks.
-    if reranker:
-        results = reranker.rank(query=query, docs=[str(chunk) for chunk in chunks])
-        chunks = [chunks[result.doc_id] for result in results.results]
     return chunks
 
 
@@ -300,4 +271,70 @@ def retrieve_chunk_spans(
         ),
         reverse=True,
     )
+    return chunk_spans
+
+
+def rerank_chunks(
+    query: str, chunk_ids: list[ChunkId] | list[Chunk], *, config: RAGLiteConfig | None = None
+) -> list[Chunk]:
+    """Rerank chunks according to their relevance to a given query."""
+    # Retrieve the chunks.
+    config = config or RAGLiteConfig()
+    chunks: list[Chunk] = (
+        retrieve_chunks(chunk_ids, config=config)  # type: ignore[arg-type,assignment]
+        if all(isinstance(chunk_id, ChunkId) for chunk_id in chunk_ids)
+        else chunk_ids
+    )
+    # Exit early if no reranker is configured or if the input is empty.
+    if not config.reranker or not chunks:
+        return chunks
+    # Select the reranker.
+    if isinstance(config.reranker, dict):
+        # Detect the languages of the chunks and queries.
+        with contextlib.suppress(LangDetectException):
+            langs = {detect(str(chunk)) for chunk in chunks}
+            langs.add(detect(query))
+        # If all chunks and the query are in the same language, use a language-specific reranker.
+        rerankers = config.reranker
+        if len(langs) == 1 and (lang := next(iter(langs))) in rerankers:
+            reranker = rerankers[lang]
+        else:
+            reranker = rerankers.get("other")
+    else:
+        # A specific reranker was configured.
+        reranker = config.reranker
+    # Rerank the chunks.
+    if reranker:
+        results = reranker.rank(query=query, docs=[str(chunk) for chunk in chunks])
+        chunks = [chunks[result.doc_id] for result in results.results]
+    return chunks
+
+
+def search_and_rerank_chunks(
+    query: str,
+    *,
+    num_results: int = 10,
+    oversample: int = 4,
+    search: BasicSearchMethod = hybrid_search,
+    config: RAGLiteConfig | None = None,
+) -> list[Chunk]:
+    """Search and rerank chunks."""
+    chunk_ids, _ = search(query, num_results=oversample * num_results, config=config)
+    chunks = rerank_chunks(query, chunk_ids, config=config)[:num_results]
+    return chunks
+
+
+def search_and_rerank_chunk_spans(  # noqa: PLR0913
+    query: str,
+    *,
+    num_results: int = 10,
+    oversample: int = 4,
+    neighbors: tuple[int, ...] | None = (-1, 1),
+    search: BasicSearchMethod = hybrid_search,
+    config: RAGLiteConfig | None = None,
+) -> list[ChunkSpan]:
+    """Search and rerank chunks, and then collate into chunk spans."""
+    chunk_ids, _ = search(query, num_results=oversample * num_results, config=config)
+    chunks = rerank_chunks(query, chunk_ids, config=config)[:num_results]
+    chunk_spans = retrieve_chunk_spans(chunks, neighbors=neighbors, config=config)
     return chunk_spans

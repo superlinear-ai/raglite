@@ -11,7 +11,7 @@ from raglite import (
     vector_search,
 )
 from raglite._database import Chunk, ChunkSpan, Document
-from raglite._typing import SearchMethod
+from raglite._typing import BasicSearchMethod
 
 
 @pytest.fixture(
@@ -23,13 +23,13 @@ from raglite._typing import SearchMethod
 )
 def search_method(
     request: pytest.FixtureRequest,
-) -> SearchMethod:
+) -> BasicSearchMethod:
     """Get a search method to test RAGLite with."""
-    search_method: SearchMethod = request.param
+    search_method: BasicSearchMethod = request.param
     return search_method
 
 
-def test_search(raglite_test_config: RAGLiteConfig, search_method: SearchMethod) -> None:
+def test_search(raglite_test_config: RAGLiteConfig, search_method: BasicSearchMethod) -> None:
     """Test searching for a query."""
     # Search for a query.
     query = "What does it mean for two events to be simultaneous?"
@@ -56,7 +56,9 @@ def test_search(raglite_test_config: RAGLiteConfig, search_method: SearchMethod)
     assert all(isinstance(chunk_span.document, Document) for chunk_span in chunk_spans)
 
 
-def test_search_no_results(raglite_test_config: RAGLiteConfig, search_method: SearchMethod) -> None:
+def test_search_no_results(
+    raglite_test_config: RAGLiteConfig, search_method: BasicSearchMethod
+) -> None:
     """Test searching for a query with no keyword search results."""
     query = "supercalifragilisticexpialidocious"
     num_results = 5
@@ -67,7 +69,7 @@ def test_search_no_results(raglite_test_config: RAGLiteConfig, search_method: Se
     assert all(isinstance(score, float) for score in scores)
 
 
-def test_search_empty_database(llm: str, embedder: str, search_method: SearchMethod) -> None:
+def test_search_empty_database(llm: str, embedder: str, search_method: BasicSearchMethod) -> None:
     """Test searching for a query with an empty database."""
     raglite_test_config = RAGLiteConfig(db_url="sqlite:///:memory:", llm=llm, embedder=embedder)
     query = "supercalifragilisticexpialidocious"
