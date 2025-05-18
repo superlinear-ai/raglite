@@ -153,11 +153,11 @@ def reciprocal_rank_fusion(
     if weights is None:
         weights = [1.0] * len(rankings)
     if len(weights) != len(rankings):
-        error = "Weights do not match rankings"
+        error = "The number of weights must match the number of rankings."
         raise ValueError(error)
     # Compute the RRF score.
     chunk_id_score: defaultdict[str, float] = defaultdict(float)
-    for ranking, weight in zip(rankings, weights, strict=False):
+    for ranking, weight in zip(rankings, weights, strict=True):
         for i, chunk_id in enumerate(ranking):
             chunk_id_score[chunk_id] += weight / (k + i)
     # Exit early if there are no results to fuse.
