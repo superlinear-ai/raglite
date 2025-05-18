@@ -12,9 +12,8 @@ Query = Annotated[
     str,
     Field(
         description=(
-            "The `query` string to search the knowledge base with.\n"
             "The `query` string MUST be a precise single-faceted question in the user's language.\n"
-            "The `query` string MUST resolve all pronouns to explicit nouns from the conversation history."
+            "The `query` string MUST resolve all pronouns to explicit nouns."
         )
     ),
 ]
@@ -33,7 +32,12 @@ def create_mcp_server(server_name: str, *, config: RAGLiteConfig) -> FastMCP[Any
 
     @mcp.tool()
     def search_knowledge_base(query: Query) -> str:
-        """Search the knowledge base."""
+        """Search the knowledge base.
+
+        IMPORTANT: You MAY NOT use this function if the question can be answered with common
+        knowledge or straightforward reasoning. For multi-faceted questions, call this function once
+        for each facet.
+        """
         chunk_spans = retrieve_context(query, config=config)
         rag_context = '{{"documents": [{elements}]}}'.format(
             elements=", ".join(
@@ -43,7 +47,7 @@ def create_mcp_server(server_name: str, *, config: RAGLiteConfig) -> FastMCP[Any
         return rag_context
 
     # Warm up the querying pipeline.
-    if str(config.db_url).startswith("duckdb") or config.embedder.startswith("llama-cpp-python"):
+    if config.embedder.startswith("llama-cpp-python"):
         _ = retrieve_context("Hello world", config=config)
 
     return mcp
