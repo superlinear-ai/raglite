@@ -22,11 +22,11 @@ from raglite._database import (
     create_database_engine,
 )
 from raglite._embed import embed_strings
-from raglite._typing import ChunkId, FloatMatrix
+from raglite._typing import ChunkId, FloatVector
 
 
 def vector_search(
-    query: str | FloatMatrix,
+    query: str | FloatVector,
     *,
     num_results: int = 3,
     oversample: int = 4,
@@ -35,57 +35,36 @@ def vector_search(
     """Search chunks using ANN vector search."""
     # Read the config.
     config = config or RAGLiteConfig()
-    db_backend = make_url(config.db_url).get_backend_name()
-    # Get the index metadata (including the query adapter).
-    index_metadata = IndexMetadata.get("default", config=config)
     # Embed the query.
     query_embedding = (
         embed_strings([query], config=config)[0, :] if isinstance(query, str) else np.ravel(query)
     )
     # Apply the query adapter to the query embedding.
-    Q = index_metadata.get("query_adapter")  # noqa: N806
-    if config.vector_search_query_adapter and Q is not None:
+    if (
+        config.vector_search_query_adapter
+        and (Q := IndexMetadata.get("default", config=config).get("query_adapter")) is not None  # noqa: N806
+    ):
         query_embedding = (Q @ query_embedding).astype(query_embedding.dtype)
-    # Search for the multi-vector chunk embeddings that are most similar to the query embedding.
-    num_hits = oversample * max(num_results, 10)
-    if db_backend == "postgresql":
-        # Rank the chunks by relevance according to the L∞-norm of the similarities of the
-        # multi-vector chunk embeddings to the query embedding with a single query.
-        engine = create_database_engine(config)
-        with Session(engine) as session:
-            dist = ChunkEmbedding.embedding.cosine_distance(query_embedding).label("dist")  # type: ignore[attr-defined]
-            sim = (1.0 - dist).label("sim")
-            top_vectors = (
-                select(ChunkEmbedding.chunk_id, sim).order_by(dist).limit(num_hits).subquery()
-            )
-            sim_norm = func.max(top_vectors.c.sim).label("sim_norm")
-            statement = (
-                select(top_vectors.c.chunk_id, sim_norm)
-                .group_by(top_vectors.c.chunk_id)
-                .order_by(sim_norm.desc())
-                .limit(num_results)
-            )
-            rows = session.exec(statement).all()
-            chunk_ids = [row[0] for row in rows]
-            similarity = [float(row[1]) for row in rows]
-    elif db_backend == "duckdb":
-        engine = create_database_engine(config)
-        with Session(engine) as session:
-            dist = ChunkEmbedding.embedding.cosine_distance(query_embedding).label("dist")  # type: ignore[attr-defined]
-            sim = (1.0 - dist).label("sim")
-            top_vectors = (
-                select(ChunkEmbedding.chunk_id, sim).order_by(dist).limit(num_hits).subquery()
-            )
-            sim_norm = func.max(top_vectors.c.sim).label("sim_norm")
-            statement = (
-                select(top_vectors.c.chunk_id, sim_norm)
-                .group_by(top_vectors.c.chunk_id)
-                .order_by(sim_norm.desc())
-                .limit(num_results)
-            )
-            rows = session.exec(statement).all()
-            chunk_ids = [row[0] for row in rows]
-            similarity = [float(row[1]) for row in rows]
+    # Rank the chunks by relevance according to the L∞ norm of the similarities of the multi-vector
+    # chunk embeddings to the query embedding with a single query.
+    engine = create_database_engine(config)
+    with Session(engine) as session:
+        num_hits = oversample * max(num_results, 10)
+        dist = ChunkEmbedding.embedding.distance(  # type: ignore[attr-defined]
+            query_embedding, metric=config.vector_search_index_metric
+        ).label("dist")
+        sim = (1.0 - dist).label("sim")
+        top_vectors = select(ChunkEmbedding.chunk_id, sim).order_by(dist).limit(num_hits).subquery()
+        sim_norm = func.max(top_vectors.c.sim).label("sim_norm")
+        statement = (
+            select(top_vectors.c.chunk_id, sim_norm)
+            .group_by(top_vectors.c.chunk_id)
+            .order_by(sim_norm.desc())
+            .limit(num_results)
+        )
+        rows = session.exec(statement).all()
+        chunk_ids = [row[0] for row in rows]
+        similarity = [float(row[1]) for row in rows]
     return chunk_ids, similarity
 
 
@@ -116,9 +95,9 @@ def keyword_search(
         elif db_backend == "duckdb":
             statement = text(
                 """
-                SELECT id as chunk_id, score
+                SELECT chunk_id, score
                 FROM (
-                    SELECT *, fts_main_chunk.match_bm25(id, :query) AS score
+                    SELECT id AS chunk_id, fts_main_chunk.match_bm25(id, :query) AS score
                     FROM chunk
                 ) sq
                 WHERE score IS NOT NULL

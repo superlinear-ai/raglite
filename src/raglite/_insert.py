@@ -2,13 +2,12 @@
 
 from pathlib import Path
 
-import numpy as np
-from sqlalchemy.engine import make_url
-from sqlmodel import Session, select
+from sqlalchemy import text
+from sqlmodel import Session
 from tqdm.auto import tqdm
 
 from raglite._config import RAGLiteConfig
-from raglite._database import Chunk, ChunkEmbedding, Document, IndexMetadata, create_database_engine
+from raglite._database import Chunk, ChunkEmbedding, Document, create_database_engine
 from raglite._embed import embed_strings, embed_strings_without_late_chunking, embedding_type
 from raglite._markdown import document_to_markdown
 from raglite._split_chunklets import split_chunklets
@@ -81,7 +80,7 @@ def _create_chunk_records(
     return chunk_records, chunk_embedding_records
 
 
-def insert_document(  # noqa: PLR0915
+def insert_document(
     source: Path | str,
     *,
     filename: str | None = None,
@@ -156,5 +155,13 @@ def insert_document(  # noqa: PLR0915
                 session.add(chunk_record)
                 session.add_all(chunk_embedding_record_list)
             session.commit()
+            if engine.dialect.name == "duckdb":
+                # DuckDB does not automatically update its keyword search index [1], so we do it
+                # manually after insertion.
+                # [1] https://duckdb.org/docs/stable/extensions/full_text_search
+                session.execute(
+                    text("PRAGMA create_fts_index('chunk', 'id', 'body', overwrite = 1);")
+                )
+                session.commit()
         pbar.update(1)
         pbar.close()

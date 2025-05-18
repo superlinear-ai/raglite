@@ -69,7 +69,7 @@ def test_search_no_results(raglite_test_config: RAGLiteConfig, search_method: Se
 
 def test_search_empty_database(llm: str, embedder: str, search_method: SearchMethod) -> None:
     """Test searching for a query with an empty database."""
-    raglite_test_config = RAGLiteConfig(db_url="sqlite:///:memory:", llm=llm, embedder=embedder)
+    raglite_test_config = RAGLiteConfig(db_url="duckdb:///:memory:", llm=llm, embedder=embedder)
     query = "supercalifragilisticexpialidocious"
     num_results = 5
     chunk_ids, scores = search_method(query, num_results=num_results, config=raglite_test_config)

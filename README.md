@@ -36,7 +36,6 @@ RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with Postgr
 - ✍️ Optional conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
 - ✅ Optional evaluation of retrieval and generation performance with [Ragas](https://github.com/explodinggradients/ragas)
 
-
 ## Installing
 
 > [!TIP]
@@ -96,7 +95,7 @@ pip install raglite[ragas]
 > [!TIP]
 > 💾 You can create a PostgreSQL database in a few clicks at [neon.tech](https://neon.tech).
 
-First, configure RAGLite with your preferred PostgreSQL or SQLite database and [any LLM supported by LiteLLM](https://docs.litellm.ai/docs/providers/openai):
+First, configure RAGLite with your preferred PostgreSQL or DuckDB database and [any LLM supported by LiteLLM](https://docs.litellm.ai/docs/providers/openai):
 
 ```python
 from raglite import RAGLiteConfig
