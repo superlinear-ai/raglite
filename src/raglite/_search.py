@@ -8,7 +8,6 @@ from itertools import groupby
 
 import numpy as np
 from langdetect import LangDetectException, detect
-from sqlalchemy.engine import make_url
 from sqlalchemy.orm import joinedload
 from sqlmodel import Session, and_, col, func, or_, select, text
 
@@ -73,11 +72,11 @@ def keyword_search(
     """Search chunks using BM25 keyword search."""
     # Read the config.
     config = config or RAGLiteConfig()
-    db_backend = make_url(config.db_url).get_backend_name()
     # Connect to the database.
     engine = create_database_engine(config)
     with Session(engine) as session:
-        if db_backend == "postgresql":
+        dialect = session.get_bind().dialect.name
+        if dialect == "postgresql":
             # Convert the query to a tsquery [1].
             # [1] https://www.postgresql.org/docs/current/textsearch-controls.html
             query_escaped = re.sub(f"[{re.escape(string.punctuation)}]", " ", query)
@@ -91,7 +90,7 @@ def keyword_search(
                 LIMIT :limit;
                 """)
             results = session.execute(statement, params={"query": tsv_query, "limit": num_results})
-        elif db_backend == "duckdb":
+        elif dialect == "duckdb":
             statement = text(
                 """
                 SELECT chunk_id, score

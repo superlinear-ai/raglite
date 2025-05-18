@@ -40,7 +40,6 @@ def test_insert(raglite_test_config: RAGLiteConfig) -> None:
                 )
             restored_document += chunk.body
         # Combining the chunks should yield the original document.
-        restored_document = "".join(restored_document)
         restored_document = restored_document.replace("\n", "").strip()
         doc_path = Path(__file__).parent / "specrel.pdf"  # Einstein's special relativity paper.
         doc = document_to_markdown(doc_path)
