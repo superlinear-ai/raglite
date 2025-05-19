@@ -138,7 +138,7 @@ class Chunk(SQLModel, table=True):
             elif level is not None:
                 heading_content = token.content.strip().replace("\n", " ")
                 heading_lines[level - 1] = ("#" * level) + " " + heading_content
-                heading_lines[level:] = [""] * len(heading_lines[level + 1 :])
+                heading_lines[level:] = [""] * len(heading_lines[level:])
             elif leading_only and level is None and token.content and not token.content.isspace():
                 break
         return heading_lines
