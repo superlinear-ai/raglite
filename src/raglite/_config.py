@@ -5,16 +5,13 @@ import os
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from platformdirs import user_data_dir
 from sqlalchemy.engine import URL
 
 from raglite._lazy_llama import llama_supports_gpu_offload
-from raglite._typing import SearchMethod
-
-if TYPE_CHECKING:
-    from raglite._database import ChunkSpan
+from raglite._typing import ChunkId, SearchMethod
 
 # Suppress rerankers output on import until [1] is fixed.
 # [1] https://github.com/AnswerDotAI/rerankers/issues/36
@@ -27,12 +24,13 @@ cache_path = Path(user_data_dir("raglite", ensure_exists=True))
 
 
 # Lazily load the default search method to avoid circular imports.
-def _search_and_rerank_chunk_spans(
+# TODO: Replace with search_and_rerank_chunk_spans after benchmarking.
+def _vector_search(
     query: str, *, num_results: int = 10, config: "RAGLiteConfig | None" = None
-) -> list["ChunkSpan"]:
-    from raglite._search import search_and_rerank_chunk_spans
+) -> tuple[list[ChunkId], list[float]]:
+    from raglite._search import vector_search
 
-    return search_and_rerank_chunk_spans(query, num_results=num_results, config=config)
+    return vector_search(query, num_results=num_results, config=config)
 
 
 @dataclass(frozen=True)
@@ -73,5 +71,6 @@ class RAGLiteConfig:
         },
         compare=False,  # Exclude the reranker from comparison to avoid lru_cache misses.
     )
-    # A search method that returns (list[ChunkId], list[float]), or list[Chunk], or list[ChunkSpan].
-    search_method: SearchMethod = field(default=_search_and_rerank_chunk_spans, compare=False)
+    # Search config: you can pick any search method that returns (list[ChunkId], list[float]),
+    # list[Chunk], or list[ChunkSpan].
+    search_method: SearchMethod = field(default=_vector_search, compare=False)

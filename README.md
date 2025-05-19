@@ -196,11 +196,11 @@ The LLM will adaptively decide whether to retrieve information based on the comp
 If you need manual control over the RAG pipeline, you can run a basic but powerful pipeline that consists of retrieving the most relevant chunk spans with hybrid search and reranking, converting the user prompt to a RAG instruction and appending it to the message history, and finally generating the RAG response:
 
 ```python
-from raglite import add_context, hybrid_search, rag, retrieve_context
+from raglite import add_context, rag, retrieve_context, vector_search
 
 # Choose a search method
 from dataclasses import replace
-my_config = replace(my_config, search_method=hybrid_search)  # Or `vector_search`, `search_and_rerank_chunks`, ...
+my_config = replace(my_config, search_method=vector_search)  # Or `hybrid_search`, `search_and_rerank_chunks`, ...
 
 # Retrieve relevant chunk spans with the configured search method
 user_prompt = "How is intelligence measured?"
