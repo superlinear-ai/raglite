@@ -14,47 +14,47 @@ from litellm import (  # type: ignore[attr-defined]
 )
 
 from raglite._config import RAGLiteConfig
-from raglite._database import ChunkSpan
+from raglite._database import Chunk, ChunkSpan
 from raglite._litellm import get_context_size
-from raglite._search import hybrid_search, rerank_chunks, retrieve_chunk_spans
-from raglite._typing import SearchMethod
+from raglite._search import retrieve_chunk_spans
 
 # The default RAG instruction template follows Anthropic's best practices [1].
 # [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
 RAG_INSTRUCTION_TEMPLATE = """
+---
 You are a friendly and knowledgeable assistant that provides complete and insightful answers.
 Whenever possible, use only the provided context to respond to the question at the end.
 When responding, you MUST NOT reference the existence of the context, directly or indirectly.
 Instead, you MUST treat the context as if its contents are entirely part of your working memory.
+---
 
-<context>{context}</context>
+<context>
+{context}
+</context>
 
 {user_prompt}
 """.strip()
 
 
-def retrieve_rag_context(
-    query: str,
-    *,
-    num_chunks: int = 5,
-    chunk_neighbors: tuple[int, ...] | None = (-1, 1),
-    search: SearchMethod = hybrid_search,
-    config: RAGLiteConfig | None = None,
+def retrieve_context(
+    query: str, *, num_chunks: int = 10, config: RAGLiteConfig | None = None
 ) -> list[ChunkSpan]:
     """Retrieve context for RAG."""
-    # If the user has configured a reranker, we retrieve extra contexts to rerank.
+    # Call the search method.
     config = config or RAGLiteConfig()
-    extra_chunks = 3 * num_chunks if config.reranker else 0
-    # Search for relevant chunks.
-    chunk_ids, _ = search(query, num_results=num_chunks + extra_chunks, config=config)
-    # Rerank the chunks from most to least relevant.
-    chunks = rerank_chunks(query, chunk_ids=chunk_ids, config=config)
-    # Extend the top contexts with their neighbors and group chunks into contiguous segments.
-    context = retrieve_chunk_spans(chunks[:num_chunks], neighbors=chunk_neighbors, config=config)
-    return context
+    results = config.search_method(query, num_results=num_chunks, config=config)
+    # Convert results to chunk spans.
+    chunk_spans = []
+    if isinstance(results, tuple):
+        chunk_spans = retrieve_chunk_spans(results[0], config=config)
+    elif all(isinstance(result, Chunk) for result in results):
+        chunk_spans = retrieve_chunk_spans(results, config=config)  # type: ignore[arg-type]
+    elif all(isinstance(result, ChunkSpan) for result in results):
+        chunk_spans = results  # type: ignore[assignment]
+    return chunk_spans
 
 
-def create_rag_instruction(
+def add_context(
     user_prompt: str,
     context: list[ChunkSpan],
     *,
@@ -69,10 +69,10 @@ def create_rag_instruction(
     message = {
         "role": "user",
         "content": rag_instruction_template.format(
-            user_prompt=user_prompt.strip(),
             context="\n".join(
                 chunk_span.to_xml(index=i + 1) for i, chunk_span in enumerate(context)
             ),
+            user_prompt=user_prompt.strip(),
         ),
     }
     return message
@@ -145,7 +145,7 @@ def _run_tools(
         if tool_call.function.name == "search_knowledge_base":
             kwargs = json.loads(tool_call.function.arguments)
             kwargs["config"] = config
-            chunk_spans = retrieve_rag_context(**kwargs)
+            chunk_spans = retrieve_context(**kwargs)
             tool_messages.append(
                 {
                     "role": "tool",

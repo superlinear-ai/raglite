@@ -131,10 +131,10 @@ my_config = RAGLiteConfig(
 # Example local cross-encoder reranker per language (this is the default):
 my_config = RAGLiteConfig(
     db_url="sqlite:///raglite.db",
-    reranker=(
-        ("en", Reranker("ms-marco-MiniLM-L-12-v2", model_type="flashrank")),  # English
-        ("other", Reranker("ms-marco-MultiBERT-L-12", model_type="flashrank")),  # Other languages
-    )
+    reranker={
+        "en": Reranker("ms-marco-MiniLM-L-12-v2", model_type="flashrank"),  # English
+        "other": Reranker("ms-marco-MultiBERT-L-12", model_type="flashrank"),  # Other languages
+    }
 )
 ```
 
@@ -196,15 +196,19 @@ The LLM will adaptively decide whether to retrieve information based on the comp
 If you need manual control over the RAG pipeline, you can run a basic but powerful pipeline that consists of retrieving the most relevant chunk spans with hybrid search and reranking, converting the user prompt to a RAG instruction and appending it to the message history, and finally generating the RAG response:
 
 ```python
-from raglite import create_rag_instruction, rag, retrieve_rag_context
+from raglite import add_context, rag, retrieve_context, vector_search
 
-# Retrieve relevant chunk spans with hybrid search and reranking
+# Choose a search method
+from dataclasses import replace
+my_config = replace(my_config, search_method=vector_search)  # Or `hybrid_search`, `search_and_rerank_chunks`, ...
+
+# Retrieve relevant chunk spans with the configured search method
 user_prompt = "How is intelligence measured?"
-chunk_spans = retrieve_rag_context(query=user_prompt, num_chunks=5, config=my_config)
+chunk_spans = retrieve_context(query=user_prompt, num_chunks=5, config=my_config)
 
 # Append a RAG instruction based on the user prompt and context to the message history
 messages = []  # Or start with an existing message history
-messages.append(create_rag_instruction(user_prompt=user_prompt, context=chunk_spans))
+messages.append(add_context(user_prompt=user_prompt, context=chunk_spans))
 
 # Stream the RAG response and append it to the message history
 stream = rag(messages, config=my_config)
@@ -256,10 +260,10 @@ from raglite import retrieve_chunk_spans
 chunk_spans = retrieve_chunk_spans(chunks_reranked, config=my_config)
 
 # Append a RAG instruction based on the user prompt and context to the message history
-from raglite import create_rag_instruction
+from raglite import add_context
 
 messages = []  # Or start with an existing message history
-messages.append(create_rag_instruction(user_prompt=user_prompt, context=chunk_spans))
+messages.append(add_context(user_prompt=user_prompt, context=chunk_spans))
 
 # Stream the RAG response and append it to the message history
 from raglite import rag

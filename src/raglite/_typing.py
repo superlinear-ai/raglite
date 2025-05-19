@@ -3,14 +3,16 @@
 import io
 import pickle
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 from sqlalchemy.engine import Dialect
 from sqlalchemy.sql.operators import Operators
 from sqlalchemy.types import Float, LargeBinary, TypeDecorator, TypeEngine, UserDefinedType
 
-from raglite._config import RAGLiteConfig
+if TYPE_CHECKING:
+    from raglite._config import RAGLiteConfig
+    from raglite._database import Chunk, ChunkSpan
 
 ChunkId = str
 DocumentId = str
@@ -22,10 +24,16 @@ FloatVector = np.ndarray[tuple[int], np.dtype[np.floating[Any]]]
 IntVector = np.ndarray[tuple[int], np.dtype[np.intp]]
 
 
+class BasicSearchMethod(Protocol):
+    def __call__(
+        self, query: str, *, num_results: int, config: "RAGLiteConfig | None" = None
+    ) -> tuple[list[ChunkId], list[float]]: ...
+
+
 class SearchMethod(Protocol):
     def __call__(
-        self, query: str, *, num_results: int = 3, config: RAGLiteConfig | None = None
-    ) -> tuple[list[str], list[float]]: ...
+        self, query: str, *, num_results: int, config: "RAGLiteConfig | None" = None
+    ) -> tuple[list[ChunkId], list[float]] | list["Chunk"] | list["ChunkSpan"]: ...
 
 
 class NumpyArray(TypeDecorator[np.ndarray[Any, np.dtype[np.floating[Any]]]]):

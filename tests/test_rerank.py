@@ -25,25 +25,25 @@ def kendall_tau(a: list[T], b: list[T]) -> float:
         pytest.param(None, id="no_reranker"),
         pytest.param(FlashRankRanker("ms-marco-MiniLM-L-12-v2", verbose=0), id="flashrank_english"),
         pytest.param(
-            (
-                ("en", FlashRankRanker("ms-marco-MiniLM-L-12-v2", verbose=0)),
-                ("other", FlashRankRanker("ms-marco-MultiBERT-L-12", verbose=0)),
-            ),
+            {
+                "en": FlashRankRanker("ms-marco-MiniLM-L-12-v2", verbose=0),
+                "other": FlashRankRanker("ms-marco-MultiBERT-L-12", verbose=0),
+            },
             id="flashrank_multilingual",
         ),
     ],
 )
 def reranker(
     request: pytest.FixtureRequest,
-) -> BaseRanker | tuple[tuple[str, BaseRanker], ...] | None:
+) -> BaseRanker | dict[str, BaseRanker] | None:
     """Get a reranker to test RAGLite with."""
-    reranker: BaseRanker | tuple[tuple[str, BaseRanker], ...] | None = request.param
+    reranker: BaseRanker | dict[str, BaseRanker] | None = request.param
     return reranker
 
 
 def test_reranker(
     raglite_test_config: RAGLiteConfig,
-    reranker: BaseRanker | tuple[tuple[str, BaseRanker], ...] | None,
+    reranker: BaseRanker | dict[str, BaseRanker] | None,
 ) -> None:
     """Test inserting a document, updating the indexes, and searching for a query."""
     # Update the config with the reranker.
