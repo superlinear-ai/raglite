@@ -38,7 +38,7 @@ class RAGLiteConfig:
     """RAGLite config."""
 
     # Database config.
-    db_url: str | URL = f"sqlite:///{(cache_path / 'raglite.db').as_posix()}"
+    db_url: str | URL = f"duckdb:///{(cache_path / 'raglite.db').as_posix()}"
     # LLM config used for generation.
     llm: str = field(
         default_factory=lambda: (
@@ -60,7 +60,7 @@ class RAGLiteConfig:
     # Chunk config used to partition documents into chunks.
     chunk_max_size: int = 2048  # Max number of characters per chunk.
     # Vector search config.
-    vector_search_index_metric: Literal["cosine"] = "cosine"
+    vector_search_index_metric: Literal["cosine", "dot", "l2"] = "cosine"
     vector_search_multivector: bool = True
     vector_search_query_adapter: bool = True  # Only supported for "cosine" and "dot" metrics.
     # Reranking config.

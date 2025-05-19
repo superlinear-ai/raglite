@@ -49,9 +49,7 @@ async def update_config(settings: cl.ChatSettings) -> None:
     )
     cl.user_session.set("config", config)  # type: ignore[no-untyped-call]
     # Run a search to prime the pipeline if it's a local pipeline.
-    # TODO: Don't do this for SQLite once we switch from PyNNDescent to sqlite-vec.
-    if str(config.db_url).startswith("sqlite") or config.embedder.startswith("llama-cpp-python"):
-        # async with cl.Step(name="initialize", type="retrieval"):
+    if config.embedder.startswith("llama-cpp-python"):
         query = "Hello world"
         chunk_ids, _ = await async_hybrid_search(query=query, config=config)
         _ = await async_rerank_chunks(query=query, chunk_ids=chunk_ids, config=config)

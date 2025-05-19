@@ -8,7 +8,6 @@ from itertools import groupby
 
 import numpy as np
 from langdetect import LangDetectException, detect
-from sqlalchemy.engine import make_url
 from sqlalchemy.orm import joinedload
 from sqlmodel import Session, and_, col, func, or_, select, text
 
@@ -21,11 +20,11 @@ from raglite._database import (
     create_database_engine,
 )
 from raglite._embed import embed_strings
-from raglite._typing import BasicSearchMethod, ChunkId, FloatMatrix
+from raglite._typing import BasicSearchMethod, ChunkId, FloatVector
 
 
 def vector_search(
-    query: str | FloatMatrix,
+    query: str | FloatVector,
     *,
     num_results: int = 3,
     oversample: int = 4,
@@ -34,67 +33,36 @@ def vector_search(
     """Search chunks using ANN vector search."""
     # Read the config.
     config = config or RAGLiteConfig()
-    db_backend = make_url(config.db_url).get_backend_name()
-    # Get the index metadata (including the query adapter, and in the case of SQLite, the index).
-    index_metadata = IndexMetadata.get("default", config=config)
     # Embed the query.
     query_embedding = (
         embed_strings([query], config=config)[0, :] if isinstance(query, str) else np.ravel(query)
     )
     # Apply the query adapter to the query embedding.
-    Q = index_metadata.get("query_adapter")  # noqa: N806
-    if config.vector_search_query_adapter and Q is not None:
+    if (
+        config.vector_search_query_adapter
+        and (Q := IndexMetadata.get("default", config=config).get("query_adapter")) is not None  # noqa: N806
+    ):
         query_embedding = (Q @ query_embedding).astype(query_embedding.dtype)
-    # Search for the multi-vector chunk embeddings that are most similar to the query embedding.
-    num_hits = oversample * max(num_results, 10)
-    if db_backend == "postgresql":
-        # Rank the chunks by relevance according to the L∞-norm of the similarities of the
-        # multi-vector chunk embeddings to the query embedding with a single query.
-        engine = create_database_engine(config)
-        with Session(engine) as session:
-            dist = ChunkEmbedding.embedding.cosine_distance(query_embedding).label("dist")  # type: ignore[attr-defined]
-            sim = (1.0 - dist).label("sim")
-            top_vectors = (
-                select(ChunkEmbedding.chunk_id, sim).order_by(dist).limit(num_hits).subquery()
-            )
-            sim_norm = func.max(top_vectors.c.sim).label("sim_norm")
-            statement = (
-                select(top_vectors.c.chunk_id, sim_norm)
-                .group_by(top_vectors.c.chunk_id)
-                .order_by(sim_norm.desc())
-                .limit(num_results)
-            )
-            rows = session.exec(statement).all()
-            chunk_ids = [row[0] for row in rows]
-            similarity = [float(row[1]) for row in rows]
-    elif db_backend == "sqlite":
-        # Load the NNDescent index.
-        index = index_metadata.get("index")
-        ids = np.asarray(index_metadata.get("chunk_ids", []))
-        cumsum = np.cumsum(np.asarray(index_metadata.get("chunk_sizes", [])))
-        # Find the neighbouring multi-vector indices.
-        from pynndescent import NNDescent
-
-        if isinstance(index, NNDescent) and len(ids) and len(cumsum):
-            # Query the index.
-            multivector_indices, dist = index.query(
-                query_embedding[np.newaxis, :], k=min(num_hits, cumsum[-1])
-            )
-            # Transform the multi-vector indices into chunk indices.
-            chunk_indices = np.searchsorted(cumsum, multivector_indices[0, :], side="right")
-            # Compute the L∞-norm of the similarities of the multi-vector chunk embeddings.
-            sim_clip = np.maximum(1 - dist[0], 0.0)
-            lp_norm = np.zeros(len(ids), dtype=sim_clip.dtype)
-            np.maximum.at(lp_norm, chunk_indices, sim_clip)
-            # Efficiently find the top chunks.
-            num_results = min(num_results, len(ids))
-            top_k = np.argpartition(lp_norm, -num_results)[-num_results:]
-            top_k = top_k[np.argsort(lp_norm[top_k])[::-1]]
-            chunk_ids = [i for i, s in zip(ids[top_k], lp_norm[top_k], strict=True) if s > 0]
-            similarity = [float(s) for s in lp_norm[top_k] if s > 0]
-        else:
-            # Empty result set if there is no index or if no chunks are indexed.
-            chunk_ids, similarity = [], []
+    # Rank the chunks by relevance according to the L∞ norm of the similarities of the multi-vector
+    # chunk embeddings to the query embedding with a single query.
+    engine = create_database_engine(config)
+    with Session(engine) as session:
+        num_hits = oversample * max(num_results, 10)
+        dist = ChunkEmbedding.embedding.distance(  # type: ignore[attr-defined]
+            query_embedding, metric=config.vector_search_index_metric
+        ).label("dist")
+        sim = (1.0 - dist).label("sim")
+        top_vectors = select(ChunkEmbedding.chunk_id, sim).order_by(dist).limit(num_hits).subquery()
+        sim_norm = func.max(top_vectors.c.sim).label("sim_norm")
+        statement = (
+            select(top_vectors.c.chunk_id, sim_norm)
+            .group_by(top_vectors.c.chunk_id)
+            .order_by(sim_norm.desc())
+            .limit(num_results)
+        )
+        rows = session.exec(statement).all()
+        chunk_ids = [row[0] for row in rows]
+        similarity = [float(row[1]) for row in rows]
     return chunk_ids, similarity
 
 
@@ -104,11 +72,11 @@ def keyword_search(
     """Search chunks using BM25 keyword search."""
     # Read the config.
     config = config or RAGLiteConfig()
-    db_backend = make_url(config.db_url).get_backend_name()
     # Connect to the database.
     engine = create_database_engine(config)
     with Session(engine) as session:
-        if db_backend == "postgresql":
+        dialect = session.get_bind().dialect.name
+        if dialect == "postgresql":
             # Convert the query to a tsquery [1].
             # [1] https://www.postgresql.org/docs/current/textsearch-controls.html
             query_escaped = re.sub(f"[{re.escape(string.punctuation)}]", " ", query)
@@ -122,22 +90,20 @@ def keyword_search(
                 LIMIT :limit;
                 """)
             results = session.execute(statement, params={"query": tsv_query, "limit": num_results})
-        elif db_backend == "sqlite":
-            # Convert the query to an FTS5 query [1].
-            # [1] https://www.sqlite.org/fts5.html#full_text_query_syntax
-            query_escaped = re.sub(f"[{re.escape(string.punctuation)}]", " ", query)
-            fts5_query = " OR ".join(query_escaped.split())
-            # Perform keyword search with FTS5. In FTS5, BM25 scores are negative [1], so we
-            # negate them to make them positive.
-            # [1] https://www.sqlite.org/fts5.html#the_bm25_function
-            statement = text("""
-                SELECT chunk.id as chunk_id, -bm25(keyword_search_chunk_index) as score
-                FROM chunk JOIN keyword_search_chunk_index ON chunk.rowid = keyword_search_chunk_index.rowid
-                WHERE keyword_search_chunk_index MATCH :match
+        elif dialect == "duckdb":
+            statement = text(
+                """
+                SELECT chunk_id, score
+                FROM (
+                    SELECT id AS chunk_id, fts_main_chunk.match_bm25(id, :query) AS score
+                    FROM chunk
+                ) sq
+                WHERE score IS NOT NULL
                 ORDER BY score DESC
                 LIMIT :limit;
-                """)
-            results = session.execute(statement, params={"match": fts5_query, "limit": num_results})
+                """
+            )
+            results = session.execute(statement, params={"query": query, "limit": num_results})
         # Unpack the results.
         results = list(results)  # type: ignore[assignment]
         chunk_ids = [result.chunk_id for result in results]

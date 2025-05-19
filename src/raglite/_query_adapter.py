@@ -88,7 +88,7 @@ def update_query_adapter(  # noqa: PLR0915, C901
             evals, desc="Extracting triplets from evals", unit="eval", dynamic_ncols=True
         ):
             # Embed the question.
-            question_embedding = embed_strings([eval_.question], config=config)
+            question_embedding = embed_strings([eval_.question], config=config)[0]
             # Retrieve chunks that would be used to answer the question.
             chunk_ids, _ = vector_search(
                 question_embedding, num_results=optimize_top_k, config=config_no_query_adapter
@@ -146,15 +146,15 @@ def update_query_adapter(  # noqa: PLR0915, C901
         MT = (α[:, np.newaxis] * (P - N)).T @ Q  # noqa: N806
         s = np.linalg.norm(MT, ord="fro") / np.sqrt(MT.shape[0])
         MT = np.mean(α) * (MT / s) + np.mean(1 - α) * np.eye(Q.shape[1])  # noqa: N806
-        if config.vector_search_index_metric == "dot":  # type: ignore[comparison-overlap]
+        if config.vector_search_index_metric == "dot":
             # Use the relaxed Procrustes solution.
-            A_star = MT / np.linalg.norm(MT, ord="fro")  # type: ignore[unreachable]  # noqa: N806
+            A_star = MT / np.linalg.norm(MT, ord="fro")  # noqa: N806
         elif config.vector_search_index_metric == "cosine":
             # Use the orthogonal Procrustes solution.
             U, _, VT = np.linalg.svd(MT, full_matrices=False)  # noqa: N806
             A_star = U @ VT  # noqa: N806
         else:
-            error_message = f"Unsupported ANN metric: {config.vector_search_index_metric}"  # type: ignore[unreachable]
+            error_message = f"Unsupported metric: {config.vector_search_index_metric}"
             raise ValueError(error_message)
         # Store the optimal query adapter in the database.
         index_metadata = session.get(IndexMetadata, "default") or IndexMetadata(id="default")

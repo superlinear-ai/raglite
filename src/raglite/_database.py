@@ -1,4 +1,4 @@
-"""PostgreSQL or SQLite database tables for RAGLite."""
+"""DuckDB or PostgreSQL database tables for RAGLite."""
 
 import contextlib
 import datetime
@@ -7,16 +7,27 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from xml.sax.saxutils import escape
 
 import numpy as np
 from markdown_it import MarkdownIt
 from packaging import version
-from packaging.version import Version
 from pydantic import ConfigDict
 from sqlalchemy.engine import Engine, make_url
-from sqlmodel import JSON, Column, Field, Relationship, Session, SQLModel, create_engine, text
+from sqlalchemy.exc import ProgrammingError
+from sqlmodel import (
+    JSON,
+    Column,
+    Field,
+    Integer,
+    Relationship,
+    Sequence,
+    Session,
+    SQLModel,
+    create_engine,
+    text,
+)
 
 from raglite._config import RAGLiteConfig
 from raglite._litellm import get_embedding_dim
@@ -100,7 +111,7 @@ class Chunk(SQLModel, table=True):
 
     # Table columns.
     id: ChunkId = Field(..., primary_key=True)
-    document_id: DocumentId = Field(..., foreign_key="document.id", index=True, ondelete="CASCADE")
+    document_id: DocumentId = Field(..., foreign_key="document.id", index=True)
     index: int = Field(..., index=True)
     headings: str
     body: str
@@ -279,6 +290,11 @@ class ChunkSpan:
         return self.content
 
 
+# We manually create an auto-incrementing sequence for `chunk_embedding.id` here because DuckDB
+# doesn't support `id SERIAL` out of the box.
+chunk_embedding_id_seq = Sequence("chunk_embedding_id_seq")
+
+
 class ChunkEmbedding(SQLModel, table=True):
     """A (sub-)chunk embedding."""
 
@@ -288,8 +304,16 @@ class ChunkEmbedding(SQLModel, table=True):
     model_config = ConfigDict(arbitrary_types_allowed=True)  # type: ignore[assignment]
 
     # Table columns.
-    id: int = Field(..., primary_key=True)
-    chunk_id: ChunkId = Field(..., foreign_key="chunk.id", index=True, ondelete="CASCADE")
+    id: int | None = Field(
+        default=None,
+        sa_column=Column(
+            Integer,
+            chunk_embedding_id_seq,
+            primary_key=True,
+            server_default=chunk_embedding_id_seq.next_value(),
+        ),
+    )
+    chunk_id: ChunkId = Field(..., foreign_key="chunk.id", index=True)
     embedding: FloatVector = Field(..., sa_column=Column(Embedding(dim=-1)))
 
     # Add relationship so we can access embedding.chunk.
@@ -344,7 +368,7 @@ class Eval(SQLModel, table=True):
 
     # Table columns.
     id: EvalId = Field(..., primary_key=True)
-    document_id: DocumentId = Field(..., foreign_key="document.id", index=True, ondelete="CASCADE")
+    document_id: DocumentId = Field(..., foreign_key="document.id", index=True)
     chunk_ids: list[ChunkId] = Field(default_factory=list, sa_column=Column(JSON))
     question: str
     contexts: list[str] = Field(default_factory=list, sa_column=Column(JSON))
@@ -372,20 +396,8 @@ class Eval(SQLModel, table=True):
         )
 
 
-def _pgvector_version(session: Session) -> Version:
-    try:
-        result = session.execute(
-            text("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
-        )
-        pgvector_version = version.parse(cast("str", result.scalar_one()))
-    except Exception as e:
-        error_message = "Unable to parse pgvector version, is pgvector installed?"
-        raise ValueError(error_message) from e
-    return pgvector_version
-
-
 @lru_cache(maxsize=1)
-def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
+def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # noqa: C901, PLR0912, PLR0915
     """Create a database engine and initialize it."""
     # Parse the database URL and validate that the database backend is supported.
     config = config or RAGLiteConfig()
@@ -403,15 +415,12 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
             if query.pop("sslmode") != "disable":
                 connect_args["ssl_context"] = True
             db_url = db_url.set(query=query)
-    elif db_backend == "sqlite":
-        # Optimize SQLite performance.
-        pragmas = {"journal_mode": "WAL", "synchronous": "NORMAL"}
-        db_url = db_url.update_query_dict(pragmas, append=True)
-        # Create the database path if it doesn't exist.
+    elif db_backend == "duckdb":
         with contextlib.suppress(Exception):
-            Path(db_url.database).parent.mkdir(parents=True, exist_ok=True)  # type: ignore[arg-type]
+            if db_url.database and db_url.database != ":memory:":
+                Path(db_url.database).parent.mkdir(parents=True, exist_ok=True)
     else:
-        error_message = "RAGLite only supports PostgreSQL and SQLite."
+        error_message = "RAGLite only supports DuckDB or PostgreSQL."
         raise ValueError(error_message)
     # Create the engine.
     engine = create_engine(db_url, pool_pre_ping=True, connect_args=connect_args)
@@ -420,66 +429,83 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:
         with Session(engine) as session:
             session.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
             session.commit()
+    elif db_backend == "duckdb":
+        with Session(engine) as session:
+            session.execute(text("INSTALL fts; LOAD fts;"))
+            session.execute(text("INSTALL vss; LOAD vss;"))
+            session.commit()
     # Get the embedding dimension.
     embedding_dim = get_embedding_dim(config)
     # Create all SQLModel tables.
     ChunkEmbedding.set_embedding_dim(embedding_dim)
     SQLModel.metadata.create_all(engine)
     # Create backend-specific indexes.
+    ef_search = (10 * 4) * 4  # This is (number of results with reranking) * oversampling factor.
     if db_backend == "postgresql":
         # Create a keyword search index with `tsvector` and a vector search index with `pgvector`.
         with Session(engine) as session:
-            metrics = {"cosine": "cosine", "dot": "ip", "euclidean": "l2", "l1": "l1", "l2": "l2"}
             session.execute(
                 text("""
                 CREATE INDEX IF NOT EXISTS keyword_search_chunk_index ON chunk USING GIN (to_tsvector('simple', body));
                 """)
             )
+            metrics = {"cosine": "cosine", "dot": "ip", "l1": "l1", "l2": "l2"}
             create_vector_index_sql = f"""
                 CREATE INDEX IF NOT EXISTS vector_search_chunk_index ON chunk_embedding
                 USING hnsw (
                     (embedding::halfvec({embedding_dim}))
                     halfvec_{metrics[config.vector_search_index_metric]}_ops
                 );
-                SET hnsw.ef_search = {(10 * 4) * 4};
+                SET hnsw.ef_search = {ef_search};
             """
             # Enable iterative scan for pgvector v0.8.0 and up.
-            pgvector_version = _pgvector_version(session)
-            if pgvector_version and pgvector_version >= version.parse("0.8.0"):
+            pgvector_version = session.execute(
+                text("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+            ).scalar_one()
+            if pgvector_version and version.parse(pgvector_version) >= version.parse("0.8.0"):
                 create_vector_index_sql += f"\nSET hnsw.iterative_scan = {'relaxed_order' if config.reranker else 'strict_order'};"
             session.execute(text(create_vector_index_sql))
             session.commit()
-    elif db_backend == "sqlite":
-        # Create a virtual table for keyword search on the chunk table.
-        # We use the chunk table as an external content table [1] to avoid duplicating the data.
-        # [1] https://www.sqlite.org/fts5.html#external_content_tables
+    elif db_backend == "duckdb":
         with Session(engine) as session:
+            # Create a keyword search index with FTS if it is missing or out of date. DuckDB does
+            # not automatically update the FTS index when the table is modified, so we take the
+            # opportunity to update it here on engine creation.
+            num_chunks = session.execute(text("SELECT COUNT(*) FROM chunk")).scalar_one()
+            try:
+                num_indexed_chunks = session.execute(
+                    text("SELECT COUNT(*) FROM fts_main_chunk.docs")
+                ).scalar_one()
+            except ProgrammingError:
+                num_indexed_chunks = 0
+            if num_indexed_chunks == 0 or num_indexed_chunks != num_chunks:
+                session.execute(
+                    text("PRAGMA create_fts_index('chunk', 'id', 'body', overwrite = 1);")
+                )
+            # Create a vector search index with VSS if it doesn't exist.
             session.execute(
-                text("""
-                CREATE VIRTUAL TABLE IF NOT EXISTS keyword_search_chunk_index USING fts5(body, content='chunk', content_rowid='rowid');
+                text(f"""
+                SET hnsw_ef_search = {ef_search};
+                SET hnsw_enable_experimental_persistence = true;
                 """)
             )
-            session.execute(
+            vss_index_exists = session.execute(
                 text("""
-                CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_insert AFTER INSERT ON chunk BEGIN
-                    INSERT INTO keyword_search_chunk_index(rowid, body) VALUES (new.rowid, new.body);
-                END;
+                SELECT COUNT(*) > 0
+                FROM duckdb_indexes()
+                WHERE schema_name = current_schema()
+                AND table_name = 'chunk_embedding'
+                AND index_name = 'vector_search_chunk_index'
                 """)
-            )
-            session.execute(
-                text("""
-                CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_delete AFTER DELETE ON chunk BEGIN
-                    INSERT INTO keyword_search_chunk_index(keyword_search_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
-                END;
-                """)
-            )
-            session.execute(
-                text("""
-                CREATE TRIGGER IF NOT EXISTS keyword_search_chunk_index_auto_update AFTER UPDATE ON chunk BEGIN
-                    INSERT INTO keyword_search_chunk_index(keyword_search_chunk_index, rowid, body) VALUES('delete', old.rowid, old.body);
-                    INSERT INTO keyword_search_chunk_index(rowid, body) VALUES (new.rowid, new.body);
-                END;
-                """)
-            )
+            ).scalar_one()
+            if not vss_index_exists:
+                metrics = {"cosine": "cosine", "dot": "ip", "l2": "l2sq"}
+                create_vector_index_sql = f"""
+                    CREATE INDEX vector_search_chunk_index
+                    ON chunk_embedding
+                    USING HNSW (embedding)
+                    WITH (metric = '{metrics[config.vector_search_index_metric]}');
+                """
+                session.execute(text(create_vector_index_sql))
             session.commit()
     return engine
