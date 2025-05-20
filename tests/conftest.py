@@ -14,6 +14,15 @@ from raglite import RAGLiteConfig, insert_document
 POSTGRES_URL = "postgresql+pg8000://raglite_user:raglite_password@postgres:5432/postgres"
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    """Configure pytest to skip slow tests in CI."""
+    if os.environ.get("CI"):
+        markexpr = "not slow"
+        if config.option.markexpr:
+            markexpr = f"({config.option.markexpr}) and ({markexpr})"
+        config.option.markexpr = markexpr
+
+
 def is_postgres_running() -> bool:
     """Check if PostgreSQL is running."""
     try:

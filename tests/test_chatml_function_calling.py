@@ -73,6 +73,7 @@ def is_accelerator_available() -> bool:
         ),
     ],
 )
+@pytest.mark.slow
 def test_llama_cpp_python_tool_use(
     llm_repo_id: str,
     user_prompt_expected_tool_calls: tuple[str, int],
