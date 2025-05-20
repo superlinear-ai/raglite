@@ -47,7 +47,8 @@ def vector_search(
     # chunk embeddings to the query embedding with a single query.
     engine = create_database_engine(config)
     with Session(engine) as session:
-        num_hits = oversample * max(num_results, 10)
+        corrected_oversample = oversample * config.chunk_max_size / RAGLiteConfig.chunk_max_size
+        num_hits = round(corrected_oversample) * max(num_results, 10)
         dist = ChunkEmbedding.embedding.distance(  # type: ignore[attr-defined]
             query_embedding, metric=config.vector_search_index_metric
         ).label("dist")
@@ -139,7 +140,7 @@ def hybrid_search(  # noqa: PLR0913
     query: str,
     *,
     num_results: int = 3,
-    oversample: int = 4,
+    oversample: int = 2,
     vector_search_weight: float = 0.75,
     keyword_search_weight: float = 0.25,
     config: RAGLiteConfig | None = None,
