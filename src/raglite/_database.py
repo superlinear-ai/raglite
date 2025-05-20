@@ -440,7 +440,8 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
     ChunkEmbedding.set_embedding_dim(embedding_dim)
     SQLModel.metadata.create_all(engine)
     # Create backend-specific indexes.
-    ef_search = (10 * 4) * 4  # This is (number of results with reranking) * oversampling factor.
+    oversample = round(4 * config.chunk_max_size / RAGLiteConfig.chunk_max_size)
+    ef_search = (10 * 4) * oversample  # This is (# reranked results) * oversampling factor.
     if db_backend == "postgresql":
         # Create a keyword search index with `tsvector` and a vector search index with `pgvector`.
         with Session(engine) as session:
