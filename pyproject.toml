@@ -36,8 +36,6 @@ dependencies = [
   "sqlmodel-slim (>=0.0.21)",
   # Progress:
   "tqdm (>=4.66.0)",
-  # Evaluation:
-  "pandas (>=2.1.1)",
   # CLI:
   "typer (>=0.15.1)",
   # Model Context Protocol:
@@ -83,7 +81,7 @@ llama-cpp-python = ["llama-cpp-python (>=0.3.9)"]
 # Markdown conversion:
 pandoc = ["pypandoc-binary (>=1.13)"]
 # Evaluation:
-ragas = ["ragas (>=0.1.12)"]
+ragas = ["pandas (>=2.1.1)", "ragas (>=0.1.12)"]
 
 [tool.commitizen]  # https://commitizen-tools.github.io/commitizen/config/
 bump_message = "bump: v$current_version → v$new_version"
