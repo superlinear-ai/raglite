@@ -1,13 +1,15 @@
 """Generation and evaluation of evals."""
 
 from random import randint
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
-import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlmodel import Session, func, select
 from tqdm.auto import tqdm, trange
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, Document, Eval, create_database_engine
@@ -176,8 +178,14 @@ def answer_evals(
     num_evals: int = 100,
     *,
     config: RAGLiteConfig | None = None,
-) -> pd.DataFrame:
+) -> "pd.DataFrame":
     """Read evals from the database and answer them with RAG."""
+    try:
+        import pandas as pd
+    except ModuleNotFoundError as import_error:
+        error_message = "To use the `answer_evals` function, please install the `ragas` extra."
+        raise ModuleNotFoundError(error_message) from import_error
+
     # Read evals from the database.
     config = config or RAGLiteConfig()
     engine = create_database_engine(config)
@@ -206,10 +214,11 @@ def answer_evals(
 
 
 def evaluate(
-    answered_evals: pd.DataFrame | int = 100, config: RAGLiteConfig | None = None
-) -> pd.DataFrame:
+    answered_evals: "pd.DataFrame | int" = 100, config: RAGLiteConfig | None = None
+) -> "pd.DataFrame":
     """Evaluate the performance of a set of answered evals with Ragas."""
     try:
+        import pandas as pd
         from datasets import Dataset
         from langchain_community.chat_models import ChatLiteLLM
         from langchain_community.llms import LlamaCpp
