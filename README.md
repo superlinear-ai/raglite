@@ -123,7 +123,7 @@ from rerankers import Reranker
 # Example remote API-based reranker:
 my_config = RAGLiteConfig(
     db_url="postgresql://my_username:my_password@my_host:5432/my_database"
-    reranker=Reranker("cohere", lang="en", api_key=COHERE_API_KEY)
+    reranker=Reranker("rerank-v3.5", model_type="cohere", api_key=COHERE_API_KEY)  # Multilingual
 )
 
 # Example local cross-encoder reranker per language (this is the default):
