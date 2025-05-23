@@ -13,7 +13,7 @@ from raglite._litellm import LlamaCppPythonLLM
 from raglite._typing import FloatMatrix, IntVector
 
 
-def embed_strings_with_late_chunking(  # noqa: PLR0915
+def embed_strings_with_late_chunking(  # noqa: C901,PLR0915
     sentences: list[str], *, config: RAGLiteConfig | None = None
 ) -> FloatMatrix:
     """Embed a document's sentences with late chunking."""
@@ -117,11 +117,15 @@ def embed_strings_with_late_chunking(  # noqa: PLR0915
         segment_start_index, content_start_index, segment_end_index = segment
         segment_sentences = sentences[segment_start_index:segment_end_index]
         segment_embedding = np.asarray(embedder.embed("".join(segment_sentences)))
-        # Split the segment embeddings into embedding matrices per sentence.
+        # Split the segment embeddings into embedding matrices per sentence using the largest
+        # remainder method.
         segment_tokens = num_tokens[segment_start_index:segment_end_index]
-        sentence_size = np.round(
-            len(segment_embedding) * (segment_tokens / np.sum(segment_tokens))
-        ).astype(np.intp)
+        sentence_size_frac = len(segment_embedding) * (segment_tokens / np.sum(segment_tokens))
+        sentence_size = np.floor(sentence_size_frac).astype(np.intp)
+        remainder = len(segment_embedding) - np.sum(sentence_size)
+        if remainder > 0:  # Assign the remaining tokens to sentences with largest fractional parts.
+            top_remainders = np.argsort(sentence_size_frac - sentence_size)[-remainder:]
+            sentence_size[top_remainders] += 1
         sentence_matrices = np.split(segment_embedding, np.cumsum(sentence_size)[:-1])
         # Compute the segment sentence embeddings by averaging the token embeddings.
         content_sentence_embeddings = [
