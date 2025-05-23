@@ -157,10 +157,15 @@ def insert_document(
             session.commit()
             if engine.dialect.name == "duckdb":
                 # DuckDB does not automatically update its keyword search index [1], so we do it
-                # manually after insertion.
+                # manually after insertion. Additionally, we synchronize data in the write-ahead log
+                # (WAL) to the database data file with the CHECKPOINT statement [2].
                 # [1] https://duckdb.org/docs/stable/extensions/full_text_search
+                # [2] https://duckdb.org/docs/stable/sql/statements/checkpoint.html
                 session.execute(
-                    text("PRAGMA create_fts_index('chunk', 'id', 'body', overwrite = 1);")
+                    text("""
+                    PRAGMA create_fts_index('chunk', 'id', 'body', overwrite = 1);
+                    CHECKPOINT;
+                    """)
                 )
                 session.commit()
         pbar.update(1)
