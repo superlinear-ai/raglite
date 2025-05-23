@@ -162,11 +162,9 @@ def insert_document(
                 # [1] https://duckdb.org/docs/stable/extensions/full_text_search
                 # [2] https://duckdb.org/docs/stable/sql/statements/checkpoint.html
                 session.execute(
-                    text("""
-                    PRAGMA create_fts_index('chunk', 'id', 'body', overwrite = 1);
-                    CHECKPOINT;
-                    """)
+                    text("PRAGMA create_fts_index('chunk', 'id', 'body', overwrite = 1);")
                 )
                 session.commit()
+                session.execute(text("CHECKPOINT;"))
         pbar.update(1)
         pbar.close()
