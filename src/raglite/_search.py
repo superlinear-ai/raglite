@@ -280,7 +280,7 @@ def rerank_chunks(
 def search_and_rerank_chunks(
     query: str,
     *,
-    num_results: int = 10,
+    num_results: int = 8,
     oversample: int = 4,
     search: BasicSearchMethod = hybrid_search,
     config: RAGLiteConfig | None = None,
@@ -294,7 +294,7 @@ def search_and_rerank_chunks(
 def search_and_rerank_chunk_spans(  # noqa: PLR0913
     query: str,
     *,
-    num_results: int = 10,
+    num_results: int = 8,
     oversample: int = 4,
     neighbors: tuple[int, ...] | None = (-1, 1),
     search: BasicSearchMethod = hybrid_search,
