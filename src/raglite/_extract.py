@@ -13,7 +13,7 @@ T = TypeVar("T", bound=BaseModel)
 def extract_with_llm(
     return_type: type[T],
     user_prompt: str | list[str],
-    strict: bool = False,  # noqa: FBT001,FBT002
+    strict: bool = False,  # noqa: FBT001, FBT002
     config: RAGLiteConfig | None = None,
     **kwargs: Any,
 ) -> T:
