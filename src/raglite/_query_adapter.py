@@ -12,7 +12,7 @@ from raglite._embed import embed_strings
 from raglite._search import vector_search
 
 
-def update_query_adapter(  # noqa: PLR0915, C901
+def update_query_adapter(  # noqa: C901, PLR0915
     *,
     max_triplets: int = 4096,
     max_triplets_per_eval: int = 64,
@@ -79,12 +79,13 @@ def update_query_adapter(  # noqa: PLR0915, C901
             select(Eval).order_by(Eval.id).limit(max(8, max_triplets // max_triplets_per_eval))
         ).all()
         # Exit if there aren't enough evals to compute the query adapter.
-        required_evals = round(len(chunk_embedding.embedding) / max_triplets_per_eval) - len(evals)
+        embedding_dim = len(chunk_embedding.embedding)
+        required_evals = np.ceil(embedding_dim / max_triplets_per_eval) - len(evals)
         if required_evals > 0:
             error_message = f"First run `insert_evals()` to generate {required_evals} more evals."
             raise ValueError(error_message)
         # Loop over the evals to generate (q, p, n) triplets.
-        Q = np.zeros((0, len(chunk_embedding.embedding)))  # noqa: N806
+        Q = np.zeros((0, embedding_dim))  # noqa: N806
         P = np.zeros_like(Q)  # noqa: N806
         N = np.zeros_like(Q)  # noqa: N806
         for eval_ in tqdm(
