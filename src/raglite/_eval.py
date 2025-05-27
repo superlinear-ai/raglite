@@ -16,7 +16,7 @@ from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, Document, Eval, create_database_engine
 from raglite._extract import extract_with_llm
 from raglite._rag import add_context, rag, retrieve_context
-from raglite._search import hybrid_search, retrieve_chunk_spans, vector_search
+from raglite._search import retrieve_chunk_spans, vector_search
 
 
 def insert_evals(  # noqa: C901, PLR0912
@@ -95,7 +95,7 @@ The question MUST satisfy ALL of the following criteria:
             else:
                 question = question_response.question
             # Search for candidate chunks to answer the generated question.
-            candidate_chunk_ids, _ = hybrid_search(
+            candidate_chunk_ids, _ = vector_search(
                 query=question, num_results=max_contexts_per_eval, config=config
             )
             candidate_chunks = [session.get(Chunk, chunk_id) for chunk_id in candidate_chunk_ids]

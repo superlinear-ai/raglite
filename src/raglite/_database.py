@@ -136,7 +136,7 @@ class Chunk(SQLModel, table=True):
         )
 
     @staticmethod
-    def extract_heading_lines(doc: str, leading_only: bool = False) -> list[str]:  # noqa: FBT001,FBT002
+    def extract_heading_lines(doc: str, leading_only: bool = False) -> list[str]:  # noqa: FBT001, FBT002
         """Extract the leading or final state of the Markdown headings of a document."""
         md = MarkdownIt()
         heading_lines = [""] * 6

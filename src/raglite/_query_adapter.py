@@ -12,7 +12,7 @@ from raglite._embed import embed_strings
 from raglite._search import vector_search
 
 
-def update_query_adapter(  # noqa: PLR0915, C901
+def update_query_adapter(  # noqa: C901, PLR0915
     *,
     max_triplets: int = 4096,
     max_triplets_per_eval: int = 64,
@@ -78,59 +78,63 @@ def update_query_adapter(  # noqa: PLR0915, C901
         evals = session.exec(
             select(Eval).order_by(Eval.id).limit(max(8, max_triplets // max_triplets_per_eval))
         ).all()
-        if len(evals) * max_triplets_per_eval < len(chunk_embedding.embedding):
-            error_message = "First run `insert_evals()` to generate sufficient evals."
+        # Exit if there aren't enough evals to compute the query adapter.
+        embedding_dim = len(chunk_embedding.embedding)
+        required_evals = np.ceil(embedding_dim / max_triplets_per_eval) - len(evals)
+        if required_evals > 0:
+            error_message = f"First run `insert_evals()` to generate {required_evals} more evals."
             raise ValueError(error_message)
         # Loop over the evals to generate (q, p, n) triplets.
-        Q = np.zeros((0, len(chunk_embedding.embedding)))  # noqa: N806
+        Q = np.zeros((0, embedding_dim))  # noqa: N806
         P = np.zeros_like(Q)  # noqa: N806
         N = np.zeros_like(Q)  # noqa: N806
         for eval_ in tqdm(
             evals, desc="Extracting triplets from evals", unit="eval", dynamic_ncols=True
         ):
             # Embed the question.
-            question_embedding = embed_strings([eval_.question], config=config)[0]
+            question_embedding = embed_strings([eval_.question], config=config)
             # Retrieve chunks that would be used to answer the question.
             chunk_ids, _ = vector_search(
-                question_embedding, num_results=optimize_top_k, config=config_no_query_adapter
+                question_embedding[0], num_results=optimize_top_k, config=config_no_query_adapter
             )
             retrieved_chunks = session.exec(select(Chunk).where(col(Chunk.id).in_(chunk_ids))).all()
-            # Extract (q, p, n) triplets by comparing the retrieved chunks with the eval.
+            retrieved_chunks = sorted(retrieved_chunks, key=lambda chunk: chunk_ids.index(chunk.id))
+            # Extract (q, p, n) triplets from the eval.
             num_triplets = 0
             for i, retrieved_chunk in enumerate(retrieved_chunks):
-                # Select irrelevant chunks.
+                # Only loop over irrelevant chunks.
                 if retrieved_chunk.id not in eval_.chunk_ids:
-                    # Look up all positive chunks (each represented by the mean of its multi-vector
-                    # embedding) that are ranked lower than this negative one (represented by the
-                    # embedding in the multi-vector embedding that best matches the query).
-                    p_mean = [
-                        np.mean(chunk.embedding_matrix, axis=0, keepdims=True)
-                        for chunk in retrieved_chunks[i + 1 :]
-                        if chunk is not None and chunk.id in eval_.chunk_ids
+                    continue
+                irrelevant_chunk = retrieved_chunk
+                # Grab the negative chunk embedding of this irrelevant chunk.
+                n_top = irrelevant_chunk.embedding_matrix[
+                    [np.argmax(irrelevant_chunk.embedding_matrix @ question_embedding.T)]
+                ]
+                # Grab the positive chunk embeddings that are ranked lower than the negative one.
+                p_top = [
+                    chunk.embedding_matrix[
+                        [np.argmax(chunk.embedding_matrix @ question_embedding.T)]
                     ]
-                    n_top = retrieved_chunk.embedding_matrix[
-                        np.argmax(retrieved_chunk.embedding_matrix @ question_embedding.T),
-                        np.newaxis,
-                        :,
-                    ]
-                    # Filter out any (p, n, q) triplets for which the mean positive embedding ranks
-                    # higher than the top negative one.
-                    p_mean = [p_e for p_e in p_mean if (n_top - p_e) @ question_embedding.T > 0]
-                    if not p_mean:
-                        continue
-                    # Stack the (p, n, q) triplets.
-                    p = np.vstack(p_mean)
-                    n = np.repeat(n_top, p.shape[0], axis=0)
-                    q = np.repeat(question_embedding, p.shape[0], axis=0)
-                    num_triplets += p.shape[0]
-                    # Append the (query, positive, negative) tuples to the Q, P, N matrices.
-                    Q = np.vstack([Q, q])  # noqa: N806
-                    P = np.vstack([P, p])  # noqa: N806
-                    N = np.vstack([N, n])  # noqa: N806
-                    # Check if we have sufficient triplets for this eval.
-                    if num_triplets >= max_triplets_per_eval:
-                        break
-            # Check if we have sufficient triplets to compute the query adapter.
+                    for chunk in retrieved_chunks[i + 1 :]  # Chunks that are ranked lower.
+                    if chunk is not None and chunk.id in eval_.chunk_ids
+                ]
+                # Ensure that we only have (q, p, n) triplets for which p is ranked lower than n.
+                p_top = [p for p in p_top if (n_top - p) @ question_embedding.T > 0]
+                if not p_top:
+                    continue
+                # Stack the (q, p, n) triplets.
+                p = np.vstack(p_top)
+                n = np.repeat(n_top, p.shape[0], axis=0)
+                q = np.repeat(question_embedding, p.shape[0], axis=0)
+                num_triplets += p.shape[0]
+                # Append the (q, p, n) triplets to the Q, P, N matrices.
+                Q = np.vstack([Q, q])  # noqa: N806
+                P = np.vstack([P, p])  # noqa: N806
+                N = np.vstack([N, n])  # noqa: N806
+                # Stop if we have enough triplets for this eval.
+                if num_triplets >= max_triplets_per_eval:
+                    break
+            # Stop if we have enough triplets to compute the query adapter.
             if Q.shape[0] > max_triplets:
                 Q, P, N = Q[:max_triplets, :], P[:max_triplets, :], N[:max_triplets, :]  # noqa: N806
                 break
