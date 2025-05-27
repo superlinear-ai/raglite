@@ -50,7 +50,7 @@ def vector_search(
         corrected_oversample = oversample * config.chunk_max_size / RAGLiteConfig.chunk_max_size
         num_hits = round(corrected_oversample) * max(num_results, 10)
         dist = ChunkEmbedding.embedding.distance(  # type: ignore[attr-defined]
-            query_embedding, metric=config.vector_search_index_metric
+            query_embedding, metric=config.vector_search_distance_metric
         ).label("dist")
         sim = (1.0 - dist).label("sim")
         top_vectors = select(ChunkEmbedding.chunk_id, sim).order_by(dist).limit(num_hits).subquery()
