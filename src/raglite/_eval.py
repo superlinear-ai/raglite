@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import text
 from sqlmodel import Session, func, select
 from tqdm.auto import tqdm, trange
 
@@ -18,7 +19,7 @@ from raglite._rag import add_context, rag, retrieve_context
 from raglite._search import hybrid_search, retrieve_chunk_spans, vector_search
 
 
-def insert_evals(  # noqa: C901
+def insert_evals(  # noqa: C901, PLR0912
     *, num_evals: int = 100, max_contexts_per_eval: int = 20, config: RAGLiteConfig | None = None
 ) -> None:
     """Generate and insert evals into the database."""
@@ -172,6 +173,8 @@ The answer MUST satisfy ALL of the following criteria:
             )
             session.add(eval_)
             session.commit()
+            if engine.dialect.name == "duckdb":
+                session.execute(text("CHECKPOINT;"))
 
 
 def answer_evals(

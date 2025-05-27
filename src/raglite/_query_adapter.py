@@ -1,6 +1,7 @@
 """Compute and update an optimal query adapter."""
 
 import numpy as np
+from sqlalchemy import text
 from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import Session, col, select
 from tqdm.auto import tqdm
@@ -162,3 +163,5 @@ def update_query_adapter(  # noqa: PLR0915, C901
         flag_modified(index_metadata, "metadata_")
         session.add(index_metadata)
         session.commit()
+        if engine.dialect.name == "duckdb":
+            session.execute(text("CHECKPOINT;"))
