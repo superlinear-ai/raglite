@@ -455,7 +455,7 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
                 CREATE INDEX IF NOT EXISTS vector_search_chunk_index ON chunk_embedding
                 USING hnsw (
                     (embedding::halfvec({embedding_dim}))
-                    halfvec_{metrics[config.vector_search_index_metric]}_ops
+                    halfvec_{metrics[config.vector_search_distance_metric]}_ops
                 );
                 SET hnsw.ef_search = {ef_search};
             """
@@ -505,7 +505,7 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
                     CREATE INDEX vector_search_chunk_index
                     ON chunk_embedding
                     USING HNSW (embedding)
-                    WITH (metric = '{metrics[config.vector_search_index_metric]}');
+                    WITH (metric = '{metrics[config.vector_search_distance_metric]}');
                 """
                 session.execute(text(create_vector_index_sql))
             session.commit()

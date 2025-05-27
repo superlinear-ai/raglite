@@ -10,6 +10,7 @@ from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, ChunkEmbedding, Eval, IndexMetadata, create_database_engine
 from raglite._embed import embed_strings
 from raglite._search import vector_search
+from raglite._typing import FloatMatrix
 
 
 def update_query_adapter(  # noqa: C901, PLR0915
@@ -17,8 +18,9 @@ def update_query_adapter(  # noqa: C901, PLR0915
     max_triplets: int = 4096,
     max_triplets_per_eval: int = 64,
     optimize_top_k: int = 40,
+    optimize_gap: float = 0.05,
     config: RAGLiteConfig | None = None,
-) -> None:
+) -> FloatMatrix:
     """Compute an optimal query adapter and update the database with it.
 
     This function computes an optimal linear transform A, called a 'query adapter', that is used to
@@ -63,6 +65,36 @@ def update_query_adapter(  # noqa: C901, PLR0915
     between an incorrect (p, n) pair would be B := (p - n)' q < 0. If α = 1, the relevance score gap
     would be A := (p - n)' (p - n) / ||p - n|| > 0. For a target relevance score gap of say
     C := 5% * A, the optimal α is then given by αA + (1 - α)B = C => α = (B - C) / (B - A).
+
+    Parameters
+    ----------
+    max_triplets
+        The maximum number of (q, p, n) triplets to compute. Each triplet corresponds to a rank-one
+        update of the query adapter A.
+    max_triplets_per_eval
+        The maximum number of (q, p, n) triplets a single eval may contribute to the query adapter.
+    optimize_top_k
+        The number of search results per eval to extract (q, p, n) triplets from.
+    optimize_gap
+        The strength of the query adapter, expressed as a fraction between 0 and 1 of the maximum
+        relevance score gap. Should be large enough to correct incorrectly ranked results, but small
+        enough to not affect correctly ranked results.
+    config
+        The RAGLite config to use to construct and store the query adapter.
+
+    Raises
+    ------
+    ValueError
+        If no documents have been inserted into the database yet.
+    ValueError
+        If there aren't enough evals to compute the query adapter yet.
+    ValueError
+        If the `config.vector_search_distance_metric` is not supported.
+
+    Returns
+    -------
+    FloatMatrix
+        The query adapter.
     """
     config = config or RAGLiteConfig()
     config_no_query_adapter = RAGLiteConfig(
@@ -75,9 +107,7 @@ def update_query_adapter(  # noqa: C901, PLR0915
         if chunk_embedding is None:
             error_message = "First run `insert_document()` to insert documents."
             raise ValueError(error_message)
-        evals = session.exec(
-            select(Eval).order_by(Eval.id).limit(max(8, max_triplets // max_triplets_per_eval))
-        ).all()
+        evals = session.exec(select(Eval).order_by(Eval.id).limit(max_triplets)).all()
         # Exit if there aren't enough evals to compute the query adapter.
         embedding_dim = len(chunk_embedding.embedding)
         required_evals = np.ceil(embedding_dim / max_triplets_per_eval) - len(evals)
@@ -146,20 +176,21 @@ def update_query_adapter(  # noqa: C901, PLR0915
         # TODO: Matmul in float16 is extremely slow compared to single or double precision, why?
         gap_before = np.sum((P - N) * Q, axis=1)
         gap_after = 2 * (1 - np.sum(P * N, axis=1)) / np.linalg.norm(P - N, axis=1)
-        gap_target = 0.05 * gap_after
+        gap_target = optimize_gap * gap_after
         α = (gap_before - gap_target) / (gap_before - gap_after)  # noqa: PLC2401
         MT = (α[:, np.newaxis] * (P - N)).T @ Q  # noqa: N806
         s = np.linalg.norm(MT, ord="fro") / np.sqrt(MT.shape[0])
         MT = np.mean(α) * (MT / s) + np.mean(1 - α) * np.eye(Q.shape[1])  # noqa: N806
-        if config.vector_search_index_metric == "dot":
+        A_star: FloatMatrix  # noqa: N806
+        if config.vector_search_distance_metric == "dot":
             # Use the relaxed Procrustes solution.
             A_star = MT / np.linalg.norm(MT, ord="fro")  # noqa: N806
-        elif config.vector_search_index_metric == "cosine":
+        elif config.vector_search_distance_metric == "cosine":
             # Use the orthogonal Procrustes solution.
             U, _, VT = np.linalg.svd(MT, full_matrices=False)  # noqa: N806
             A_star = U @ VT  # noqa: N806
         else:
-            error_message = f"Unsupported metric: {config.vector_search_index_metric}"
+            error_message = f"Unsupported metric: {config.vector_search_distance_metric}"
             raise ValueError(error_message)
         # Store the optimal query adapter in the database.
         index_metadata = session.get(IndexMetadata, "default") or IndexMetadata(id="default")
@@ -169,3 +200,4 @@ def update_query_adapter(  # noqa: C901, PLR0915
         session.commit()
         if engine.dialect.name == "duckdb":
             session.execute(text("CHECKPOINT;"))
+    return A_star
