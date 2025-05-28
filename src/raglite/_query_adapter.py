@@ -1,5 +1,7 @@
 """Compute and update an optimal query adapter."""
 
+# ruff: noqa: N806
+
 import numpy as np
 from sqlalchemy import text
 from sqlalchemy.orm.attributes import flag_modified
@@ -13,12 +15,12 @@ from raglite._search import vector_search
 from raglite._typing import FloatMatrix
 
 
-def update_query_adapter(  # noqa: C901, PLR0915
+def update_query_adapter(  # noqa: C901, PLR0912, PLR0915
     *,
     max_triplets: int = 4096,
     max_triplets_per_eval: int = 64,
     optimize_top_k: int = 40,
-    optimize_gap: float = 0.05,
+    optimize_gap: float = 0.6,
     config: RAGLiteConfig | None = None,
 ) -> FloatMatrix:
     """Compute an optimal query adapter and update the database with it.
@@ -31,40 +33,66 @@ def update_query_adapter(  # noqa: C901, PLR0915
     score pᵢ'qᵢ of the positive chunk pᵢ and decreases the score nᵢ'qᵢ of the negative chunk nᵢ.
 
     If the nearest neighbour search uses the dot product as its relevance score, we can find the
-    optimal query adapter by solving the following relaxed Procrustes optimisation problem with a
-    bound on the Frobenius norm of A:
+    optimal query adapter by solving the following relaxed Procrustes optimisation problem [1] with
+    a bound on the Frobenius norm of A:
 
-    A* = argmax Σᵢ pᵢ' (A qᵢ) - nᵢ' (A qᵢ)
-                Σᵢ (pᵢ - nᵢ)' A qᵢ
-                trace[ (P - N) A Q' ]  where  Q := [q₁'; ...; qₖ']
-                                              P := [p₁'; ...; pₖ']
-                                              N := [n₁'; ...; nₖ']
-                trace[ Q' (P - N) A ]
-                trace[ M A ]           where  M := Q' (P - N)
-           s.t. ||A||_F == 1
-       = M' / ||M||_F
+    A* := argmax Σᵢ pᵢ' (A qᵢ) - nᵢ' (A qᵢ)
+                 Σᵢ (pᵢ - nᵢ)' A qᵢ
+                 trace[ (P - N) A Q' ]  where  Q := [q₁'; ...; qₖ']
+                                               P := [p₁'; ...; pₖ']
+                                               N := [n₁'; ...; nₖ']
+                 trace[ Q' (P - N) A ]
+                 trace[ M' A ]          where  M := (P - N)' Q
+            s.t. ||A||_F == 1
+        = M / ||M||_F
 
     If the nearest neighbour search uses the cosine similarity as its relevance score, we can find
     the optimal query adapter by solving the following orthogonal Procrustes optimisation problem
-    with an orthogonality constraint on A:
+    [1] with an orthogonality constraint on A:
 
-    A* = argmax Σᵢ pᵢ' (A qᵢ) - nᵢ' (A qᵢ)
-                Σᵢ (pᵢ - nᵢ)' A qᵢ
-                trace[ (P - N) A Q' ]
-                trace[ Q' (P - N) A ]
-                trace[ M A ]
-                trace[ U Σ V' A ]      where  U Σ V' := M is the SVD of M
-                trace[ Σ V' A U ]
-           s.t. A'A == 𝕀
-       = V U'
+    A* := argmax Σᵢ pᵢ' (A qᵢ) - nᵢ' (A qᵢ)
+                 Σᵢ (pᵢ - nᵢ)' A qᵢ
+                 trace[ (P - N) A Q' ]
+                 trace[ Q' (P - N) A ]
+                 trace[ M' A ]
+                 trace[ (U Σ V)' A ]      where  U Σ V' := M is the SVD of M
+                 trace[ Σ V A U' ]
+            s.t. A'A == 𝕀
+        = U V'
 
-    Additionally, we want to limit the effect of A* so that it adjusts q just enough to invert
-    incorrectly ordered (q, p, n) triplets, but not so much as to affect the correctly ordered ones.
-    To achieve this, we'll rewrite M as α(M / s) + (1 - α)𝕀, where s scales M to the same norm as 𝕀,
-    and choose the smallest α that ranks (q, p, n) correctly. If α = 0, the relevance score gap
-    between an incorrect (p, n) pair would be B := (p - n)' q < 0. If α = 1, the relevance score gap
-    would be A := (p - n)' (p - n) / ||p - n|| > 0. For a target relevance score gap of say
-    C := 5% * A, the optimal α is then given by αA + (1 - α)B = C => α = (B - C) / (B - A).
+    The action of A* is to map a query embedding qᵢ to a target vector (pᵢ - nᵢ) that maximally
+    separates the positive and negative chunks. An additional requirement on A* is that we want to
+    limit its effect so that it adjusts q just enough to invert incorrectly ordered (q, p, n)
+    triplets, but not so much as to affect the correctly ordered ones. To achieve this, we'll
+    rewrite the target vector sᵢ(t) as a slerp [2] from qᵢ to (pᵢ - nᵢ) with interpolation parameter
+    t ∈ [0, 1]:
+
+    θᵢ := arccos((pᵢ - nᵢ)' qᵢ / ||pᵢ - nᵢ|| ||qᵢ||)
+    lᵢ(t) := sin((1 - t) θᵢ) / sin(θᵢ)
+    rᵢ(t) := sin(t θᵢ) / sin(θᵢ)
+    sᵢ(t) := lᵢ(t) qᵢ + rᵢ(t) (pᵢ - nᵢ)
+
+    We want to choose the smallest tᵢ such that pᵢ' sᵢ(tᵢ) > (1 + α) n' sᵢ(tᵢ) for some choice of
+    threshold α and reference negative chunk embedding n:
+
+    pᵢ' sᵢ(tᵢ) > (1 + α) n' sᵢ(tᵢ)
+    [sin((1 - tᵢ) θᵢ) / sin(θᵢ)] (pᵢ - (1 + α) n)' qᵢ +
+    [sin(tᵢ θᵢ)       / sin(θᵢ)] (pᵢ - (1 + α) n)' (pᵢ - nᵢ) > 0
+
+    Let S := sin(θᵢ), C := cos(θᵢ), X := (pᵢ - n)' qᵢ, and Y := (pᵢ - n)' (pᵢ - nᵢ), then:
+
+    [S cos(tᵢ θᵢ) - C sin(tᵢ θᵢ)] X / S + sin(tᵢ θᵢ) Y / S > 0
+    tᵢ = min_{k ∈ ℤ} [tan⁻¹(SX / (CX - Y)) + kπ] / θᵢ s.t. t ∈ [0, 1]
+
+    We can then redefine the unconstrained query adapter matrix M as:
+
+    M := [k⁻¹ diag(lᵢ(tᵢ)) Q + k⁻¹ diag(rᵢ(tᵢ)) (P - N)]' Q + E
+    E := 𝕀 - Q' (Q Q')⁺ Q
+
+    where Q is row-normalised before applying the slerp, k⁻¹ computes the mean contribution of the
+    k triplets, and E is an additional passthrough term that maps the query embedding qᵢ to itself
+    if it is not in the row space of Q. In other words, when the query is dissimilar from the evals,
+    the query adapter passes the query embedding through unchanged.
 
     Parameters
     ----------
@@ -76,9 +104,9 @@ def update_query_adapter(  # noqa: C901, PLR0915
     optimize_top_k
         The number of search results per eval to extract (q, p, n) triplets from.
     optimize_gap
-        The strength of the query adapter, expressed as a fraction between 0 and 1 of the maximum
-        relevance score gap. Should be large enough to correct incorrectly ranked results, but small
-        enough to not affect correctly ranked results.
+        The strength of the query adapter, expressed as a nonnegative number. Should be large enough
+        to correct incorrectly ranked results, but small enough to not affect correctly ranked
+        results.
     config
         The RAGLite config to use to construct and store the query adapter.
 
@@ -87,7 +115,7 @@ def update_query_adapter(  # noqa: C901, PLR0915
     ValueError
         If no documents have been inserted into the database yet.
     ValueError
-        If there aren't enough evals to compute the query adapter yet.
+        If no evals have been inserted into the database yet.
     ValueError
         If the `config.vector_search_distance_metric` is not supported.
 
@@ -95,6 +123,11 @@ def update_query_adapter(  # noqa: C901, PLR0915
     -------
     FloatMatrix
         The query adapter.
+
+    References
+    ----------
+    [1] https://en.wikipedia.org/wiki/Orthogonal_Procrustes_problem
+    [2] https://en.wikipedia.org/wiki/Slerp
     """
     config = config or RAGLiteConfig()
     config_no_query_adapter = RAGLiteConfig(
@@ -108,16 +141,14 @@ def update_query_adapter(  # noqa: C901, PLR0915
             error_message = "First run `insert_document()` to insert documents."
             raise ValueError(error_message)
         evals = session.exec(select(Eval).order_by(Eval.id).limit(max_triplets)).all()
-        # Exit if there aren't enough evals to compute the query adapter.
-        embedding_dim = len(chunk_embedding.embedding)
-        required_evals = np.ceil(embedding_dim / max_triplets_per_eval) - len(evals)
-        if required_evals > 0:
-            error_message = f"First run `insert_evals()` to generate {required_evals} more evals."
+        if len(evals) == 0:
+            error_message = "First run `insert_evals()` to generate evals."
             raise ValueError(error_message)
         # Loop over the evals to generate (q, p, n) triplets.
-        Q = np.zeros((0, embedding_dim))  # noqa: N806
-        P = np.zeros_like(Q)  # noqa: N806
-        N = np.zeros_like(Q)  # noqa: N806
+        Q = np.zeros((0, len(chunk_embedding.embedding)))
+        P = np.zeros_like(Q)
+        N = np.zeros_like(Q)
+        F = np.zeros_like(Q)
         for eval_ in tqdm(
             evals, desc="Extracting triplets from evals", unit="eval", dynamic_ncols=True
         ):
@@ -130,6 +161,7 @@ def update_query_adapter(  # noqa: C901, PLR0915
             retrieved_chunks = session.exec(select(Chunk).where(col(Chunk.id).in_(chunk_ids))).all()
             retrieved_chunks = sorted(retrieved_chunks, key=lambda chunk: chunk_ids.index(chunk.id))
             # Extract (q, p, n) triplets from the eval.
+            n_first = None
             num_triplets = 0
             for i, retrieved_chunk in enumerate(retrieved_chunks):
                 # Only loop over irrelevant chunks.
@@ -140,6 +172,8 @@ def update_query_adapter(  # noqa: C901, PLR0915
                 n_top = irrelevant_chunk.embedding_matrix[
                     [np.argmax(irrelevant_chunk.embedding_matrix @ question_embedding.T)]
                 ]
+                if n_first is None:
+                    n_first = n_top
                 # Grab the positive chunk embeddings that are ranked lower than the negative one.
                 p_top = [
                     chunk.embedding_matrix[
@@ -154,41 +188,52 @@ def update_query_adapter(  # noqa: C901, PLR0915
                     continue
                 # Stack the (q, p, n) triplets.
                 p = np.vstack(p_top)
+                f = np.repeat(n_first, p.shape[0], axis=0)
                 n = np.repeat(n_top, p.shape[0], axis=0)
                 q = np.repeat(question_embedding, p.shape[0], axis=0)
                 num_triplets += p.shape[0]
                 # Append the (q, p, n) triplets to the Q, P, N matrices.
-                Q = np.vstack([Q, q])  # noqa: N806
-                P = np.vstack([P, p])  # noqa: N806
-                N = np.vstack([N, n])  # noqa: N806
+                Q = np.vstack([Q, q])
+                P = np.vstack([P, p])
+                N = np.vstack([N, n])
+                F = np.vstack([F, f])
                 # Stop if we have enough triplets for this eval.
                 if num_triplets >= max_triplets_per_eval:
                     break
-            # Stop if we have enough triplets to compute the query adapter.
+            # Stop if we have enough triplets in total.
             if Q.shape[0] > max_triplets:
-                Q, P, N = Q[:max_triplets, :], P[:max_triplets, :], N[:max_triplets, :]  # noqa: N806
+                Q = Q[:max_triplets, :]
+                P = P[:max_triplets, :]
+                N = N[:max_triplets, :]
+                F = F[:max_triplets, :]
                 break
-        # Normalise the rows of Q, P, N.
-        Q /= np.linalg.norm(Q, axis=1, keepdims=True)  # noqa: N806
-        P /= np.linalg.norm(P, axis=1, keepdims=True)  # noqa: N806
-        N /= np.linalg.norm(N, axis=1, keepdims=True)  # noqa: N806
-        # Compute the optimal weighted query adapter A*.
-        # TODO: Matmul in float16 is extremely slow compared to single or double precision, why?
-        gap_before = np.sum((P - N) * Q, axis=1)
-        gap_after = 2 * (1 - np.sum(P * N, axis=1)) / np.linalg.norm(P - N, axis=1)
-        gap_target = optimize_gap * gap_after
-        α = (gap_before - gap_target) / (gap_before - gap_after)  # noqa: PLC2401
-        MT = (α[:, np.newaxis] * (P - N)).T @ Q  # noqa: N806
-        s = np.linalg.norm(MT, ord="fro") / np.sqrt(MT.shape[0])
-        MT = np.mean(α) * (MT / s) + np.mean(1 - α) * np.eye(Q.shape[1])  # noqa: N806
-        A_star: FloatMatrix  # noqa: N806
+        # Normalise the rows of Q.
+        Q /= np.linalg.norm(Q, axis=1, keepdims=True)
+        # Compute the optimal slerp interpolation parameter tᵢ for each triplet.
+        θ = np.arccos(np.sum(((P - N) / np.linalg.norm(P - N, axis=1, keepdims=True) * Q), axis=1))  # noqa: PLC2401
+        X = np.sum((P - (1 + optimize_gap) * F) * Q, axis=1)
+        Y = np.sum((P - (1 + optimize_gap) * F) * (P - N), axis=1)
+        t = np.arctan2(np.sin(θ) * X, np.cos(θ) * X - Y)  # t ∈ [-π, π]
+        t[t < 0] += np.pi  # t ∈ [0, π]
+        t[θ > 0] /= θ[θ > 0]  # θ ∈ [0, π]
+        t = np.clip(t, 0, 1)
+        # Compute the slerp coefficients lᵢ(tᵢ) and rᵢ(tᵢ).
+        l = np.sin((1 - t) * θ) / np.sin(θ)  # noqa: E741
+        r = np.sin(t * θ) / np.sin(θ)
+        # Compute the optimal unconstrained query adapter M.
+        k, d = Q.shape
+        M = (1 / k) * (l[:, np.newaxis] * Q + r[:, np.newaxis] * (P - N)).T @ Q
+        if len(evals) < d or np.linalg.matrix_rank(Q) < d:
+            M += np.eye(d) - Q.T @ np.linalg.pinv(Q @ Q.T) @ Q
+        # Compute the optimal constrained query adapter A* from M, given the distance metric.
+        A_star: FloatMatrix
         if config.vector_search_distance_metric == "dot":
             # Use the relaxed Procrustes solution.
-            A_star = MT / np.linalg.norm(MT, ord="fro")  # noqa: N806
+            A_star = M / np.linalg.norm(M, ord="fro") * np.sqrt(d)
         elif config.vector_search_distance_metric == "cosine":
             # Use the orthogonal Procrustes solution.
-            U, _, VT = np.linalg.svd(MT, full_matrices=False)  # noqa: N806
-            A_star = U @ VT  # noqa: N806
+            U, _, VT = np.linalg.svd(M, full_matrices=False)
+            A_star = U @ VT
         else:
             error_message = f"Unsupported metric: {config.vector_search_distance_metric}"
             raise ValueError(error_message)
