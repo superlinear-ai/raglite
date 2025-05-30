@@ -89,9 +89,9 @@ def update_query_adapter(  # noqa: PLR0915
     vector t* for the query embedding qᵢ as follows:
 
     t* := argmax ½ ||t - qᵢ||²
-             s.t. Dᵢ t >= 0
+            s.t. Dᵢ t >= 0
 
-    where the constraint matrix Dᵢ := [pₘᵀ - (1 + α) * nₙᵀ]ₘₙ comprises all pairs of positive and
+    where the constraint matrix Dᵢ := [pₘᵀ - (1 + α) nₙᵀ]ₘₙ comprises all pairs of positive and
     negative chunk embeddings in the result set corresponding to the query embedding qᵢ. This
     optimisation problem expresses the idea that the target vector t* should be as close as
     possible to the query embedding qᵢ, while separating all positive and negative chunk embeddings
