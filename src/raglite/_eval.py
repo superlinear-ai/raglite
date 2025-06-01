@@ -64,7 +64,7 @@ The question MUST satisfy ALL of the following criteria:
             # Sample a random document from the database.
             seed_document = session.exec(select(Document).order_by(func.random()).limit(1)).first()
             if seed_document is None:
-                error_message = "First run `insert_document()` before generating evals."
+                error_message = "First run `insert_documents()` before generating evals."
                 raise ValueError(error_message)
             # Sample a random chunk from that document.
             seed_chunk = session.exec(

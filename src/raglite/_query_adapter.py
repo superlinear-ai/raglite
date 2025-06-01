@@ -145,7 +145,7 @@ def update_query_adapter(  # noqa: PLR0915
         # Get random evals from the database.
         chunk_embedding = session.exec(select(ChunkEmbedding).limit(1)).first()
         if chunk_embedding is None:
-            error_message = "First run `insert_document()` to insert documents."
+            error_message = "First run `insert_documents()` to insert documents."
             raise ValueError(error_message)
         evals = session.exec(select(Eval).order_by(Eval.id).limit(max_evals)).all()
         if len(evals) == 0:
