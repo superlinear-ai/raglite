@@ -154,7 +154,9 @@ def update_query_adapter(  # noqa: PLR0915
         # Construct the query and target matrices.
         Q = np.zeros((0, len(chunk_embedding.embedding)))
         T = np.zeros_like(Q)
-        for eval_ in tqdm(evals, desc="Optimizing evals", unit="eval", dynamic_ncols=True):
+        for eval_ in tqdm(
+            evals, desc="Optimizing evals", unit="eval", dynamic_ncols=True, leave=False
+        ):
             # Embed the question.
             q = embed_strings([eval_.question], config=config)[0]
             # Retrieve chunks that would be used to answer the question.

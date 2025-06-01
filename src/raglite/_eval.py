@@ -120,7 +120,11 @@ An example of a context that does NOT contain (a part of) the answer is a table 
 
             relevant_chunks = []
             for candidate_chunk in tqdm(
-                candidate_chunks, desc="Evaluating chunks", unit="chunk", dynamic_ncols=True
+                candidate_chunks,
+                desc="Evaluating chunks",
+                unit="chunk",
+                dynamic_ncols=True,
+                leave=False,
             ):
                 try:
                     context_eval_response = extract_with_llm(
