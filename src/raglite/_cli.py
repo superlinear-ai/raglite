@@ -118,5 +118,76 @@ def run_mcp_server(
     mcp.run()
 
 
+@cli.command()
+def bench(
+    ctx: typer.Context,
+    dataset_name: str = typer.Option(
+        "nano-beir/hotpotqa", "--dataset", "-d", help="Dataset to use from https://ir-datasets.com/"
+    ),
+    measure: str = typer.Option(
+        "AP@10",
+        "--measure",
+        "-m",
+        help="Evaluation measure from https://ir-measur.es/en/latest/measures.html",
+    ),
+) -> None:
+    """Run benchmark."""
+    import ir_datasets
+    import ir_measures
+    import pandas as pd
+
+    from raglite._bench import (
+        IREvaluator,
+        LlamaIndexEvaluator,
+        OpenAIVectorStoreEvaluator,
+        RAGLiteEvaluator,
+    )
+
+    # Initialise the benchmark.
+    evaluator: IREvaluator
+    measures = [ir_measures.parse_measure(measure)]
+    index, results = [], []
+    # Evaluate RAGLite (single-vector) + DuckDB HNSW + text-embedding-3-large.
+    chunk_max_size = 2048
+    config = RAGLiteConfig(
+        embedder="text-embedding-3-large",
+        chunk_max_size=chunk_max_size,
+        vector_search_multivector=False,
+        vector_search_query_adapter=False,
+    )
+    dataset = ir_datasets.load(dataset_name)
+    evaluator = RAGLiteEvaluator(
+        dataset, variant_name=f"single-vector-{chunk_max_size // 4}t", config=config
+    )
+    index.append("RAGLite (single-vector)")
+    results.append(ir_measures.calc_aggregate(measures, dataset.qrels_iter(), evaluator.score()))
+    # Evaluate RAGLite (multi-vector) + DuckDB HNSW + text-embedding-3-large.
+    config = RAGLiteConfig(
+        embedder="text-embedding-3-large",
+        chunk_max_size=chunk_max_size,
+        vector_search_multivector=True,
+        vector_search_query_adapter=False,
+    )
+    dataset = ir_datasets.load(dataset_name)
+    evaluator = RAGLiteEvaluator(
+        dataset, variant_name=f"multi-vector-{chunk_max_size // 4}t", config=config
+    )
+    index.append("RAGLite (multi-vector)")
+    results.append(ir_measures.calc_aggregate(measures, dataset.qrels_iter(), evaluator.score()))
+    # Evaluate LLamaIndex + FAISS HNSW + text-embedding-3-large.
+    dataset = ir_datasets.load(dataset_name)
+    evaluator = LlamaIndexEvaluator(dataset)
+    index.append("LlamaIndex")
+    results.append(ir_measures.calc_aggregate(measures, dataset.qrels_iter(), evaluator.score()))
+    # Evaluate OpenAI Vector Store.
+    dataset = ir_datasets.load(dataset_name)
+    evaluator = OpenAIVectorStoreEvaluator(dataset)
+    index.append("OpenAI Vector Store")
+    results.append(ir_measures.calc_aggregate(measures, dataset.qrels_iter(), evaluator.score()))
+    # Print the results.
+    results_df = pd.DataFrame.from_records(results, index=index)
+    typer.echo(results_df)
+
+
 if __name__ == "__main__":
     cli()
