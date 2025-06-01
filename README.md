@@ -143,11 +143,10 @@ my_config = RAGLiteConfig(
 
 Next, insert some documents into the database. RAGLite will take care of the [conversion to Markdown](src/raglite/_markdown.py), [optimal level 4 semantic chunking](src/raglite/_split_chunks.py), and [multi-vector embedding with late chunking](src/raglite/_embed.py):
 
-
 ```python
 # Insert documents given their file path
 from pathlib import Path
-from raglite import Document, insert_document
+from raglite import Document, insert_documents
 
 documents = [
     Document.from_path(Path("On the Measure of Intelligence.pdf")),
