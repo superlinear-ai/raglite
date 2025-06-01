@@ -23,7 +23,7 @@ def _optimize_query_target(
     P: FloatMatrix,  # noqa: N803,
     N: FloatMatrix,  # noqa: N803,
     *,
-    α: float = 0.15,  # noqa: PLC2401
+    α: float = 0.05,  # noqa: PLC2401
 ) -> FloatVector:
     # Convert to double precision for the optimizer.
     q_dtype = q.dtype
@@ -42,7 +42,7 @@ def update_query_adapter(  # noqa: PLR0915
     *,
     max_evals: int = 4096,
     optimize_top_k: int = 40,
-    optimize_gap: float = 0.15,
+    optimize_gap: float = 0.05,
     config: RAGLiteConfig | None = None,
 ) -> FloatMatrix:
     """Compute an optimal query adapter and update the database with it.
