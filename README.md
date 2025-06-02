@@ -155,13 +155,13 @@ documents = [
 insert_documents(documents, config=my_config)
 
 # Insert documents given their text/plain or text/markdown content
-document_content = """
+content = """
 # ON THE ELECTRODYNAMICS OF MOVING BODIES
 ## By A. EINSTEIN  June 30, 1905
 It is known that Maxwell...
 """
 documents = [
-    Document.from_markdown(content=document_content)
+    Document.from_text(content)
 ]
 insert_documents(documents, config=my_config)
 ```

@@ -88,7 +88,7 @@ class RAGLiteEvaluator(IREvaluator):
         from raglite import Document, insert_documents
 
         documents = [
-            Document.from_markdown(doc.text, id=doc.doc_id) for doc in self.dataset.docs_iter()
+            Document.from_text(doc.text, id=doc.doc_id) for doc in self.dataset.docs_iter()
         ]
         insert_documents(documents, max_workers=max_workers, config=self.config)
 

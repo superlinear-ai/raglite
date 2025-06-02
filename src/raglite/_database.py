@@ -127,7 +127,7 @@ class Document(SQLModel, table=True):
         )
 
     @staticmethod
-    def from_markdown(
+    def from_text(
         content: str,
         *,
         id: DocumentId | None = None,  # noqa: A002
@@ -135,12 +135,12 @@ class Document(SQLModel, table=True):
         filename: str | None = None,
         **kwargs: Any,
     ) -> "Document":
-        """Create a document from Markdown content.
+        """Create a document from text content.
 
         Parameters
         ----------
         content
-            The document's content as a Markdown string.
+            The document's content as a text/plain or text/markdown string.
         id
             The document id to use. If not provided, a hash of the document's content is used.
         filename
