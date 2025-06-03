@@ -12,10 +12,8 @@ from raglite._markdown import document_to_markdown
 
 def test_insert(raglite_test_config: RAGLiteConfig) -> None:
     """Test document insertion."""
-    # Get access to the database from the raglite_test_config
-    engine = create_database_engine(raglite_test_config)
     # Open a session to extract document and chunks from the existing database.
-    with Session(engine) as session:
+    with Session(create_database_engine(raglite_test_config)) as session:
         # Get the first document from the database (already inserted by the fixture).
         document = session.exec(select(Document)).first()
         assert document is not None, "No document found in the database"

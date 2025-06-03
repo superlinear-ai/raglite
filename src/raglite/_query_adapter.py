@@ -140,8 +140,7 @@ def update_query_adapter(  # noqa: PLR0915
     """
     config = config or RAGLiteConfig()
     config_no_query_adapter = replace(config, vector_search_query_adapter=False)
-    engine = create_database_engine(config)
-    with Session(engine) as session:
+    with Session(engine := create_database_engine(config)) as session:
         # Get random evals from the database.
         chunk_embedding = session.exec(select(ChunkEmbedding).limit(1)).first()
         if chunk_embedding is None:

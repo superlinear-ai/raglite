@@ -118,12 +118,9 @@ def insert_documents(  # noqa: C901
     documents = [doc for doc in documents if doc.content.strip()]  # type: ignore[union-attr]
     if not documents:
         return
-    # Use the default config if not provided.
-    config = config or RAGLiteConfig()
     # Skip documents that are already in the database.
-    batch_size = 512
-    engine = create_database_engine(config)
-    with Session(engine) as session:
+    batch_size = 128
+    with Session(engine := create_database_engine(config := config or RAGLiteConfig())) as session:
         existing_doc_ids: set[str] = set()
         for i in range(0, len(documents), batch_size):
             doc_id_batch = [doc.id for doc in documents[i : i + batch_size]]
@@ -149,10 +146,7 @@ def insert_documents(  # noqa: C901
         Session(engine) as session,
         ThreadPoolExecutor(max_workers=max_workers) as executor,
         tqdm(
-            total=len(documents),
-            desc="Inserting documents",
-            unit="document",
-            dynamic_ncols=True,
+            total=len(documents), desc="Inserting documents", unit="document", dynamic_ncols=True
         ) as pbar,
     ):
         futures = [

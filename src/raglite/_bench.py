@@ -19,27 +19,42 @@ from raglite._config import RAGLiteConfig
 
 class IREvaluator(ABC):
     def __init__(
-        self, dataset: Dataset, *, num_results: int = 10, variant_name: str | None = None
+        self,
+        dataset: Dataset,
+        *,
+        num_results: int = 10,
+        insert_variant: str | None = None,
+        search_variant: str | None = None,
     ) -> None:
         self.dataset = dataset
         self.num_results = num_results
-        self.cwd = Path(user_data_dir("raglite", ensure_exists=True))
-        self.trec_run_id = (
+        self.insert_variant = insert_variant
+        self.search_variant = search_variant
+        self.insert_id = (
             slugify(self.__class__.__name__.lower().replace("evaluator", ""))
-            + (f"_{slugify(variant_name)}" if variant_name else "")
+            + (f"_{slugify(insert_variant)}" if insert_variant else "")
             + f"_{slugify(dataset.docs_namespace())}"
         )
-        self.trec_run_filename = self.trec_run_id + f"@{num_results}.trec"
+        self.search_id = (
+            self.insert_id
+            + f"@{num_results}"
+            + (f"_{slugify(search_variant)}" if search_variant else "")
+        )
+        self.cwd = Path(user_data_dir("raglite", ensure_exists=True))
+
+    @abstractmethod
+    def insert_documents(self, max_workers: int | None = None) -> None:
+        """Insert all of the dataset's documents into the search index."""
+        raise NotImplementedError
 
     @abstractmethod
     def search(self, query_id: str, query: str, *, num_results: int = 10) -> list[ScoredDoc]:
         """Search for documents given a query."""
         raise NotImplementedError
 
-    @abstractmethod
-    def insert_documents(self, max_workers: int | None = None) -> None:
-        """Insert all of the dataset's documents into the search index."""
-        raise NotImplementedError
+    @property
+    def trec_run_filename(self) -> str:
+        return f"{self.search_id}.trec"
 
     @property
     def trec_run_filepath(self) -> Path:
@@ -76,11 +91,17 @@ class RAGLiteEvaluator(IREvaluator):
         dataset: Dataset,
         *,
         num_results: int = 10,
-        variant_name: str | None = None,
+        insert_variant: str | None = None,
+        search_variant: str | None = None,
         config: RAGLiteConfig | None = None,
     ):
-        super().__init__(dataset, num_results=num_results, variant_name=variant_name)
-        self.db_filepath = self.cwd / (self.trec_run_id + ".db")
+        super().__init__(
+            dataset,
+            num_results=num_results,
+            insert_variant=insert_variant,
+            search_variant=search_variant,
+        )
+        self.db_filepath = self.cwd / f"{self.insert_id}.db"
         db_url = f"duckdb:///{self.db_filepath.as_posix()}"
         self.config = replace(config or RAGLiteConfig(), db_url=db_url)
 
@@ -92,9 +113,21 @@ class RAGLiteEvaluator(IREvaluator):
         ]
         insert_documents(documents, max_workers=max_workers, config=self.config)
 
-    def search(self, query_id: str, query: str, *, num_results: int = 10) -> list[ScoredDoc]:
-        from raglite._search import retrieve_chunks, vector_search
+    def update_query_adapter(self, num_evals: int = 1024) -> None:
+        from raglite import insert_evals, update_query_adapter
+        from raglite._database import IndexMetadata
 
+        if (
+            self.config.vector_search_query_adapter
+            and IndexMetadata.get(config=self.config).get("query_adapter") is None
+        ):
+            insert_evals(num_evals=num_evals, config=self.config)
+            update_query_adapter(config=self.config)
+
+    def search(self, query_id: str, query: str, *, num_results: int = 10) -> list[ScoredDoc]:
+        from raglite import retrieve_chunks, vector_search
+
+        self.update_query_adapter()
         chunk_ids, scores = vector_search(query, num_results=2 * num_results, config=self.config)
         chunks = retrieve_chunks(chunk_ids, config=self.config)
         scored_docs = [
@@ -105,11 +138,23 @@ class RAGLiteEvaluator(IREvaluator):
 
 
 class LlamaIndexEvaluator(IREvaluator):
-    def __init__(self, dataset: Dataset, *, num_results: int = 10, variant_name: str | None = None):
-        super().__init__(dataset, num_results=num_results, variant_name=variant_name)
+    def __init__(
+        self,
+        dataset: Dataset,
+        *,
+        num_results: int = 10,
+        insert_variant: str | None = None,
+        search_variant: str | None = None,
+    ):
+        super().__init__(
+            dataset,
+            num_results=num_results,
+            insert_variant=insert_variant,
+            search_variant=search_variant,
+        )
         self.embedder = "text-embedding-3-large"
         self.embedder_dim = 3072
-        self.persist_path = self.cwd / self.trec_run_id
+        self.persist_path = self.cwd / self.insert_id
 
     def insert_documents(self, max_workers: int | None = None) -> None:
         # Adapted from https://docs.llamaindex.ai/en/stable/examples/vector_stores/FaissIndexDemo/.
@@ -163,8 +208,23 @@ class LlamaIndexEvaluator(IREvaluator):
 
 
 class OpenAIVectorStoreEvaluator(IREvaluator):
-    def __init__(self, dataset: Dataset, *, num_results: int = 10, variant_name: str | None = None):
-        super().__init__(dataset, num_results=num_results, variant_name=variant_name)
+    def __init__(
+        self,
+        dataset: Dataset,
+        *,
+        num_results: int = 10,
+        insert_variant: str | None = None,
+        search_variant: str | None = None,
+    ):
+        super().__init__(
+            dataset,
+            num_results=num_results,
+            insert_variant=insert_variant,
+            search_variant=search_variant,
+        )
+        self.vector_store_name = dataset.docs_namespace() + (
+            f"_{slugify(insert_variant)}" if insert_variant else ""
+        )
 
     @cached_property
     def client(self) -> Any:
@@ -175,9 +235,7 @@ class OpenAIVectorStoreEvaluator(IREvaluator):
     @property
     def vector_store_id(self) -> str | None:
         vector_stores = self.client.vector_stores.list()
-        vector_store = next(
-            (vs for vs in vector_stores if vs.name == self.dataset.docs_namespace()), None
-        )
+        vector_store = next((vs for vs in vector_stores if vs.name == self.vector_store_name), None)
         if vector_store is None:
             return None
         if vector_store.file_counts.failed > 0:
@@ -194,7 +252,7 @@ class OpenAIVectorStoreEvaluator(IREvaluator):
         import tempfile
         from pathlib import Path
 
-        vector_store = self.client.vector_stores.create(name=self.dataset.docs_namespace())
+        vector_store = self.client.vector_stores.create(name=self.vector_store_name)
         files, max_files_per_batch = [], 32
         with tempfile.TemporaryDirectory() as temp_dir:
             for i, doc in tqdm(

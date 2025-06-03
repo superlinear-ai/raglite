@@ -157,7 +157,7 @@ def bench(
     )
     dataset = ir_datasets.load(dataset_name)
     evaluator = RAGLiteEvaluator(
-        dataset, variant_name=f"single-vector-{chunk_max_size // 4}t", config=config
+        dataset, insert_variant=f"single-vector-{chunk_max_size // 4}t", config=config
     )
     index.append("RAGLite (single-vector)")
     results.append(ir_measures.calc_aggregate(measures, dataset.qrels_iter(), evaluator.score()))
@@ -170,9 +170,26 @@ def bench(
     )
     dataset = ir_datasets.load(dataset_name)
     evaluator = RAGLiteEvaluator(
-        dataset, variant_name=f"multi-vector-{chunk_max_size // 4}t", config=config
+        dataset, insert_variant=f"multi-vector-{chunk_max_size // 4}t", config=config
     )
     index.append("RAGLite (multi-vector)")
+    results.append(ir_measures.calc_aggregate(measures, dataset.qrels_iter(), evaluator.score()))
+    # Evaluate RAGLite (query adapter) + DuckDB HNSW + text-embedding-3-large.
+    config = RAGLiteConfig(
+        llm=(llm := "gpt-4.1"),
+        embedder="text-embedding-3-large",
+        chunk_max_size=chunk_max_size,
+        vector_search_multivector=True,
+        vector_search_query_adapter=True,
+    )
+    dataset = ir_datasets.load(dataset_name)
+    evaluator = RAGLiteEvaluator(
+        dataset,
+        insert_variant=f"multi-vector-{chunk_max_size // 4}t",
+        search_variant=f"query-adapter-{llm}",
+        config=config,
+    )
+    index.append("RAGLite (query adapter)")
     results.append(ir_measures.calc_aggregate(measures, dataset.qrels_iter(), evaluator.score()))
     # Evaluate LLamaIndex + FAISS HNSW + text-embedding-3-large.
     dataset = ir_datasets.load(dataset_name)

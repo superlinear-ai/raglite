@@ -419,8 +419,7 @@ class IndexMetadata(SQLModel, table=True):
     @staticmethod
     @lru_cache(maxsize=4)
     def _get(id_: str, *, config: RAGLiteConfig | None = None) -> dict[str, Any] | None:
-        engine = create_database_engine(config)
-        with Session(engine) as session:
+        with Session(create_database_engine(config)) as session:
             index_metadata_record = session.get(IndexMetadata, id_)
             if index_metadata_record is None:
                 return None
