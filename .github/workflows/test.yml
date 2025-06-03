@@ -32,6 +32,13 @@ jobs:
       - name: Install @devcontainers/cli
         run: npm install --location=global @devcontainers/cli@0.73.0
 
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Start Dev Container
         run: |
           git config --global init.defaultBranch main
