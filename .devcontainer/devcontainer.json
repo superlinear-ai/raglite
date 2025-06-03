@@ -4,7 +4,7 @@
     "service": "devcontainer",
     "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}/",
     "features": {
-        "ghcr.io/devcontainers-extra/features/starship:1": {}
+        "ghcr.io/devcontainers-extra/features/starship:1.0.9": {}
     },
     "overrideCommand": true,
     "remoteUser": "user",
