@@ -122,7 +122,7 @@ def embed_strings_with_late_chunking(  # noqa: C901,PLR0915
     # Embed the segments and apply late chunking.
     sentence_embeddings_list: list[FloatMatrix] = []
     if len(segments) > 1 or segments[0][2] > 128:  # noqa: PLR2004
-        segments = tqdm(segments, desc="Embedding", unit="segment", dynamic_ncols=True)
+        segments = tqdm(segments, desc="Embedding", unit="segment", dynamic_ncols=True, leave=False)
     for segment in segments:
         # Get the token embeddings of the entire segment, including preamble and content.
         segment_start_index, content_start_index, segment_end_index = segment
@@ -244,7 +244,7 @@ def embed_strings_without_late_chunking(
         batches = _create_token_aware_batches(strings, config.embedder)
     else:
         # Original fixed batching for non-OpenAI models
-        batch_size = 128
+        batch_size = 96
         batches = [
             strings[i : i + batch_size] for i in range(0, len(strings), batch_size)
         ]

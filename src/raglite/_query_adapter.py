@@ -38,7 +38,7 @@ def _optimize_query_target(
     return q_star
 
 
-def update_query_adapter(  # noqa: PLR0915
+def update_query_adapter(
     *,
     max_evals: int = 4096,
     optimize_top_k: int = 40,
@@ -140,12 +140,11 @@ def update_query_adapter(  # noqa: PLR0915
     """
     config = config or RAGLiteConfig()
     config_no_query_adapter = replace(config, vector_search_query_adapter=False)
-    engine = create_database_engine(config)
-    with Session(engine) as session:
+    with Session(engine := create_database_engine(config)) as session:
         # Get random evals from the database.
         chunk_embedding = session.exec(select(ChunkEmbedding).limit(1)).first()
         if chunk_embedding is None:
-            error_message = "First run `insert_document()` to insert documents."
+            error_message = "First run `insert_documents()` to insert documents."
             raise ValueError(error_message)
         evals = session.exec(select(Eval).order_by(Eval.id).limit(max_evals)).all()
         if len(evals) == 0:
@@ -154,7 +153,9 @@ def update_query_adapter(  # noqa: PLR0915
         # Construct the query and target matrices.
         Q = np.zeros((0, len(chunk_embedding.embedding)))
         T = np.zeros_like(Q)
-        for eval_ in tqdm(evals, desc="Optimizing evals", unit="eval", dynamic_ncols=True):
+        for eval_ in tqdm(
+            evals, desc="Optimizing evals", unit="eval", dynamic_ncols=True, leave=False
+        ):
             # Embed the question.
             q = embed_strings([eval_.question], config=config)[0]
             # Retrieve chunks that would be used to answer the question.

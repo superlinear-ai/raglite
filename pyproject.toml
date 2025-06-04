@@ -84,6 +84,17 @@ llama-cpp-python = ["llama-cpp-python (>=0.3.9)"]
 pandoc = ["pypandoc-binary (>=1.13)"]
 # Evaluation:
 ragas = ["pandas (>=2.1.1)", "ragas (>=0.1.12)"]
+# Benchmarking:
+bench = [
+  "faiss-cpu (>=1.11.0)",
+  "ir_datasets (>=0.5.10)",
+  "ir_measures (>=0.3.7)",
+  "llama-index (>=0.12.39)",
+  "llama-index-vector-stores-faiss (>=0.4.0)",
+  "openai (>=1.75.0)",
+  "pandas (>=2.1.1)",
+  "python-slugify (>=8.0.4)",
+]
 
 [tool.commitizen]  # https://commitizen-tools.github.io/commitizen/config/
 bump_message = "bump: v$current_version → v$new_version"
