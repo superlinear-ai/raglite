@@ -232,7 +232,9 @@ def update_query_adapter(
     
     Q = np.vstack([result[1][0][np.newaxis, :] for result in results])
     T = np.vstack([result[1][1][np.newaxis, :] for result in results])
-    
+    # Ensure arrays are float32 or float64 for linear algebra operations
+    Q = Q.astype(np.float32)
+    T = T.astype(np.float32)
     # Normalise the rows of Q and T.
     Q /= np.linalg.norm(Q, axis=1, keepdims=True)
     if config.vector_search_distance_metric == "cosine":
