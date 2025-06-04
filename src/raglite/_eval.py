@@ -195,6 +195,7 @@ def answer_evals(
     num_evals: int = 100,
     *,
     config: RAGLiteConfig | None = None,
+    max_workers: int | None = None,
 ) -> "pd.DataFrame":
     """Read evals from the database and answer them with RAG."""
     try:
@@ -203,19 +204,50 @@ def answer_evals(
         error_message = "To use the `answer_evals` function, please install the `ragas` extra."
         raise ModuleNotFoundError(error_message) from import_error
 
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     # Read evals from the database.
     with Session(create_database_engine(config := config or RAGLiteConfig())) as session:
         evals = session.exec(select(Eval).limit(num_evals)).all()
-    # Answer evals with RAG.
-    answers: list[str] = []
-    contexts: list[list[str]] = []
-    for eval_ in tqdm(evals, desc="Answering evals", unit="eval", dynamic_ncols=True):
+
+    def process_eval(eval_):
+        """Process a single evaluation."""
         chunk_spans = retrieve_context(query=eval_.question, config=config)
         messages = [add_context(user_prompt=eval_.question, context=chunk_spans)]
         response = rag(messages, config=config)
         answer = "".join(response)
+        contexts = [str(chunk_span) for chunk_span in chunk_spans]
+        return eval_, answer, contexts
+
+    # Process evals in parallel
+    answers: list[str] = []
+    contexts: list[list[str]] = []
+    eval_results: list[tuple] = []
+
+    # Use ThreadPoolExecutor for parallel processing
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_eval = {executor.submit(process_eval, eval_): eval_ for eval_ in evals}
+        
+        # Process completed tasks with progress bar
+        with tqdm(total=len(evals), desc="Answering evals", unit="eval", dynamic_ncols=True) as pbar:
+            for future in as_completed(future_to_eval):
+                try:
+                    eval_, answer, context = future.result()
+                    eval_results.append((eval_, answer, context))
+                    pbar.update(1)
+                except Exception as exc:
+                    eval_ = future_to_eval[future]
+                    print(f'Eval {eval_.question} generated an exception: {exc}')
+                    pbar.update(1)
+
+    # Sort results to maintain original order
+    eval_results.sort(key=lambda x: evals.index(x[0]))
+    
+    # Extract results
+    for eval_, answer, context in eval_results:
         answers.append(answer)
-        contexts.append([str(chunk_span) for chunk_span in chunk_spans])
+        contexts.append(context)
+
     # Collect the answered evals.
     answered_evals: dict[str, list[str] | list[list[str]]] = {
         "question": [eval_.question for eval_ in evals],
