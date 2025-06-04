@@ -143,22 +143,27 @@ my_config = RAGLiteConfig(
 
 Next, insert some documents into the database. RAGLite will take care of the [conversion to Markdown](src/raglite/_markdown.py), [optimal level 4 semantic chunking](src/raglite/_split_chunks.py), and [multi-vector embedding with late chunking](src/raglite/_embed.py):
 
-
 ```python
-# Insert a document given its file path
+# Insert documents given their file path
 from pathlib import Path
-from raglite import insert_document
+from raglite import Document, insert_documents
 
-insert_document(Path("On the Measure of Intelligence.pdf"), config=my_config)
-insert_document(Path("Special Relativity.pdf"), config=my_config)
+documents = [
+    Document.from_path(Path("On the Measure of Intelligence.pdf")),
+    Document.from_path(Path("Special Relativity.pdf")),
+]
+insert_documents(documents, config=my_config)
 
-# Insert a document given its Markdown content
-markdown_content = """
+# Insert documents given their text/plain or text/markdown content
+content = """
 # ON THE ELECTRODYNAMICS OF MOVING BODIES
 ## By A. EINSTEIN  June 30, 1905
-It is known that Maxwell
+It is known that Maxwell...
 """
-insert_document(markdown_content, config=my_config)
+documents = [
+    Document.from_text(content)
+]
+insert_documents(documents, config=my_config)
 ```
 
 ### 3. Retrieval-Augmented Generation (RAG)

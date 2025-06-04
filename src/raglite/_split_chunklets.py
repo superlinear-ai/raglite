@@ -61,9 +61,11 @@ def compute_num_statements(sentences: list[str]) -> FloatVector:
         [len(sentence.split()) for sentence in sentences], dtype=np.float64
     )
     q25, q75 = np.quantile(sentence_word_length, [0.25, 0.75])
+    q25 = max(q25, np.sqrt(np.finfo(np.float64).eps))
+    q75 = max(q75, q25 + np.sqrt(np.finfo(np.float64).eps))
     num_statements = np.piecewise(
         sentence_word_length,
-        [sentence_word_length < q25, sentence_word_length >= q25],
+        [sentence_word_length <= q25, sentence_word_length > q25],
         [lambda n: 0.75 * n / q25, lambda n: 0.75 + 0.5 * (n - q25) / (q75 - q25)],
     )
     return num_statements

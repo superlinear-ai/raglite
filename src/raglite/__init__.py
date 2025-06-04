@@ -1,8 +1,9 @@
 """RAGLite."""
 
 from raglite._config import RAGLiteConfig
+from raglite._database import Document
 from raglite._eval import answer_evals, evaluate, insert_evals
-from raglite._insert import insert_document
+from raglite._insert import insert_documents
 from raglite._query_adapter import update_query_adapter
 from raglite._rag import add_context, async_rag, rag, retrieve_context
 from raglite._search import (
@@ -20,7 +21,8 @@ __all__ = [
     # Config
     "RAGLiteConfig",
     # Insert
-    "insert_document",
+    "Document",
+    "insert_documents",
     # Search
     "hybrid_search",
     "keyword_search",

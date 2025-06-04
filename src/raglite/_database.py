@@ -13,7 +13,7 @@ from xml.sax.saxutils import escape
 import numpy as np
 from markdown_it import MarkdownIt
 from packaging import version
-from pydantic import ConfigDict
+from pydantic import ConfigDict, PrivateAttr
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.exc import ProgrammingError
 from sqlmodel import (
@@ -31,6 +31,7 @@ from sqlmodel import (
 
 from raglite._config import RAGLiteConfig
 from raglite._litellm import get_embedding_dim
+from raglite._markdown import document_to_markdown
 from raglite._typing import (
     ChunkId,
     DocumentId,
@@ -60,34 +61,44 @@ class Document(SQLModel, table=True):
     url: str | None = Field(default=None)
     metadata_: dict[str, Any] = Field(default_factory=dict, sa_column=Column("metadata", JSON))
 
+    # Document content is not stored in the database, but is accessible via `document.content`.
+    _content: str | None = PrivateAttr()
+
     # Add relationships so we can access document.chunks and document.evals.
     chunks: list["Chunk"] = Relationship(back_populates="document", cascade_delete=True)
     evals: list["Eval"] = Relationship(back_populates="document", cascade_delete=True)
 
-    @staticmethod
-    def from_path(doc_path: Path, **kwargs: Any) -> "Document":
-        """Create a document from a file path."""
-        return Document(
-            id=hash_bytes(doc_path.read_bytes()),
-            filename=doc_path.name,
-            metadata_={
-                "size": doc_path.stat().st_size,
-                "created": doc_path.stat().st_ctime,
-                "modified": doc_path.stat().st_mtime,
-                **kwargs,
-            },
-        )
+    def __init__(self, **kwargs: Any) -> None:
+        # Workaround for https://github.com/fastapi/sqlmodel/issues/149.
+        super().__init__(**kwargs)
+        self.content = kwargs.get("content")
+
+    @property
+    def content(self) -> str | None:
+        return self._content
+
+    @content.setter
+    def content(self, value: str | None) -> None:
+        self._content = value
 
     @staticmethod
-    def from_markdown(content: str, filename: str | None, **kwargs: Any) -> "Document":
-        """Create a document from Markdown content.
+    def from_path(
+        doc_path: Path,
+        *,
+        id: DocumentId | None = None,  # noqa: A002
+        url: str | None = None,
+        **kwargs: Any,
+    ) -> "Document":
+        """Create a document from a file path.
 
         Parameters
         ----------
-        content
-            The document's content as a Markdown string.
-        filename
-            The document filename to use. If not provided, the first line of the content is used.
+        doc_path
+            The document's file path.
+        id
+            The document id to use. If not provided, a hash of the document's content is used.
+        url
+            The URL of the document, if available.
         kwargs
             Any additional metadata to store.
 
@@ -96,10 +107,73 @@ class Document(SQLModel, table=True):
         Document
             A document.
         """
+        # Extract metadata.
+        metadata = {
+            "filename": doc_path.name,
+            "uri": id,
+            "url": url,
+            "size": doc_path.stat().st_size,
+            "created": doc_path.stat().st_ctime,
+            "modified": doc_path.stat().st_mtime,
+            **kwargs,
+        }
+        # Create the document instance.
         return Document(
-            id=hash_bytes(content.encode()),
-            filename=filename or (content.strip().split("\n", 1)[0].strip() + ".md"),
-            metadata_={"size": len(content.encode()), **kwargs},
+            id=id if id is not None else hash_bytes(doc_path.read_bytes()),
+            filename=doc_path.name,
+            url=url,
+            metadata_=metadata,
+            content=document_to_markdown(doc_path),
+        )
+
+    @staticmethod
+    def from_text(
+        content: str,
+        *,
+        id: DocumentId | None = None,  # noqa: A002
+        url: str | None = None,
+        filename: str | None = None,
+        **kwargs: Any,
+    ) -> "Document":
+        """Create a document from text content.
+
+        Parameters
+        ----------
+        content
+            The document's content as a text/plain or text/markdown string.
+        id
+            The document id to use. If not provided, a hash of the document's content is used.
+        filename
+            The document filename to use. If not provided, the first line of the content is used.
+        url
+            The URL of the document, if available.
+        kwargs
+            Any additional metadata to store.
+
+        Returns
+        -------
+        Document
+            A document.
+        """
+        # Extract the first line of the content.
+        first_line = content.strip().split("\n", 1)[0].strip()
+        if len(first_line) > 80:  # noqa: PLR2004
+            first_line = f"{first_line[:80]}..."
+        # Extract metadata.
+        metadata = {
+            "filename": filename or first_line,
+            "uri": id,
+            "url": url,
+            "size": len(content.encode()),
+            **kwargs,
+        }
+        # Create the document instance.
+        return Document(
+            id=id if id is not None else hash_bytes(content.encode()),
+            filename=filename or first_line,
+            url=url,
+            metadata_=metadata,
+            content=content,
         )
 
 
@@ -199,7 +273,7 @@ class Chunk(SQLModel, table=True):
         # Compose the chunk metadata from the filename and URL.
         metadata = "\n".join(
             f"{key}: {self.metadata_.get(key)}"
-            for key in ("filename", "url")
+            for key in ("filename", "url", "uri")
             if self.metadata_.get(key)
         )
         if not metadata:
@@ -345,8 +419,7 @@ class IndexMetadata(SQLModel, table=True):
     @staticmethod
     @lru_cache(maxsize=4)
     def _get(id_: str, *, config: RAGLiteConfig | None = None) -> dict[str, Any] | None:
-        engine = create_database_engine(config)
-        with Session(engine) as session:
+        with Session(create_database_engine(config)) as session:
             index_metadata_record = session.get(IndexMetadata, id_)
             if index_metadata_record is None:
                 return None

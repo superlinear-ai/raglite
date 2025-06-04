@@ -6,10 +6,17 @@ from pathlib import Path
 import chainlit as cl
 from chainlit.input_widget import Switch, TextInput
 
-from raglite import RAGLiteConfig, async_rag, hybrid_search, insert_document, rerank_chunks
+from raglite import (
+    Document,
+    RAGLiteConfig,
+    async_rag,
+    hybrid_search,
+    insert_documents,
+    rerank_chunks,
+)
 from raglite._markdown import document_to_markdown
 
-async_insert_document = cl.make_async(insert_document)
+async_insert_documents = cl.make_async(insert_documents)
 async_hybrid_search = cl.make_async(hybrid_search)
 async_rerank_chunks = cl.make_async(rerank_chunks)
 
@@ -72,7 +79,8 @@ async def handle_message(user_message: cl.Message) -> None:
                 # Document is too large and must be inserted into the database.
                 async with cl.Step(name="insert", type="run") as step:
                     step.input = Path(file.path).name
-                    await async_insert_document(Path(file.path), config=config)
+                    document = Document.from_path(Path(file.path))
+                    await async_insert_documents([document], config=config)
     # Append any inline attachments to the user prompt.
     user_prompt = (
         "\n\n".join(

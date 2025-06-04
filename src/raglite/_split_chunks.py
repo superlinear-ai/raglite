@@ -9,7 +9,7 @@ from scipy.sparse import coo_matrix
 from raglite._typing import FloatMatrix
 
 
-def split_chunks(  # noqa: C901
+def split_chunks(  # noqa: C901, PLR0915
     chunklets: list[str],
     chunklet_embeddings: FloatMatrix,
     max_size: int = 2048,
@@ -56,11 +56,13 @@ def split_chunks(  # noqa: C901
     # Select nonoutlying chunklets and remove the discourse vector.
     q15, q85 = np.quantile(chunklet_size, [0.15, 0.85])
     nonoutlying_chunklets = (q15 <= chunklet_size) & (chunklet_size <= q85)
-    discourse = np.mean(X[nonoutlying_chunklets, :], axis=0)
-    discourse = discourse / np.linalg.norm(discourse)
-    if not np.any(np.linalg.norm(X - discourse[np.newaxis, :], axis=1) <= np.finfo(X.dtype).eps):
-        X = X - np.outer(X @ discourse, discourse)  # noqa: N806
-        X = X / np.linalg.norm(X, axis=1, keepdims=True)  # noqa: N806
+    if np.any(nonoutlying_chunklets):
+        discourse = np.mean(X[nonoutlying_chunklets, :], axis=0)
+        discourse = discourse / np.linalg.norm(discourse)
+        X_modulo = X - np.outer(X @ discourse, discourse)  # noqa: N806
+        if not np.any(np.linalg.norm(X_modulo, axis=1) <= np.finfo(X.dtype).eps):
+            X = X_modulo  # noqa: N806
+            X = X / np.linalg.norm(X, axis=1, keepdims=True)  # noqa: N806
     # For each partition point in the list of chunklets, compute the similarity of chunklet before
     # and after the partition point.
     partition_similarity = np.sum(X[:-1] * X[1:], axis=1)

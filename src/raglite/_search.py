@@ -45,8 +45,7 @@ def vector_search(
         query_embedding = (Q @ query_embedding).astype(query_embedding.dtype)
     # Rank the chunks by relevance according to the L∞ norm of the similarities of the multi-vector
     # chunk embeddings to the query embedding with a single query.
-    engine = create_database_engine(config)
-    with Session(engine) as session:
+    with Session(create_database_engine(config)) as session:
         corrected_oversample = oversample * config.chunk_max_size / RAGLiteConfig.chunk_max_size
         num_hits = round(corrected_oversample) * max(num_results, 10)
         dist = ChunkEmbedding.embedding.distance(  # type: ignore[attr-defined]
@@ -74,8 +73,7 @@ def keyword_search(
     # Read the config.
     config = config or RAGLiteConfig()
     # Connect to the database.
-    engine = create_database_engine(config)
-    with Session(engine) as session:
+    with Session(create_database_engine(config)) as session:
         dialect = session.get_bind().dialect.name
         if dialect == "postgresql":
             # Convert the query to a tsquery [1].
@@ -163,9 +161,7 @@ def retrieve_chunks(
     """Retrieve chunks by their ids."""
     if not chunk_ids:
         return []
-    config = config or RAGLiteConfig()
-    engine = create_database_engine(config)
-    with Session(engine) as session:
+    with Session(create_database_engine(config := config or RAGLiteConfig())) as session:
         chunks = list(
             session.exec(
                 select(Chunk)
@@ -202,8 +198,7 @@ def retrieve_chunk_spans(
     # Assign a reciprocal ranking score to each chunk based on its position in the original list.
     chunk_id_to_score = {chunk.id: 1 / (i + 1) for i, chunk in enumerate(chunks)}
     # Extend the chunks with their neighbouring chunks.
-    engine = create_database_engine(config)
-    with Session(engine) as session:
+    with Session(create_database_engine(config)) as session:
         if neighbors:
             neighbor_conditions = [
                 and_(Chunk.document_id == chunk.document_id, Chunk.index == chunk.index + offset)
