@@ -38,7 +38,7 @@ def _optimize_query_target(
     return q_star
 
 
-def update_query_adapter(  # noqa: PLR0915
+def update_query_adapter(
     *,
     max_evals: int = 4096,
     optimize_top_k: int = 40,
