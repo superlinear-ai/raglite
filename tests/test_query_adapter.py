@@ -19,7 +19,7 @@ def test_query_adapter(raglite_test_config: RAGLiteConfig) -> None:
     Q = IndexMetadata.get("default", config=config_without_query_adapter).get("query_adapter")  # noqa: N806
     assert Q is None
     # Insert evals.
-    insert_evals(num_evals=2, max_contexts_per_eval=10, config=config_with_query_adapter)
+    insert_evals(num_evals=2, max_chunks_per_eval=10, config=config_with_query_adapter)
     # Update the query adapter.
     A = update_query_adapter(config=config_with_query_adapter)  # noqa: N806
     assert isinstance(A, np.ndarray)
