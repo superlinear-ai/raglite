@@ -77,9 +77,7 @@ def parsed_pdf_to_markdown(pages: list[dict[str, Any]]) -> list[str]:  # noqa: C
                             if len(heading_font_sizes) == 0:
                                 idx = 6  # Treat as normal paragraph text
                             else:
-                                idx = np.argmin(
-                                    np.abs(heading_font_sizes - span_font_size)
-                                )
+                                idx = np.argmin(np.abs(heading_font_sizes - span_font_size)) # type: ignore[assignment]
                         span["md"]["heading_level"] = idx + 1
                         heading_level[idx] += len(span["text"])
                     line["md"]["heading_level"] = np.argmax(heading_level) + 1
