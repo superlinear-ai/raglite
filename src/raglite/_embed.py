@@ -19,11 +19,15 @@ def embed_strings_with_late_chunking(  # noqa: C901,PLR0915
     """Embed a document's sentences with late chunking."""
 
     def _count_tokens(
-        sentences: list[str], embedder: Llama, sentinel_char: str, sentinel_tokens: list[int]
+        sentences: list[str],
+        embedder: Llama,
+        sentinel_char: str,
+        sentinel_tokens: list[int],
     ) -> list[int]:
         # Join the sentences with the sentinel token and tokenise the result.
         sentences_tokens = np.asarray(
-            embedder.tokenize(sentinel_char.join(sentences).encode(), add_bos=False), dtype=np.intp
+            embedder.tokenize(sentinel_char.join(sentences).encode(), add_bos=False),
+            dtype=np.intp,
         )
         # Map all sentinel token variants to the first one.
         for sentinel_token in sentinel_tokens[1:]:
@@ -31,7 +35,9 @@ def embed_strings_with_late_chunking(  # noqa: C901,PLR0915
         # Count how many tokens there are in between sentinel tokens to recover the token counts.
         sentinel_indices = np.where(sentences_tokens == sentinel_tokens[0])[0]
         num_tokens = np.diff(sentinel_indices, prepend=0, append=len(sentences_tokens))
-        assert len(num_tokens) == len(sentences), f"Sentinel `{sentinel_char}` appears in document"
+        assert len(num_tokens) == len(sentences), (
+            f"Sentinel `{sentinel_char}` appears in document"
+        )
         num_tokens_list: list[int] = num_tokens.tolist()
         return num_tokens_list
 
@@ -44,16 +50,21 @@ def embed_strings_with_late_chunking(  # noqa: C901,PLR0915
         # Compute the segment sentence start index so that the segment preamble has no more than
         # max_tokens_preamble tokens between [segment_start_index, content_start_index).
         cumsum_backwards = np.cumsum(num_tokens[:content_start_index][::-1])
-        offset_preamble = np.searchsorted(cumsum_backwards, max_tokens_preamble, side="right")
+        offset_preamble = np.searchsorted(
+            cumsum_backwards, max_tokens_preamble, side="right"
+        )
         segment_start_index = content_start_index - int(offset_preamble)
         # Allow a larger segment content if we didn't use all of the allowed preamble tokens.
         max_tokens_content = max_tokens_content + (
-            max_tokens_preamble - np.sum(num_tokens[segment_start_index:content_start_index])
+            max_tokens_preamble
+            - np.sum(num_tokens[segment_start_index:content_start_index])
         )
         # Compute the segment sentence end index so that the segment content has no more than
         # max_tokens_content tokens between [content_start_index, segment_end_index).
         cumsum_forwards = np.cumsum(num_tokens[content_start_index:])
-        offset_segment = np.searchsorted(cumsum_forwards, max_tokens_content, side="right")
+        offset_segment = np.searchsorted(
+            cumsum_forwards, max_tokens_content, side="right"
+        )
         segment_end_index = content_start_index + int(offset_segment)
         return segment_start_index, segment_end_index
 
@@ -120,28 +131,38 @@ def embed_strings_with_late_chunking(  # noqa: C901,PLR0915
         # Split the segment embeddings into embedding matrices per sentence using the largest
         # remainder method.
         segment_tokens = num_tokens[segment_start_index:segment_end_index]
-        sentence_size_frac = len(segment_embedding) * (segment_tokens / np.sum(segment_tokens))
+        sentence_size_frac = len(segment_embedding) * (
+            segment_tokens / np.sum(segment_tokens)
+        )
         sentence_size = np.floor(sentence_size_frac).astype(np.intp)
         remainder = len(segment_embedding) - np.sum(sentence_size)
-        if remainder > 0:  # Assign the remaining tokens to sentences with largest fractional parts.
+        if (
+            remainder > 0
+        ):  # Assign the remaining tokens to sentences with largest fractional parts.
             top_remainders = np.argsort(sentence_size_frac - sentence_size)[-remainder:]
             sentence_size[top_remainders] += 1
         sentence_matrices = np.split(segment_embedding, np.cumsum(sentence_size)[:-1])
         # Compute the segment sentence embeddings by averaging the token embeddings.
         content_sentence_embeddings = [
             np.mean(sentence_matrix, axis=0, keepdims=True)
-            for sentence_matrix in sentence_matrices[content_start_index - segment_start_index :]
+            for sentence_matrix in sentence_matrices[
+                content_start_index - segment_start_index :
+            ]
         ]
         sentence_embeddings_list.append(np.vstack(content_sentence_embeddings))
     sentence_embeddings = np.vstack(sentence_embeddings_list)
     # Normalise the sentence embeddings to unit norm and cast to half precision.
     if config.embedder_normalize:
-        sentence_embeddings /= np.linalg.norm(sentence_embeddings, axis=1, keepdims=True)
+        sentence_embeddings /= np.linalg.norm(
+            sentence_embeddings, axis=1, keepdims=True
+        )
     sentence_embeddings = sentence_embeddings.astype(np.float16)
     return sentence_embeddings
 
 
-def _embed_string_batch(string_batch: list[str], *, config: RAGLiteConfig) -> FloatMatrix:
+def _embed_string_batch(
+    string_batch: list[str], *, config: RAGLiteConfig
+) -> FloatMatrix:
     """Embed a batch of text strings."""
     if config.embedder.startswith("llama-cpp-python"):
         # LiteLLM doesn't yet support registering a custom embedder, so we handle it here.
@@ -151,7 +172,9 @@ def _embed_string_batch(string_batch: list[str], *, config: RAGLiteConfig) -> Fl
         embedder = LlamaCppPythonLLM.llm(
             config.embedder, embedding=True, pooling_type=LLAMA_POOLING_TYPE_NONE
         )
-        embeddings = np.asarray([np.mean(row, axis=0) for row in embedder.embed(string_batch)])
+        embeddings = np.asarray(
+            [np.mean(row, axis=0) for row in embedder.embed(string_batch)]
+        )
     else:
         # Use LiteLLM's API to embed the batch of strings.
         response = embedding(config.embedder, string_batch)
@@ -165,32 +188,97 @@ def _embed_string_batch(string_batch: list[str], *, config: RAGLiteConfig) -> Fl
     return embeddings
 
 
+def _create_token_aware_batches(strings: list[str], embedder: str) -> list[list[str]]:
+    """Create batches for OpenAI models based on token limits.
+
+    Based on: https://platform.openai.com/docs/guides/embeddings#embedding-models
+
+    The currently available embedding models from openai are:
+    - text-embedding-3-small
+    - text-embedding-3-large
+    - text-embedding-ada-002
+
+    All of them has a max input size of 8192 tokens.
+    """
+    import tiktoken
+
+    # Get tokenizer
+    model_name = embedder.split("/")[-1] if "/" in embedder else embedder
+    try:
+        encoding = tiktoken.encoding_for_model(model_name)
+    except KeyError:
+        encoding = tiktoken.get_encoding("cl100k_base")
+
+    batches = []
+    current_batch = []
+    current_tokens = 0
+    max_tokens = 7800  # Safe limit for 8192 token models
+
+    for string in strings:
+        tokens = len(encoding.encode(string))
+
+        # If adding this string exceeds limit, start new batch
+        if current_tokens + tokens > max_tokens and current_batch:
+            batches.append(current_batch)
+            current_batch = [string]
+            current_tokens = tokens
+        else:
+            current_batch.append(string)
+            current_tokens += tokens
+
+    # Add final batch
+    if current_batch:
+        batches.append(current_batch)
+
+    return batches
+
+
 def embed_strings_without_late_chunking(
     strings: list[str], *, config: RAGLiteConfig | None = None
 ) -> FloatMatrix:
     """Embed a list of text strings in batches."""
     config = config or RAGLiteConfig()
-    batch_size = 128
+
+    # Create batches based on model type
+    if config.embedder.startswith("text-embedding"):  # OpenAI defaults
+        batches = _create_token_aware_batches(strings, config.embedder)
+    else:
+        # Original fixed batching for non-OpenAI models
+        batch_size = 128
+        batches = [
+            strings[i : i + batch_size] for i in range(0, len(strings), batch_size)
+        ]
+
+    # Process batches with progress bar if multiple batches
     batch_range = (
         partial(trange, desc="Embedding", unit="batch", dynamic_ncols=True)
-        if len(strings) > batch_size
+        if len(batches) > 1
         else range
     )
+
     batch_embeddings = [
-        _embed_string_batch(strings[i : i + batch_size], config=config)
-        for i in batch_range(0, len(strings), batch_size)
+        _embed_string_batch(batches[i], config=config)
+        for i in batch_range(len(batches))
     ]
-    string_embeddings = np.vstack(batch_embeddings)
-    return string_embeddings
+
+    return np.vstack(batch_embeddings)
 
 
-def embedding_type(*, config: RAGLiteConfig | None = None) -> Literal["late_chunking", "standard"]:
+def embedding_type(
+    *, config: RAGLiteConfig | None = None
+) -> Literal["late_chunking", "standard"]:
     """Return the type of sentence embeddings."""
     config = config or RAGLiteConfig()
-    return "late_chunking" if config.embedder.startswith("llama-cpp-python") else "standard"
+    return (
+        "late_chunking"
+        if config.embedder.startswith("llama-cpp-python")
+        else "standard"
+    )
 
 
-def embed_strings(strings: list[str], *, config: RAGLiteConfig | None = None) -> FloatMatrix:
+def embed_strings(
+    strings: list[str], *, config: RAGLiteConfig | None = None
+) -> FloatMatrix:
     """Embed the chunklets of a document as a NumPy matrix with one row per chunklet."""
     config = config or RAGLiteConfig()
     if embedding_type(config=config) == "late_chunking":

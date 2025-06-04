@@ -29,6 +29,8 @@ dependencies = [
   # Reranking:
   "langdetect (>=1.0.9)",
   "rerankers[api,flashrank] (>=0.10.0)",
+  # Embeddings:
+  "tiktoken (>=0.9.0)",
   # Storage:
   "duckdb (>=1.1.3)",
   "duckdb-engine (>=0.16.0)",
