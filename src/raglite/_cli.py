@@ -132,25 +132,31 @@ def bench(
     ),
 ) -> None:
     """Run benchmark."""
-    import ir_datasets
-    import ir_measures
-    import pandas as pd
+    try:
+        import ir_datasets
+        import ir_measures
+        import pandas as pd
+        from rerankers import Reranker
 
-    from raglite._bench import (
-        IREvaluator,
-        LlamaIndexEvaluator,
-        OpenAIVectorStoreEvaluator,
-        RAGLiteEvaluator,
-    )
+        from raglite._bench import (
+            IREvaluator,
+            LlamaIndexEvaluator,
+            OpenAIVectorStoreEvaluator,
+            RAGLiteEvaluator,
+        )
+    except ModuleNotFoundError as import_error:
+        error_message = "To use the `bench` command, please install the `bench` extra."
+        raise ModuleNotFoundError(error_message) from import_error
 
     # Initialise the benchmark.
     evaluator: IREvaluator
     measures = [ir_measures.parse_measure(measure)]
     index, results = [], []
-    # Evaluate RAGLite (single-vector) + DuckDB HNSW + text-embedding-3-large.
+    # Evaluate RAGLite (single-vector) + DuckDB + text-embedding-3-large.
     chunk_max_size = 2048
     config = RAGLiteConfig(
-        embedder="text-embedding-3-large",
+        embedder=(embedder := "text-embedding-3-large"),
+        reranker=None,
         chunk_max_size=chunk_max_size,
         vector_search_multivector=False,
         vector_search_query_adapter=False,
@@ -161,9 +167,10 @@ def bench(
     )
     index.append("RAGLite (single-vector)")
     results.append(ir_measures.calc_aggregate(measures, dataset.qrels_iter(), evaluator.score()))
-    # Evaluate RAGLite (multi-vector) + DuckDB HNSW + text-embedding-3-large.
+    # Evaluate RAGLite (multi-vector) + DuckDB + text-embedding-3-large.
     config = RAGLiteConfig(
-        embedder="text-embedding-3-large",
+        embedder=embedder,
+        reranker=None,
         chunk_max_size=chunk_max_size,
         vector_search_multivector=True,
         vector_search_query_adapter=False,
@@ -174,10 +181,11 @@ def bench(
     )
     index.append("RAGLite (multi-vector)")
     results.append(ir_measures.calc_aggregate(measures, dataset.qrels_iter(), evaluator.score()))
-    # Evaluate RAGLite (query adapter) + DuckDB HNSW + text-embedding-3-large.
+    # Evaluate RAGLite (multi-vector; query adapter) + DuckDB + text-embedding-3-large.
     config = RAGLiteConfig(
         llm=(llm := "gpt-4.1"),
-        embedder="text-embedding-3-large",
+        embedder=embedder,
+        reranker=None,
         chunk_max_size=chunk_max_size,
         vector_search_multivector=True,
         vector_search_query_adapter=True,
@@ -191,6 +199,29 @@ def bench(
     )
     index.append("RAGLite (query adapter)")
     results.append(ir_measures.calc_aggregate(measures, dataset.qrels_iter(), evaluator.score()))
+    # Evaluate RAGLite (multi-vector; query adapter; reranker) + DuckDB + text-embedding-3-large.
+    if os.environ.get("CO_API_KEY"):
+        config = RAGLiteConfig(
+            llm=llm,
+            embedder=embedder,
+            reranker=Reranker(
+                "rerank-v3.5", model_type="cohere", api_key=os.environ["CO_API_KEY"], verbose=0
+            ),
+            chunk_max_size=chunk_max_size,
+            vector_search_multivector=True,
+            vector_search_query_adapter=True,
+        )
+        dataset = ir_datasets.load(dataset_name)
+        evaluator = RAGLiteEvaluator(
+            dataset,
+            insert_variant=f"multi-vector-{chunk_max_size // 4}t",
+            search_variant=f"query-adapter-{llm}-cohere-rerank-3.5",
+            config=config,
+        )
+        index.append("RAGLite (Cohere Rerank 3.5)")
+        results.append(
+            ir_measures.calc_aggregate(measures, dataset.qrels_iter(), evaluator.score())
+        )
     # Evaluate LLamaIndex + FAISS HNSW + text-embedding-3-large.
     dataset = ir_datasets.load(dataset_name)
     evaluator = LlamaIndexEvaluator(dataset)
