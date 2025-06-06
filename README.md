@@ -123,15 +123,15 @@ from rerankers import Reranker
 # Example remote API-based reranker:
 my_config = RAGLiteConfig(
     db_url="postgresql://my_username:my_password@my_host:5432/my_database"
-    reranker=Reranker("rerank-v3.5", model_type="cohere", api_key=COHERE_API_KEY)  # Multilingual
+    reranker=Reranker("rerank-v3.5", model_type="cohere", api_key=COHERE_API_KEY, verbose=0)  # Multilingual
 )
 
 # Example local cross-encoder reranker per language (this is the default):
 my_config = RAGLiteConfig(
     db_url="duckdb:///raglite.db",
     reranker={
-        "en": Reranker("ms-marco-MiniLM-L-12-v2", model_type="flashrank"),  # English
-        "other": Reranker("ms-marco-MultiBERT-L-12", model_type="flashrank"),  # Other languages
+        "en": Reranker("ms-marco-MiniLM-L-12-v2", model_type="flashrank", verbose=0),  # English
+        "other": Reranker("ms-marco-MultiBERT-L-12", model_type="flashrank", verbose=0),  # Other languages
     }
 )
 ```
