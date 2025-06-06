@@ -170,6 +170,7 @@ def insert_documents(  # noqa: C901
                 session.flush()  # Flush changes to the database.
                 session.expunge_all()  # Release memory of flushed changes.
                 num_unflushed_embeddings = 0
+            pbar.set_postfix({"id": document_record.id})
             pbar.update()
         session.commit()
         if engine.dialect.name == "duckdb":
