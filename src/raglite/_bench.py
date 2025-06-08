@@ -2,7 +2,7 @@
 
 import warnings
 from abc import ABC, abstractmethod
-from collections.abc import Generator
+from collections.abc import Iterator
 from dataclasses import replace
 from functools import cached_property
 from pathlib import Path
@@ -60,7 +60,7 @@ class IREvaluator(ABC):
     def trec_run_filepath(self) -> Path:
         return self.cwd / self.trec_run_filename
 
-    def score(self) -> Generator[ScoredDoc, None, None]:
+    def score(self) -> Iterator[ScoredDoc]:
         """Read or compute a TREC run."""
         if self.trec_run_filepath.exists():
             yield from read_trec_run(self.trec_run_filepath.as_posix())  # type: ignore[no-untyped-call]

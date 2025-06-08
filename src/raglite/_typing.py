@@ -24,7 +24,6 @@ IndexId = str
 
 DistanceMetric = Literal["cosine", "dot", "l1", "l2"]
 
-FloatTensor = np.ndarray[tuple[int, int, int], np.dtype[np.floating[Any]]]
 FloatMatrix = np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]
 FloatVector = np.ndarray[tuple[int], np.dtype[np.floating[Any]]]
 IntVector = np.ndarray[tuple[int], np.dtype[np.intp]]

@@ -3,7 +3,7 @@
 import os
 import socket
 import tempfile
-from collections.abc import Generator
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -48,7 +48,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
 
 @pytest.fixture(scope="session")
-def duckdb_url() -> Generator[str, None, None]:
+def duckdb_url() -> Iterator[str]:
     """Create a temporary DuckDB database file and return the database URL."""
     with tempfile.TemporaryDirectory() as temp_dir:
         db_file = Path(temp_dir) / "raglite_test.db"

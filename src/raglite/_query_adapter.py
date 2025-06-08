@@ -3,12 +3,14 @@
 # ruff: noqa: N803, N806, PLC2401, PLR0913, RUF003
 
 import contextlib
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from functools import partial
 
 import numpy as np
 from scipy.optimize import lsq_linear, minimize
+from scipy.special import expit
 from sqlalchemy import text
 from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import Session, col, select
@@ -18,7 +20,7 @@ from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, ChunkEmbedding, Eval, IndexMetadata, create_database_engine
 from raglite._embed import embed_strings
 from raglite._search import vector_search
-from raglite._typing import FloatMatrix, FloatTensor, FloatVector
+from raglite._typing import FloatMatrix, FloatVector
 
 
 def _extract_triplets(
@@ -35,11 +37,6 @@ def _extract_triplets(
         is_relevant = np.array([chunk.id in eval_.chunk_ids for chunk in retrieved_chunks])
         if not np.any(is_relevant) or not np.any(~is_relevant):
             error_message = "Eval does not contain both relevant and irrelevant chunks."
-            raise ValueError(error_message)
-        # Skip this eval if it is perfectly ranked.
-        num_relevant = np.sum(is_relevant)
-        if np.sum(is_relevant[:num_relevant]) == num_relevant:
-            error_message = "Eval is already perfectly ranked."
             raise ValueError(error_message)
         # Extract the positive and negative chunk embeddings.
         P = np.vstack(
@@ -80,9 +77,10 @@ def _optimize_query_target(
 def _compute_query_adapter(
     w: FloatVector, Q: FloatMatrix, T: FloatMatrix, PT: FloatMatrix, config: RAGLiteConfig
 ) -> FloatMatrix:
-    # Compute the optimal unconstrained query adapter M.
+    # Compute the weighted query embeddings.
     n, d = Q.shape
-    M = (1.0 / n) * T.T @ (w[:, np.newaxis] * Q) + PT
+    T_prime = Q + (w[:, np.newaxis] ** 2) * (T - Q)
+    M = (1.0 / n) * T_prime.T @ Q + PT
     # Compute the optimal constrained query adapter A* from M, given the distance metric.
     A_star: FloatMatrix
     if config.vector_search_distance_metric == "dot":
@@ -101,27 +99,31 @@ def _compute_query_adapter_grad(
     T: FloatMatrix,
     PT: FloatMatrix,
     config: RAGLiteConfig,
-) -> FloatTensor:
+) -> Iterator[FloatMatrix]:
     n, d = Q.shape
-    M = (1.0 / n) * T.T @ (w[:, np.newaxis] * Q) + PT
-    dAdw: FloatTensor  # n × d × d
+    diff = T - Q
+    T_prime = Q + (w[:, np.newaxis] ** 2) * diff
+    M = (1.0 / n) * T_prime.T @ Q + PT
     if config.vector_search_distance_metric == "dot":
         fro = np.linalg.norm(M, ord="fro")
         if fro <= np.sqrt(np.finfo(M.dtype).eps):
-            return np.zeros((n, d, d), dtype=M.dtype)
-        outer = (T[:, :, np.newaxis] * Q[:, np.newaxis, :]) / n
-        inner = np.sum(outer * M[np.newaxis, :, :], axis=(1, 2))
-        dAdw = (outer - (inner / fro**2)[:, np.newaxis, np.newaxis] * M) / fro * np.sqrt(d)
+            for _ in range(n):
+                yield np.zeros((d, d), dtype=M.dtype)
+            return
+        for i in range(n):
+            outer = 2.0 * w[i] * np.outer(diff[i], Q[i]) / n
+            inner = np.sum(outer * M)
+            yield (outer - (inner / fro**2) * M) / fro * np.sqrt(d)
     elif config.vector_search_distance_metric == "cosine":
         U, σ, VT = np.linalg.svd(M, full_matrices=False)
-        P = T @ U
-        R = Q @ VT.T
-        skew = P[:, :, np.newaxis] * R[:, np.newaxis, :] - R[:, :, np.newaxis] * P[:, np.newaxis, :]
+        X = diff @ U
+        Y = Q @ VT.T
         denom = σ[:, np.newaxis] + σ[np.newaxis, :]
-        denom[denom <= (np.finfo(M.dtype).eps ** 0.25) * σ[0]] = np.inf
-        core = skew / denom[np.newaxis, :, :] / n
-        dAdw = np.einsum("ab,nbc,cd->nad", U, core, VT, optimize=True)
-    return dAdw
+        denom[denom <= (np.finfo(M.dtype).eps ** (1 / 4)) * σ[0]] = np.inf
+        for i in range(n):
+            outer = 2.0 * w[i] * np.outer(X[i], Y[i])
+            core = (outer - outer.T) / denom / n
+            yield U @ core @ VT
 
 
 def _objective_function(
@@ -129,13 +131,17 @@ def _objective_function(
     Q_train: FloatMatrix,
     T_train: FloatMatrix,
     PT_train: FloatMatrix,
-    Q_val: FloatMatrix,
-    D_val: FloatMatrix,
+    Q: FloatMatrix,
+    D: FloatMatrix,
     config: RAGLiteConfig,
 ) -> float:
     A = _compute_query_adapter(w, Q_train, T_train, PT_train, config)
-    gap: float = np.mean(np.sum(D_val * ((Q_val @ A.T) - Q_val), axis=1))
-    return -gap
+    gaps = np.sum(D * (Q @ A.T), axis=1)
+    factor = 1.28 / (0.05 / 0.75)  # TODO: Use gap_margin here instead of 0.05.
+    neg_filter = expit(-factor * gaps)
+    mean_neg_gap = np.mean(gaps * neg_filter)
+    cost: float = -mean_neg_gap
+    return cost
 
 
 def _gradient(
@@ -143,12 +149,20 @@ def _gradient(
     Q_train: FloatMatrix,
     T_train: FloatMatrix,
     PT_train: FloatMatrix,
-    Q_val: FloatMatrix,
-    D_val: FloatMatrix,
+    Q: FloatMatrix,
+    D: FloatMatrix,
     config: RAGLiteConfig,
 ) -> FloatVector:
-    dAdw = _compute_query_adapter_grad(w, Q_train, T_train, PT_train, config)  # n × d × d
-    grad: FloatVector = -np.einsum("nij,mj,mi->n", dAdw, Q_val, D_val, optimize=True) / len(Q_val)
+    dAdw = _compute_query_adapter_grad(w, Q_train, T_train, PT_train, config)
+    A = _compute_query_adapter(w, Q_train, T_train, PT_train, config)
+    gaps = np.sum(D * (Q @ A.T), axis=1)
+    factor = 1.28 / (0.05 / 0.75)  # TODO: Use gap_margin here instead of 0.05.
+    neg_filter = expit(-factor * gaps)
+    weights = neg_filter - factor * gaps * neg_filter * (1.0 - neg_filter)
+    S = D.T @ (weights[:, np.newaxis] * Q)
+    grad = np.empty_like(w)
+    for i, dAdwi in enumerate(dAdw):
+        grad[i] = -np.sum(dAdwi * S) / len(Q)
     return grad
 
 
@@ -157,9 +171,9 @@ def update_query_adapter(  # noqa: PLR0915
     max_evals: int = 4096,
     optimize_top_k: int = 40,
     gap_margin: float = 0.05,
-    gap_max_iter: int = 20,
-    gap_tol: float = 1e-6,
-    gap_validation_size: float = 0.25,
+    gap_max_iter: int = 40,
+    gap_tol: float = 1e-4,
+    gap_validation_size: float = 0.0,
     max_workers: int | None = None,
     config: RAGLiteConfig | None = None,
 ) -> FloatMatrix:
@@ -266,7 +280,7 @@ def update_query_adapter(  # noqa: PLR0915
     ValueError
         If no evals have been inserted into the database yet.
     ValueError
-        If no evals are found with incorrectly ranked results to optimize.
+        If no evals are usable for optimization.
     ValueError
         If the `config.vector_search_distance_metric` is not supported.
 
@@ -347,40 +361,47 @@ def update_query_adapter(  # noqa: PLR0915
             T_train /= np.linalg.norm(T_train, axis=1, keepdims=True)
         # Search for the optimal gap α* on a subset of the triplets.
         w_star = np.ones(train_size)
-        if val_size >= 1:
-            # Split the triplets in a train and validation set.
-            Q_train = Q[:train_size]
-            Q_val, P_val, N_val = Q[-val_size:], P[-val_size:], N[-val_size:]
-            # Compute a passthrough matrix.
-            n, d = Q_train.shape
-            if n < d or np.linalg.matrix_rank(Q) < d:
-                PT_train = np.eye(d) - Q_train.T @ np.linalg.pinv(Q_train @ Q_train.T) @ Q_train
-            else:
-                PT_train = np.zeros((d, d))
-            # Construct the delta matrix D[i, :] := mean([pₘᵀ - nₙᵀ]ₘₙ, axis=0).
-            D_val = np.empty_like(Q_val)
-            for i, (Pi, Ni) in enumerate(zip(P_val, N_val, strict=True)):
-                D_val[i] = np.mean(np.reshape(Pi[:, None, :] - Ni[None, :, :], (-1, d)), axis=0)
-            # Compute the optimal gap α*.
-            with tqdm(
-                total=gap_max_iter,
-                desc="Optimizing query target weights",
-                unit="iter",
-                dynamic_ncols=True,
-            ) as pbar:
-                result = minimize(
-                    _objective_function,
-                    jac=_gradient,
-                    x0=np.ones(train_size),
-                    args=(Q_train, T_train, PT_train, Q_val, D_val, config_no_query_adapter),
-                    method="L-BFGS-B",
-                    callback=lambda intermediate_result: (
-                        pbar.update(),
-                        pbar.set_postfix({"gap": -intermediate_result.fun}),
-                    ),
-                    options={"ftol": gap_tol, "maxiter": gap_max_iter, "maxcor": 10, "maxls": 10},
-                )
-            w_star = result.x
+        # Compute a passthrough matrix.
+        Q_train = Q[:train_size]
+        n, d = Q_train.shape
+        if n < d or np.linalg.matrix_rank(Q) < d:
+            PT_train = np.eye(d) - Q_train.T @ np.linalg.pinv(Q_train @ Q_train.T) @ Q_train
+        else:
+            PT_train = np.zeros((d, d))
+        # Construct the delta matrix D[i, :] := mean([pₘᵀ - nₙᵀ]ₘₙ, axis=0).
+        Q_full = []
+        D_full = []
+        for qi, Pi, Ni in zip(Q, P, N, strict=True):
+            D = np.reshape(Pi[:, np.newaxis, :] - Ni[np.newaxis, :, :], (-1, d))
+            D_full.append(D)
+            Q_full.append(np.repeat(qi[np.newaxis, :], D.shape[0], axis=0))
+        # Compute the optimal gap α*.
+        with tqdm(
+            total=gap_max_iter,
+            desc="Optimizing query target weights",
+            unit="iter",
+            dynamic_ncols=True,
+        ) as pbar:
+            result = minimize(
+                _objective_function,
+                jac=_gradient,
+                x0=np.ones(train_size),
+                args=(
+                    Q_train,
+                    T_train,
+                    PT_train,
+                    np.vstack(Q_full),
+                    np.vstack(D_full),
+                    config_no_query_adapter,
+                ),
+                method="L-BFGS-B",
+                callback=lambda intermediate_result: (
+                    pbar.update(),
+                    pbar.set_postfix({"gap": -intermediate_result.fun}),
+                ),
+                options={"ftol": gap_tol, "maxiter": gap_max_iter, "maxcor": 10, "maxls": 10},
+            )
+        w_star = result.x
         # Compute the optimal query adapter.
         A_star = _compute_query_adapter(w_star, Q_train, T_train, PT_train, config)
         # Store the optimal query adapter in the database.
