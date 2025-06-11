@@ -1,3 +1,36 @@
+## v1.0.0 (2025-06-11)
+
+### Feat
+
+- parallelize inserts and add benchmarking (#150)
+- optimally separate result sets in query adapter (#149)
+- add ability to control the gap in query adapter (#147)
+- improve query adapter algorithm (#146)
+- make pandas an optional dependency (#141)
+- replace SQLite with DuckDB (#137)
+- improve config and API (#138)
+- enable weighted reciprocal rank fusion (#136)
+- rank chunks by the L∞ norm of their multi-vector similarity (#132)
+- introduce chunklets to improve chunking (#123)
+- add front matter to chunk content (#126)
+- add support for reasoning tool use and upgrade to Qwen3 (#124)
+- add metadata at the document level (#122)
+- add option to use single chunk embeddings (#119)
+
+### Fix
+
+- fix parsing of font sizes for pdfs with no headings (#155)
+- run checkpoint after DuckDB inserts (#145)
+- improve token assignment in late chunking (#144)
+- upgrade rerankers and recommended Cohere model (#142)
+- adapt oversampling to chunk size (#140)
+- fix off-by-one error in parsing of Markdown headings (#133)
+- remove mdformat (#128)
+- improve contextual chunk headings (#118)
+- incorporate headings and prevent windowing chunks (#117)
+- fix chunking of single-sentence chunks (#115)
+- don't convert markdown to markdown (#116)
+
 ## v0.7.0 (2025-03-17)
 
 ### Feat
