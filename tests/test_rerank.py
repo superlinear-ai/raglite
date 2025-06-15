@@ -31,26 +31,21 @@ def kendall_tau(a: list[T], b: list[T]) -> float:
             },
             id="flashrank_multilingual",
         ),
-    ],
+    ]
 )
-def reranker(
-    request: pytest.FixtureRequest,
-) -> BaseRanker | dict[str, BaseRanker] | None:
+def reranker(request: pytest.FixtureRequest) -> BaseRanker | dict[str, BaseRanker] | None:
     """Get a reranker to test RAGLite with."""
     reranker: BaseRanker | dict[str, BaseRanker] | None = request.param
     return reranker
 
 
 def test_reranker(
-    raglite_test_config: RAGLiteConfig,
-    reranker: BaseRanker | dict[str, BaseRanker] | None,
+    raglite_test_config: RAGLiteConfig, reranker: BaseRanker | dict[str, BaseRanker] | None
 ) -> None:
     """Test inserting a document, updating the indexes, and searching for a query."""
     # Update the config with the reranker.
     raglite_test_config = RAGLiteConfig(
-        db_url=raglite_test_config.db_url,
-        embedder=raglite_test_config.embedder,
-        reranker=reranker,
+        db_url=raglite_test_config.db_url, embedder=raglite_test_config.embedder, reranker=reranker
     )
     # Search for a query.
     query = "What does it mean for two events to be simultaneous?"

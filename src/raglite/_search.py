@@ -49,8 +49,7 @@ def vector_search(
         corrected_oversample = oversample * config.chunk_max_size / RAGLiteConfig.chunk_max_size
         num_hits = round(corrected_oversample) * max(num_results, 10)
         dist = ChunkEmbedding.embedding.distance(  # type: ignore[attr-defined]
-            query_embedding,
-            metric=config.vector_search_distance_metric,
+            query_embedding, metric=config.vector_search_distance_metric
         ).label("dist")
         sim = (1.0 - dist).label("sim")
         top_vectors = select(ChunkEmbedding.chunk_id, sim).order_by(dist).limit(num_hits).subquery()
@@ -68,10 +67,7 @@ def vector_search(
 
 
 def keyword_search(
-    query: str,
-    *,
-    num_results: int = 3,
-    config: RAGLiteConfig | None = None,
+    query: str, *, num_results: int = 3, config: RAGLiteConfig | None = None
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks using BM25 keyword search."""
     # Read the config.
@@ -104,7 +100,7 @@ def keyword_search(
                 WHERE score IS NOT NULL
                 ORDER BY score DESC
                 LIMIT :limit;
-                """,
+                """
             )
             results = session.execute(statement, params={"query": query, "limit": num_results})
         # Unpack the results.
@@ -115,10 +111,7 @@ def keyword_search(
 
 
 def reciprocal_rank_fusion(
-    rankings: list[list[ChunkId]],
-    *,
-    k: int = 60,
-    weights: list[float] | None = None,
+    rankings: list[list[ChunkId]], *, k: int = 60, weights: list[float] | None = None
 ) -> tuple[list[ChunkId], list[float]]:
     """Reciprocal Rank Fusion."""
     if weights is None:
@@ -136,8 +129,7 @@ def reciprocal_rank_fusion(
         return [], []
     # Rank RRF results according to descending RRF score.
     rrf_chunk_ids, rrf_score = zip(
-        *sorted(chunk_id_score.items(), key=lambda x: x[1], reverse=True),
-        strict=True,
+        *sorted(chunk_id_score.items(), key=lambda x: x[1], reverse=True), strict=True
     )
     return list(rrf_chunk_ids), list(rrf_score)
 
@@ -157,17 +149,14 @@ def hybrid_search(  # noqa: PLR0913
     ks_chunk_ids, _ = keyword_search(query, num_results=oversample * num_results, config=config)
     # Combine the results with Reciprocal Rank Fusion (RRF).
     chunk_ids, hybrid_score = reciprocal_rank_fusion(
-        [vs_chunk_ids, ks_chunk_ids],
-        weights=[vector_search_weight, keyword_search_weight],
+        [vs_chunk_ids, ks_chunk_ids], weights=[vector_search_weight, keyword_search_weight]
     )
     chunk_ids, hybrid_score = chunk_ids[:num_results], hybrid_score[:num_results]
     return chunk_ids, hybrid_score
 
 
 def retrieve_chunks(
-    chunk_ids: list[ChunkId],
-    *,
-    config: RAGLiteConfig | None = None,
+    chunk_ids: list[ChunkId], *, config: RAGLiteConfig | None = None
 ) -> list[Chunk]:
     """Retrieve chunks by their ids."""
     if not chunk_ids:
@@ -178,8 +167,8 @@ def retrieve_chunks(
                 select(Chunk)
                 .where(col(Chunk.id).in_(chunk_ids))
                 # Eagerly load chunk.document.
-                .options(joinedload(Chunk.document)),  # type: ignore[arg-type]
-            ).all(),
+                .options(joinedload(Chunk.document))  # type: ignore[arg-type]
+            ).all()
         )
     chunks = sorted(chunks, key=lambda chunk: chunk_ids.index(chunk.id))
     return chunks
@@ -221,8 +210,8 @@ def retrieve_chunk_spans(
                     select(Chunk)
                     .where(or_(*neighbor_conditions))
                     # Eagerly load chunk.document.
-                    .options(joinedload(Chunk.document)),  # type: ignore[arg-type]
-                ).all(),
+                    .options(joinedload(Chunk.document))  # type: ignore[arg-type]
+                ).all()
             )
     # Deduplicate and sort the chunks by document_id and index (needed for groupby).
     unique_chunks = sorted(set(chunks), key=lambda chunk: (chunk.document_id, chunk.index))
@@ -248,10 +237,7 @@ def retrieve_chunk_spans(
 
 
 def rerank_chunks(
-    query: str,
-    chunk_ids: list[ChunkId] | list[Chunk],
-    *,
-    config: RAGLiteConfig | None = None,
+    query: str, chunk_ids: list[ChunkId] | list[Chunk], *, config: RAGLiteConfig | None = None
 ) -> list[Chunk]:
     """Rerank chunks according to their relevance to a given query."""
     # Retrieve the chunks.

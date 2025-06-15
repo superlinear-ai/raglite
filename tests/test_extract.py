@@ -10,8 +10,7 @@ from raglite._extract import extract_with_llm
 
 
 @pytest.mark.parametrize(
-    "strict",
-    [pytest.param(False, id="strict=False"), pytest.param(True, id="strict=True")],
+    "strict", [pytest.param(False, id="strict=False"), pytest.param(True, id="strict=True")]
 )
 def test_extract(llm: str, strict: bool) -> None:  # noqa: FBT001
     """Test extracting structured data."""
@@ -30,10 +29,7 @@ def test_extract(llm: str, strict: bool) -> None:  # noqa: FBT001
     # Extract structured data.
     username, password = "cypher", "steak"
     login_response = extract_with_llm(
-        LoginResponse,
-        f"username: {username}\npassword: {password}",
-        strict=strict,
-        config=config,
+        LoginResponse, f"username: {username}\npassword: {password}", strict=strict, config=config
     )
     # Validate the response.
     assert isinstance(login_response, LoginResponse)

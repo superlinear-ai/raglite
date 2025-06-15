@@ -58,8 +58,7 @@ def markdown_chunklet_boundaries(sentences: list[str]) -> FloatVector:
 def compute_num_statements(sentences: list[str]) -> FloatVector:
     """Compute the approximate number of statements of each sentence in a list of sentences."""
     sentence_word_length = np.asarray(
-        [len(sentence.split()) for sentence in sentences],
-        dtype=np.float64,
+        [len(sentence.split()) for sentence in sentences], dtype=np.float64
     )
     q25, q75 = np.quantile(sentence_word_length, [0.25, 0.75])
     q25 = max(q25, np.sqrt(np.finfo(np.float64).eps))

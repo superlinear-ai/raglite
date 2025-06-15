@@ -19,11 +19,9 @@ from raglite._typing import BasicSearchMethod
         pytest.param(keyword_search, id="keyword_search"),
         pytest.param(vector_search, id="vector_search"),
         pytest.param(hybrid_search, id="hybrid_search"),
-    ],
+    ]
 )
-def search_method(
-    request: pytest.FixtureRequest,
-) -> BasicSearchMethod:
+def search_method(request: pytest.FixtureRequest) -> BasicSearchMethod:
     """Get a search method to test RAGLite with."""
     search_method: BasicSearchMethod = request.param
     return search_method
@@ -57,8 +55,7 @@ def test_search(raglite_test_config: RAGLiteConfig, search_method: BasicSearchMe
 
 
 def test_search_no_results(
-    raglite_test_config: RAGLiteConfig,
-    search_method: BasicSearchMethod,
+    raglite_test_config: RAGLiteConfig, search_method: BasicSearchMethod
 ) -> None:
     """Test searching for a query with no keyword search results."""
     query = "supercalifragilisticexpialidocious"

@@ -14,7 +14,7 @@ Query = Annotated[
         description=(
             "The `query` string MUST be a precise single-faceted question in the user's language.\n"
             "The `query` string MUST resolve all pronouns to explicit nouns."
-        ),
+        )
     ),
 ]
 
@@ -42,7 +42,7 @@ def create_mcp_server(server_name: str, *, config: RAGLiteConfig) -> FastMCP[Any
         rag_context = '{{"documents": [{elements}]}}'.format(
             elements=", ".join(
                 chunk_span.to_json(index=i + 1) for i, chunk_span in enumerate(chunk_spans)
-            ),
+            )
         )
         return rag_context
 

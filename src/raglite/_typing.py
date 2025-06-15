@@ -33,21 +33,13 @@ IntVector = np.ndarray[tuple[int], np.dtype[np.intp]]
 
 class BasicSearchMethod(Protocol):
     def __call__(
-        self,
-        query: str,
-        *,
-        num_results: int,
-        config: "RAGLiteConfig | None" = None,
+        self, query: str, *, num_results: int, config: "RAGLiteConfig | None" = None
     ) -> tuple[list[ChunkId], list[float]]: ...
 
 
 class SearchMethod(Protocol):
     def __call__(
-        self,
-        query: str,
-        *,
-        num_results: int,
-        config: "RAGLiteConfig | None" = None,
+        self, query: str, *, num_results: int, config: "RAGLiteConfig | None" = None
     ) -> tuple[list[ChunkId], list[float]] | list["Chunk"] | list["ChunkSpan"]: ...
 
 
@@ -57,9 +49,7 @@ class NumpyArray(TypeDecorator[np.ndarray[Any, np.dtype[np.floating[Any]]]]):
     impl = LargeBinary
 
     def process_bind_param(
-        self,
-        value: np.ndarray[Any, np.dtype[np.floating[Any]]] | None,
-        dialect: Dialect,
+        self, value: np.ndarray[Any, np.dtype[np.floating[Any]]] | None, dialect: Dialect
     ) -> bytes | None:
         """Convert a NumPy array to bytes."""
         if value is None:
@@ -69,9 +59,7 @@ class NumpyArray(TypeDecorator[np.ndarray[Any, np.dtype[np.floating[Any]]]]):
         return buffer.getvalue()
 
     def process_result_value(
-        self,
-        value: bytes | None,
-        dialect: Dialect,
+        self, value: bytes | None, dialect: Dialect
     ) -> np.ndarray[Any, np.dtype[np.floating[Any]]] | None:
         """Convert bytes to a NumPy array."""
         if value is None:
@@ -110,12 +98,7 @@ class EmbeddingDistance(FunctionElement[float]):
 
 @compiles(EmbeddingDistance, "postgresql")
 def _embedding_distance_postgresql(element: EmbeddingDistance, compiler: Any, **kwargs: Any) -> str:
-    op_map: dict[DistanceMetric, str] = {
-        "cosine": "<=>",
-        "dot": "<#>",
-        "l1": "<+>",
-        "l2": "<->",
-    }
+    op_map: dict[DistanceMetric, str] = {"cosine": "<=>", "dot": "<#>", "l1": "<+>", "l2": "<->"}
     left, right = list(element.clauses)
     operator = op_map[element.metric]
     return f"({compiler.process(left)} {operator} {compiler.process(right)})"
@@ -164,9 +147,7 @@ class PostgresHalfVec(UserDefinedType[FloatVector]):
         return process
 
     def result_processor(
-        self,
-        dialect: Dialect,
-        coltype: Any,
+        self, dialect: Dialect, coltype: Any
     ) -> Callable[[str | None], FloatVector | None]:
         """Process PostgreSQL halfvec format to NumPy ndarray."""
 
@@ -191,8 +172,7 @@ class DuckDBSingleVec(UserDefinedType[FloatVector]):
         return f"FLOAT[{self.dim}]" if self.dim is not None else "FLOAT[]"
 
     def bind_processor(
-        self,
-        dialect: Dialect,
+        self, dialect: Dialect
     ) -> Callable[[FloatVector | None], list[float] | None]:
         """Process NumPy ndarray to DuckDB single precision vector format for bound parameters."""
 
@@ -202,9 +182,7 @@ class DuckDBSingleVec(UserDefinedType[FloatVector]):
         return process
 
     def result_processor(
-        self,
-        dialect: Dialect,
-        coltype: Any,
+        self, dialect: Dialect, coltype: Any
     ) -> Callable[[list[float] | None], FloatVector | None]:
         """Process DuckDB single precision vector format to NumPy ndarray."""
 

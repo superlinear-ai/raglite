@@ -28,12 +28,7 @@ from litellm.utils import custom_llm_setup
 
 from raglite._chatml_function_calling import chatml_function_calling_with_streaming
 from raglite._config import RAGLiteConfig
-from raglite._lazy_llama import (
-    Llama,
-    LlamaRAMCache,
-    llama_supports_gpu_offload,
-    llama_types,
-)
+from raglite._lazy_llama import Llama, LlamaRAMCache, llama_supports_gpu_offload, llama_types
 
 # Reduce the logging level for LiteLLM, flashrank, and httpx.
 litellm.suppress_debug_info = True
@@ -144,7 +139,7 @@ class LlamaCppPythonLLM(CustomLLM):
                 "supports_function_calling": True,
                 "supports_parallel_function_calling": True,
                 "supports_vision": False,
-            },
+            }
         }
         litellm.register_model(model_info)  # type: ignore[attr-defined]
         return llm
@@ -168,9 +163,7 @@ class LlamaCppPythonLLM(CustomLLM):
         return llama_cpp_python_params
 
     def _add_recommended_model_params(
-        self,
-        model: str,
-        llama_cpp_python_params: dict[str, Any],
+        self, model: str, llama_cpp_python_params: dict[str, Any]
     ) -> dict[str, Any]:
         """Add recommended model settings."""
         recommended_settings = {}
@@ -324,7 +317,7 @@ class LlamaCppPythonLLM(CustomLLM):
 # Register the LlamaCppPythonLLM provider.
 if not any(provider["provider"] == "llama-cpp-python" for provider in litellm.custom_provider_map):
     litellm.custom_provider_map.append(
-        {"provider": "llama-cpp-python", "custom_handler": LlamaCppPythonLLM()},
+        {"provider": "llama-cpp-python", "custom_handler": LlamaCppPythonLLM()}
     )
     custom_llm_setup()  # type: ignore[no-untyped-call]
 

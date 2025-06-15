@@ -142,6 +142,7 @@ target-version = "py310"
 
 [tool.ruff.format]
 docstring-code-format = true
+skip-magic-trailing-comma = true
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -150,6 +151,9 @@ unfixable = ["ERA001", "F401", "F841", "T201", "T203"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
+
+[tool.ruff.lint.isort]
+split-on-trailing-comma = false
 
 [tool.ruff.lint.pycodestyle]
 max-doc-length = 100

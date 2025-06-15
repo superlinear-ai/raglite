@@ -14,22 +14,16 @@ from raglite._typing import FloatMatrix, IntVector
 
 
 def embed_strings_with_late_chunking(  # noqa: C901,PLR0915
-    sentences: list[str],
-    *,
-    config: RAGLiteConfig | None = None,
+    sentences: list[str], *, config: RAGLiteConfig | None = None
 ) -> FloatMatrix:
     """Embed a document's sentences with late chunking."""
 
     def _count_tokens(
-        sentences: list[str],
-        embedder: Llama,
-        sentinel_char: str,
-        sentinel_tokens: list[int],
+        sentences: list[str], embedder: Llama, sentinel_char: str, sentinel_tokens: list[int]
     ) -> list[int]:
         # Join the sentences with the sentinel token and tokenise the result.
         sentences_tokens = np.asarray(
-            embedder.tokenize(sentinel_char.join(sentences).encode(), add_bos=False),
-            dtype=np.intp,
+            embedder.tokenize(sentinel_char.join(sentences).encode(), add_bos=False), dtype=np.intp
         )
         # Map all sentinel token variants to the first one.
         for sentinel_token in sentinel_tokens[1:]:
@@ -68,9 +62,7 @@ def embed_strings_with_late_chunking(  # noqa: C901,PLR0915
     config = config or RAGLiteConfig()
     assert config.embedder.startswith("llama-cpp-python")
     embedder = LlamaCppPythonLLM.llm(
-        config.embedder,
-        embedding=True,
-        pooling_type=LLAMA_POOLING_TYPE_NONE,
+        config.embedder, embedding=True, pooling_type=LLAMA_POOLING_TYPE_NONE
     )
     n_ctx = embedder.n_ctx()
     n_batch = embedder.n_batch
@@ -95,7 +87,7 @@ def embed_strings_with_late_chunking(  # noqa: C901,PLR0915
         sentence_batch_len += len(sentence)
         if i == len(sentences) - 1 or sentence_batch_len > (n_ctx // 2):
             num_tokens_list.extend(
-                _count_tokens(sentence_batch, embedder, sentinel_char, sentinel_tokens),
+                _count_tokens(sentence_batch, embedder, sentinel_char, sentinel_tokens)
             )
             sentence_batch, sentence_batch_len = [], 0
     num_tokens = np.asarray(num_tokens_list, dtype=np.intp)
@@ -112,10 +104,7 @@ def embed_strings_with_late_chunking(  # noqa: C901,PLR0915
     content_start_index = 0
     while content_start_index < len(sentences):
         segment_start_index, segment_end_index = _create_segment(
-            content_start_index,
-            max_tokens_preamble,
-            max_tokens_content,
-            num_tokens,
+            content_start_index, max_tokens_preamble, max_tokens_content, num_tokens
         )
         segments.append((segment_start_index, content_start_index, segment_end_index))
         content_start_index = segment_end_index
@@ -160,9 +149,7 @@ def _embed_string_batch(string_batch: list[str], *, config: RAGLiteConfig) -> Fl
         # embeddings because token embeddings are universally supported, while sequence
         # embeddings are only supported by some models.
         embedder = LlamaCppPythonLLM.llm(
-            config.embedder,
-            embedding=True,
-            pooling_type=LLAMA_POOLING_TYPE_NONE,
+            config.embedder, embedding=True, pooling_type=LLAMA_POOLING_TYPE_NONE
         )
         embeddings = np.asarray([np.mean(row, axis=0) for row in embedder.embed(string_batch)])
     else:
@@ -179,9 +166,7 @@ def _embed_string_batch(string_batch: list[str], *, config: RAGLiteConfig) -> Fl
 
 
 def embed_strings_without_late_chunking(
-    strings: list[str],
-    *,
-    config: RAGLiteConfig | None = None,
+    strings: list[str], *, config: RAGLiteConfig | None = None
 ) -> FloatMatrix:
     """Embed a list of text strings in batches."""
     config = config or RAGLiteConfig()

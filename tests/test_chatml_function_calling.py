@@ -10,11 +10,7 @@ import pytest
 from typeguard import ForwardRefPolicy, check_type
 
 from raglite._chatml_function_calling import chatml_function_calling_with_streaming
-from raglite._lazy_llama import (
-    Llama,
-    llama_supports_gpu_offload,
-    llama_types,
-)
+from raglite._lazy_llama import Llama, llama_supports_gpu_offload, llama_types
 
 
 def is_accelerator_available() -> bool:
@@ -27,11 +23,7 @@ def is_accelerator_available() -> bool:
 
 
 @pytest.mark.parametrize(
-    "stream",
-    [
-        pytest.param(True, id="stream=True"),
-        pytest.param(False, id="stream=False"),
-    ],
+    "stream", [pytest.param(True, id="stream=True"), pytest.param(False, id="stream=False")]
 )
 @pytest.mark.parametrize(
     "tool_choice",
@@ -39,22 +31,15 @@ def is_accelerator_available() -> bool:
         pytest.param("none", id="tool_choice=none"),
         pytest.param("auto", id="tool_choice=auto"),
         pytest.param(
-            {"type": "function", "function": {"name": "get_weather"}},
-            id="tool_choice=fixed",
+            {"type": "function", "function": {"name": "get_weather"}}, id="tool_choice=fixed"
         ),
     ],
 )
 @pytest.mark.parametrize(
     "user_prompt_expected_tool_calls",
     [
-        pytest.param(
-            ("Is 7 a prime number?", 0),
-            id="expected_tool_calls=0",
-        ),
-        pytest.param(
-            ("What's the weather like in Paris today?", 1),
-            id="expected_tool_calls=1",
-        ),
+        pytest.param(("Is 7 a prime number?", 0), id="expected_tool_calls=0"),
+        pytest.param(("What's the weather like in Paris today?", 1), id="expected_tool_calls=1"),
         pytest.param(
             ("What's the weather like in Paris today? What about New York?", 2),
             id="expected_tool_calls=2",
@@ -69,8 +54,7 @@ def is_accelerator_available() -> bool:
             "unsloth/Qwen3-8B-GGUF",
             id="qwen3_8B",
             marks=pytest.mark.skipif(
-                not is_accelerator_available(),
-                reason="Accelerator not available",
+                not is_accelerator_available(), reason="Accelerator not available"
             ),
         ),
     ],
@@ -95,7 +79,7 @@ def test_llama_cpp_python_tool_use(
         chat_handler=chatml_function_calling_with_streaming,
     )
     messages: list[llama_types.ChatCompletionRequestMessage] = [
-        {"role": "user", "content": user_prompt},
+        {"role": "user", "content": user_prompt}
     ]
     tools: list[llama_types.ChatCompletionTool] = [
         {
@@ -108,13 +92,10 @@ def test_llama_cpp_python_tool_use(
                     "properties": {"location": {"type": "string", "description": "A city name."}},
                 },
             },
-        },
+        }
     ]
     response = llm.create_chat_completion(
-        messages=messages,
-        tools=tools,
-        tool_choice=tool_choice,
-        stream=stream,
+        messages=messages, tools=tools, tool_choice=tool_choice, stream=stream
     )
     if stream:
         response = cast("Iterator[llama_types.CreateChatCompletionStreamResponse]", response)

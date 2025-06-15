@@ -39,9 +39,7 @@ def test_split_sentences() -> None:
     assert all(
         sentence == expected_sentence
         for sentence, expected_sentence in zip(
-            sentences[: len(expected_sentences)],
-            expected_sentences,
-            strict=True,
+            sentences[: len(expected_sentences)], expected_sentences, strict=True
         )
     )
 
@@ -63,8 +61,7 @@ def test_split_sentences() -> None:
             id="huge-2a",
         ),
         pytest.param(
-            ("X" * 768 + " " + "X" * 768, ["X" * 768 + " ", "X" * 768], (4, 1024)),
-            id="huge-2b",
+            ("X" * 768 + " " + "X" * 768, ["X" * 768 + " ", "X" * 768], (4, 1024)), id="huge-2b"
         ),
     ],
 )
@@ -76,8 +73,6 @@ def test_split_sentences_edge_cases(case: tuple[str, list[str], tuple[int, int |
     assert all(
         sentence == expected_sentence
         for sentence, expected_sentence in zip(
-            sentences[: len(expected_sentences)],
-            expected_sentences,
-            strict=True,
+            sentences[: len(expected_sentences)], expected_sentences, strict=True
         )
     )

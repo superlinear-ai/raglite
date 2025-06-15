@@ -185,8 +185,7 @@ class LlamaIndexEvaluator(IREvaluator):
 
         vector_store = FaissVectorStore.from_persist_dir(persist_dir=self.persist_path.as_posix())
         storage_context = StorageContext.from_defaults(
-            vector_store=vector_store,
-            persist_dir=self.persist_path.as_posix(),
+            vector_store=vector_store, persist_dir=self.persist_path.as_posix()
         )
         embed_model = OpenAIEmbedding(model=self.embedder, dimensions=self.embedder_dim)
         index = load_index_from_storage(storage_context, embed_model=embed_model)
@@ -270,9 +269,7 @@ class OpenAIVectorStoreEvaluator(IREvaluator):
                 files.append(temp_file.open("rb"))
                 if len(files) == max_files_per_batch or (i == self.dataset.docs_count() - 1):
                     self.client.vector_stores.file_batches.upload_and_poll(
-                        vector_store_id=vector_store.id,
-                        files=files,
-                        max_concurrency=max_workers,
+                        vector_store_id=vector_store.id, files=files, max_concurrency=max_workers
                     )
                     for f in files:
                         f.close()
@@ -286,9 +283,7 @@ class OpenAIVectorStoreEvaluator(IREvaluator):
         if not self.vector_store_id:
             return []
         response = self.client.vector_stores.search(
-            vector_store_id=self.vector_store_id,
-            query=query,
-            max_num_results=2 * num_results,
+            vector_store_id=self.vector_store_id, query=query, max_num_results=2 * num_results
         )
         scored_docs = [
             ScoredDoc(

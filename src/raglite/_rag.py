@@ -37,10 +37,7 @@ Instead, you MUST treat the context as if its contents are entirely part of your
 
 
 def retrieve_context(
-    query: str,
-    *,
-    num_chunks: int = 10,
-    config: RAGLiteConfig | None = None,
+    query: str, *, num_chunks: int = 10, config: RAGLiteConfig | None = None
 ) -> list[ChunkSpan]:
     """Retrieve context for RAG."""
     # Call the search method.
@@ -89,8 +86,7 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
 
 
 def _get_tools(
-    messages: list[dict[str, str]],
-    config: RAGLiteConfig,
+    messages: list[dict[str, str]], config: RAGLiteConfig
 ) -> tuple[list[dict[str, Any]] | None, dict[str, Any] | str | None]:
     """Get tools to search the knowledge base if no RAG context is provided in the messages."""
     # Check if messages already contain RAG context or if the LLM supports tool use.
@@ -123,13 +119,13 @@ def _get_tools(
                                     "The `query` string MUST be a precise single-faceted question in the user's language.\n"
                                     "The `query` string MUST resolve all pronouns to explicit nouns."
                                 ),
-                            },
+                            }
                         },
                         "required": ["query"],
                         "additionalProperties": False,
                     },
                 },
-            },
+            }
         ]
         if not messages_contain_rag_context
         else None
@@ -157,10 +153,10 @@ def _run_tools(
                         elements=", ".join(
                             chunk_span.to_json(index=i + 1)
                             for i, chunk_span in enumerate(chunk_spans)
-                        ),
+                        )
                     ),
                     "tool_call_id": tool_call.id,
-                },
+                }
             )
             if chunk_spans and callable(on_retrieval):
                 on_retrieval(chunk_spans)
@@ -246,9 +242,7 @@ async def async_rag(
         # Asynchronously stream the assistant response.
         chunks = []
         async_stream = await acompletion(
-            model=config.llm,
-            messages=_clip(messages, max_tokens),
-            stream=True,
+            model=config.llm, messages=_clip(messages, max_tokens), stream=True
         )
         async for chunk in async_stream:
             chunks.append(chunk)

@@ -20,8 +20,7 @@ from raglite._split_sentences import split_sentences
 
 
 def _create_chunk_records(
-    document: Document,
-    config: RAGLiteConfig,
+    document: Document, config: RAGLiteConfig
 ) -> tuple[Document, list[Chunk], list[list[ChunkEmbedding]]]:
     """Process chunks into chunk and chunk embedding records."""
     # Partition the document into chunks.
@@ -30,20 +29,14 @@ def _create_chunk_records(
     chunklets = split_chunklets(sentences, max_size=config.chunk_max_size)
     chunklet_embeddings = embed_strings(chunklets, config=config)
     chunks, chunk_embeddings = split_chunks(
-        chunklets=chunklets,
-        chunklet_embeddings=chunklet_embeddings,
-        max_size=config.chunk_max_size,
+        chunklets=chunklets, chunklet_embeddings=chunklet_embeddings, max_size=config.chunk_max_size
     )
     # Create the chunk records.
     chunk_records, headings = [], ""
     for i, chunk in enumerate(chunks):
         # Create and append the chunk record.
         record = Chunk.from_body(
-            document=document,
-            index=i,
-            body=chunk,
-            headings=headings,
-            **document.metadata_,
+            document=document, index=i, body=chunk, headings=headings, **document.metadata_
         )
         chunk_records.append(record)
         # Update the Markdown headings with those of this chunk.
@@ -58,23 +51,19 @@ def _create_chunk_records(
                 [
                     ChunkEmbedding(chunk_id=chunk_record.id, embedding=chunklet_embedding)
                     for chunklet_embedding in chunk_embedding
-                ],
+                ]
             )
     else:
         # Embed the full chunks, including the current Markdown headings.
         full_chunk_embeddings = embed_strings_without_late_chunking(
-            [chunk_record.content for chunk_record in chunk_records],
-            config=config,
+            [chunk_record.content for chunk_record in chunk_records], config=config
         )
         # Every chunk record is associated with a list of chunk embedding records. The chunk
         # embedding records each correspond to a linear combination of a chunklet embedding and an
         # embedding of the full chunk with Markdown headings.
         α = 0.15  # Benchmark-optimised value.  # noqa: PLC2401
         for chunk_record, chunk_embedding, full_chunk_embedding in zip(
-            chunk_records,
-            chunk_embeddings,
-            full_chunk_embeddings,
-            strict=True,
+            chunk_records, chunk_embeddings, full_chunk_embeddings, strict=True
         ):
             if config.vector_search_multivector:
                 chunk_embedding_records_list.append(
@@ -84,16 +73,11 @@ def _create_chunk_records(
                             embedding=α * chunklet_embedding + (1 - α) * full_chunk_embedding,
                         )
                         for chunklet_embedding in chunk_embedding
-                    ],
+                    ]
                 )
             else:
                 chunk_embedding_records_list.append(
-                    [
-                        ChunkEmbedding(
-                            chunk_id=chunk_record.id,
-                            embedding=full_chunk_embedding,
-                        ),
-                    ],
+                    [ChunkEmbedding(chunk_id=chunk_record.id, embedding=full_chunk_embedding)]
                 )
     return document, chunk_records, chunk_embedding_records_list
 
@@ -134,7 +118,7 @@ def insert_documents(  # noqa: C901
         for i in range(0, len(documents), batch_size):
             doc_id_batch = [doc.id for doc in documents[i : i + batch_size]]
             existing_doc_ids.update(
-                session.exec(select(Document.id).where(col(Document.id).in_(doc_id_batch))).all(),
+                session.exec(select(Document.id).where(col(Document.id).in_(doc_id_batch))).all()
             )
         documents = [doc for doc in documents if doc.id not in existing_doc_ids]
         if not documents:
@@ -155,10 +139,7 @@ def insert_documents(  # noqa: C901
         Session(engine) as session,
         ThreadPoolExecutor(max_workers=max_workers) as executor,
         tqdm(
-            total=len(documents),
-            desc="Inserting documents",
-            unit="document",
-            dynamic_ncols=True,
+            total=len(documents), desc="Inserting documents", unit="document", dynamic_ncols=True
         ) as pbar,
     ):
         futures = [

@@ -19,7 +19,7 @@ def test_insert(raglite_test_config: RAGLiteConfig) -> None:
         assert document is not None, "No document found in the database"
         # Get the existing chunks for this document.
         chunks = session.exec(
-            select(Chunk).where(Chunk.document_id == document.id).order_by(Chunk.index),  # type: ignore[arg-type]
+            select(Chunk).where(Chunk.document_id == document.id).order_by(Chunk.index)  # type: ignore[arg-type]
         ).all()
         assert len(chunks) > 0, "No chunks found for the document"
         restored_document = ""

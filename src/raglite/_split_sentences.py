@@ -56,11 +56,7 @@ def markdown_sentence_boundaries(doc: str) -> FloatVector:
 
 
 def _split_sentences(
-    doc: str,
-    probas: FloatVector,
-    *,
-    min_len: int,
-    max_len: int | None = None,
+    doc: str, probas: FloatVector, *, min_len: int, max_len: int | None = None
 ) -> list[str]:
     # Solve an optimisation problem to find the best sentence boundaries given the predicted
     # boundary probabilities. The objective is to select boundaries that maximise the sum of the
