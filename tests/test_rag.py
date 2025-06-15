@@ -2,11 +2,7 @@
 
 import json
 
-from raglite import (
-    RAGLiteConfig,
-    add_context,
-    retrieve_context,
-)
+from raglite import RAGLiteConfig, add_context, retrieve_context
 from raglite._database import ChunkSpan
 from raglite._rag import rag
 

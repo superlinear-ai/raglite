@@ -10,9 +10,7 @@ from raglite._typing import FloatMatrix
 
 
 def split_chunks(  # noqa: C901, PLR0915
-    chunklets: list[str],
-    chunklet_embeddings: FloatMatrix,
-    max_size: int = 2048,
+    chunklets: list[str], chunklet_embeddings: FloatMatrix, max_size: int = 2048
 ) -> tuple[list[str], list[FloatMatrix]]:
     """Split chunklets into optimal semantic chunks with corresponding chunklet embeddings.
 
@@ -103,11 +101,7 @@ def split_chunks(  # noqa: C901, PLR0915
     )
     b_ub = np.ones(A.shape[0], dtype=np.float32)
     res = linprog(
-        partition_similarity,
-        A_ub=-A,
-        b_ub=-b_ub,
-        bounds=(0, 1),
-        integrality=[1] * A.shape[1],
+        partition_similarity, A_ub=-A, b_ub=-b_ub, bounds=(0, 1), integrality=[1] * A.shape[1]
     )
     if not res.success:
         error_message = "Optimization of chunk partitions failed."

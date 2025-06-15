@@ -19,11 +19,9 @@ from raglite._typing import BasicSearchMethod
         pytest.param(keyword_search, id="keyword_search"),
         pytest.param(vector_search, id="vector_search"),
         pytest.param(hybrid_search, id="hybrid_search"),
-    ],
+    ]
 )
-def search_method(
-    request: pytest.FixtureRequest,
-) -> BasicSearchMethod:
+def search_method(request: pytest.FixtureRequest) -> BasicSearchMethod:
     """Get a search method to test RAGLite with."""
     search_method: BasicSearchMethod = request.param
     return search_method

@@ -61,8 +61,7 @@ def test_split_sentences() -> None:
             id="huge-2a",
         ),
         pytest.param(
-            ("X" * 768 + " " + "X" * 768, ["X" * 768 + " ", "X" * 768], (4, 1024)),
-            id="huge-2b",
+            ("X" * 768 + " " + "X" * 768, ["X" * 768 + " ", "X" * 768], (4, 1024)), id="huge-2b"
         ),
     ],
 )

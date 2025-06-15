@@ -112,11 +112,7 @@ An example of a context that does NOT contain (a part of) the answer is a table 
 
     relevant_chunks = []
     for candidate_chunk in tqdm(
-        candidate_chunks,
-        desc="Evaluating chunks",
-        unit="chunk",
-        dynamic_ncols=True,
-        leave=False,
+        candidate_chunks, desc="Evaluating chunks", unit="chunk", dynamic_ncols=True, leave=False
     ):
         try:
             context_eval_response = extract_with_llm(
@@ -139,8 +135,7 @@ An example of a context that does NOT contain (a part of) the answer is a table 
             extra="forbid"  # Forbid extra attributes as required by OpenAI's strict mode.
         )
         answer: str = Field(
-            ...,
-            description="A complete answer to the given question using the provided context.",
+            ..., description="A complete answer to the given question using the provided context."
         )
         system_prompt: ClassVar[str] = f"""
 You are given a set of contexts extracted from a document.
@@ -191,11 +186,7 @@ def insert_evals(
             session.execute(text("CHECKPOINT;"))
 
 
-def answer_evals(
-    num_evals: int = 100,
-    *,
-    config: RAGLiteConfig | None = None,
-) -> "pd.DataFrame":
+def answer_evals(num_evals: int = 100, *, config: RAGLiteConfig | None = None) -> "pd.DataFrame":
     """Read evals from the database and answer them with RAG."""
     try:
         import pandas as pd
@@ -251,7 +242,7 @@ def evaluate(
     class RAGLiteRagasEmbeddings(BaseRagasEmbeddings):
         """A RAGLite embedder for Ragas."""
 
-        def __init__(self, config: RAGLiteConfig | None = None):
+        def __init__(self, config: RAGLiteConfig | None = None) -> None:
             self.config = config or RAGLiteConfig()
 
         def embed_query(self, text: str) -> list[float]:

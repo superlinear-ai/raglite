@@ -119,7 +119,7 @@ def _get_tools(
                                     "The `query` string MUST be a precise single-faceted question in the user's language.\n"
                                     "The `query` string MUST resolve all pronouns to explicit nouns."
                                 ),
-                            },
+                            }
                         },
                         "required": ["query"],
                         "additionalProperties": False,
@@ -237,7 +237,7 @@ async def async_rag(
         # Add the tool call requests to the message array.
         messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
         # Run the tool calls to retrieve the RAG context and append the output to the message array.
-        # TODO: Make this async.
+        # TODO(lsorber): Make this async.
         messages.extend(_run_tools(tool_calls, on_retrieval, config))
         # Asynchronously stream the assistant response.
         chunks = []

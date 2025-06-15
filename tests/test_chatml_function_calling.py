@@ -10,11 +10,7 @@ import pytest
 from typeguard import ForwardRefPolicy, check_type
 
 from raglite._chatml_function_calling import chatml_function_calling_with_streaming
-from raglite._lazy_llama import (
-    Llama,
-    llama_supports_gpu_offload,
-    llama_types,
-)
+from raglite._lazy_llama import Llama, llama_supports_gpu_offload, llama_types
 
 
 def is_accelerator_available() -> bool:
@@ -27,11 +23,7 @@ def is_accelerator_available() -> bool:
 
 
 @pytest.mark.parametrize(
-    "stream",
-    [
-        pytest.param(True, id="stream=True"),
-        pytest.param(False, id="stream=False"),
-    ],
+    "stream", [pytest.param(True, id="stream=True"), pytest.param(False, id="stream=False")]
 )
 @pytest.mark.parametrize(
     "tool_choice",
@@ -46,14 +38,8 @@ def is_accelerator_available() -> bool:
 @pytest.mark.parametrize(
     "user_prompt_expected_tool_calls",
     [
-        pytest.param(
-            ("Is 7 a prime number?", 0),
-            id="expected_tool_calls=0",
-        ),
-        pytest.param(
-            ("What's the weather like in Paris today?", 1),
-            id="expected_tool_calls=1",
-        ),
+        pytest.param(("Is 7 a prime number?", 0), id="expected_tool_calls=0"),
+        pytest.param(("What's the weather like in Paris today?", 1), id="expected_tool_calls=1"),
         pytest.param(
             ("What's the weather like in Paris today? What about New York?", 2),
             id="expected_tool_calls=2",

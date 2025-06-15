@@ -29,9 +29,7 @@ def _create_chunk_records(
     chunklets = split_chunklets(sentences, max_size=config.chunk_max_size)
     chunklet_embeddings = embed_strings(chunklets, config=config)
     chunks, chunk_embeddings = split_chunks(
-        chunklets=chunklets,
-        chunklet_embeddings=chunklet_embeddings,
-        max_size=config.chunk_max_size,
+        chunklets=chunklets, chunklet_embeddings=chunklet_embeddings, max_size=config.chunk_max_size
     )
     # Create the chunk records.
     chunk_records, headings = [], ""
@@ -79,12 +77,7 @@ def _create_chunk_records(
                 )
             else:
                 chunk_embedding_records_list.append(
-                    [
-                        ChunkEmbedding(
-                            chunk_id=chunk_record.id,
-                            embedding=full_chunk_embedding,
-                        )
-                    ]
+                    [ChunkEmbedding(chunk_id=chunk_record.id, embedding=full_chunk_embedding)]
                 )
     return document, chunk_records, chunk_embedding_records_list
 

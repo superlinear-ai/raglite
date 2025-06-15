@@ -1,5 +1,7 @@
 """Add support for llama-cpp-python models to LiteLLM."""
 
+# ruff: noqa: ANN401, ARG002
+
 import asyncio
 import contextlib
 import logging
@@ -26,12 +28,7 @@ from litellm.utils import custom_llm_setup
 
 from raglite._chatml_function_calling import chatml_function_calling_with_streaming
 from raglite._config import RAGLiteConfig
-from raglite._lazy_llama import (
-    Llama,
-    LlamaRAMCache,
-    llama_supports_gpu_offload,
-    llama_types,
-)
+from raglite._lazy_llama import Llama, LlamaRAMCache, llama_supports_gpu_offload, llama_types
 
 # Reduce the logging level for LiteLLM, flashrank, and httpx.
 litellm.suppress_debug_info = True

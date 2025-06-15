@@ -25,24 +25,12 @@ Changes:
 
 import json
 import warnings
-from typing import (  # noqa: UP035
-    Any,
-    Iterator,
-    List,
-    Optional,
-    Union,
-    cast,
-)
+from typing import Any, Iterator, List, Optional, Union, cast  # noqa: UP035
 
 import jinja2
 from jinja2.sandbox import ImmutableSandboxedEnvironment
 
-from raglite._lazy_llama import (
-    llama,
-    llama_chat_format,
-    llama_grammar,
-    llama_types,
-)
+from raglite._lazy_llama import llama, llama_chat_format, llama_grammar, llama_types
 
 
 def _accumulate_chunks(
@@ -98,7 +86,7 @@ def _convert_chunks_to_completion(
             {
                 "text": text,
                 "index": 0,
-                "logprobs": logprobs,  # TODO: Improve accumulation of logprobs
+                "logprobs": logprobs,  # TODO(lsorber): Improve accumulation of logprobs
                 "finish_reason": finish_reason,  # type: ignore[typeddict-item]
             }
         ],
@@ -143,12 +131,7 @@ def _stream_tool_calls(
                 llama_grammar.JSON_GBNF, verbose=llama.verbose
             )
         completion_or_chunks = llama.create_completion(
-            prompt=prompt,
-            **{
-                **completion_kwargs,
-                "max_tokens": None,
-                "grammar": grammar,
-            },
+            prompt=prompt, **{**completion_kwargs, "max_tokens": None, "grammar": grammar}
         )
         chunks: List[llama_types.CreateCompletionResponse] = []
         chat_chunks = llama_chat_format._convert_completion_to_chat_function(  # noqa: SLF001
@@ -206,11 +189,7 @@ def _convert_text_completion_logprobs_to_chat(
                 "bytes": None,
                 "logprob": logprob,  # type: ignore[typeddict-item]
                 "top_logprobs": [
-                    {
-                        "token": top_token,
-                        "logprob": top_logprob,
-                        "bytes": None,
-                    }
+                    {"token": top_token, "logprob": top_logprob, "bytes": None}
                     for top_token, top_logprob in (top_logprobs or {}).items()
                 ],
             }
@@ -318,9 +297,9 @@ def chatml_function_calling_with_streaming(
         "{% endfor %}"
         "{% if add_generation_prompt %}<|im_start|>assistant\n{% endif %}"
     )
-    template_renderer = ImmutableSandboxedEnvironment(
-        undefined=jinja2.StrictUndefined,
-    ).from_string(function_calling_template)
+    template_renderer = ImmutableSandboxedEnvironment(undefined=jinja2.StrictUndefined).from_string(
+        function_calling_template
+    )
 
     # Convert legacy functions to tools
     if functions is not None:

@@ -94,7 +94,7 @@ class RAGLiteEvaluator(IREvaluator):
         insert_variant: str | None = None,
         search_variant: str | None = None,
         config: RAGLiteConfig | None = None,
-    ):
+    ) -> None:
         super().__init__(
             dataset,
             num_results=num_results,
@@ -145,7 +145,7 @@ class LlamaIndexEvaluator(IREvaluator):
         num_results: int = 10,
         insert_variant: str | None = None,
         search_variant: str | None = None,
-    ):
+    ) -> None:
         super().__init__(
             dataset,
             num_results=num_results,
@@ -156,7 +156,7 @@ class LlamaIndexEvaluator(IREvaluator):
         self.embedder_dim = 3072
         self.persist_path = self.cwd / self.insert_id
 
-    def insert_documents(self, max_workers: int | None = None) -> None:
+    def insert_documents(self, max_workers: int | None = None) -> None:  # noqa: ARG002
         # Adapted from https://docs.llamaindex.ai/en/stable/examples/vector_stores/FaissIndexDemo/.
         import faiss
         from llama_index.core import Document, StorageContext, VectorStoreIndex
@@ -178,7 +178,7 @@ class LlamaIndexEvaluator(IREvaluator):
         index.storage_context.persist(persist_dir=self.persist_path)
 
     @cached_property
-    def index(self) -> Any:
+    def index(self) -> Any:  # noqa: ANN401
         from llama_index.core import StorageContext, load_index_from_storage
         from llama_index.embeddings.openai import OpenAIEmbedding
         from llama_index.vector_stores.faiss import FaissVectorStore
@@ -215,7 +215,7 @@ class OpenAIVectorStoreEvaluator(IREvaluator):
         num_results: int = 10,
         insert_variant: str | None = None,
         search_variant: str | None = None,
-    ):
+    ) -> None:
         super().__init__(
             dataset,
             num_results=num_results,
@@ -227,7 +227,7 @@ class OpenAIVectorStoreEvaluator(IREvaluator):
         )
 
     @cached_property
-    def client(self) -> Any:
+    def client(self) -> Any:  # noqa: ANN401
         import openai
 
         return openai.OpenAI()

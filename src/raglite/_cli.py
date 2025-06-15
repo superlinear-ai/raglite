@@ -88,7 +88,7 @@ def install_mcp_server(
             "--python",
             "3.11",
             "--with",
-            "numpy<2.0.0",  # TODO: Remove this constraint when uv no longer needs it to solve the environment.
+            "numpy<2.0.0",  # TODO(lsorber): Remove this constraint when uv no longer needs it to solve the environment.
             "raglite",
             "mcp",
             "run",

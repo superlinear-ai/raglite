@@ -1,5 +1,7 @@
 """RAGLite typing."""
 
+# ruff: noqa: ANN401, ARG002
+
 import io
 import pickle
 from collections.abc import Callable
@@ -96,12 +98,7 @@ class EmbeddingDistance(FunctionElement[float]):
 
 @compiles(EmbeddingDistance, "postgresql")
 def _embedding_distance_postgresql(element: EmbeddingDistance, compiler: Any, **kwargs: Any) -> str:
-    op_map: dict[DistanceMetric, str] = {
-        "cosine": "<=>",
-        "dot": "<#>",
-        "l1": "<+>",
-        "l2": "<->",
-    }
+    op_map: dict[DistanceMetric, str] = {"cosine": "<=>", "dot": "<#>", "l1": "<+>", "l2": "<->"}
     left, right = list(element.clauses)
     operator = op_map[element.metric]
     return f"({compiler.process(left)} {operator} {compiler.process(right)})"
@@ -202,7 +199,7 @@ class Embedding(TypeDecorator[FloatVector]):
     impl = NumpyArray
     comparator_factory: type[EmbeddingComparator] = EmbeddingComparator
 
-    def __init__(self, dim: int = -1):
+    def __init__(self, dim: int = -1) -> None:
         super().__init__()
         self.dim = dim
 

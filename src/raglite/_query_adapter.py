@@ -1,6 +1,6 @@
 """Compute and update an optimal query adapter."""
 
-# ruff: noqa: N806
+# ruff: noqa: N806, RUF002
 
 from dataclasses import replace
 
