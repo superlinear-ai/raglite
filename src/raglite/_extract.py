@@ -15,7 +15,7 @@ def extract_with_llm(
     user_prompt: str | list[str],
     strict: bool = False,  # noqa: FBT001, FBT002
     config: RAGLiteConfig | None = None,
-    **kwargs: Any,
+    **kwargs: Any,  # noqa: ANN401
 ) -> T:
     """Extract structured data from unstructured text with an LLM.
 
@@ -45,7 +45,7 @@ def extract_with_llm(
     # is disabled by default because it only supports a subset of JSON schema features [2].
     # [1] https://docs.litellm.ai/docs/completion/json_mode
     # [2] https://platform.openai.com/docs/guides/structured-outputs#some-type-specific-keywords-are-not-yet-supported
-    # TODO: Fall back to {"type": "json_object"} if JSON schema is not supported by the LLM.
+    # TODO(lsorber): Fall back to {"type": "json_object"} if JSON schema isn't supported by the LLM.
     response_format: dict[str, Any] | None = (
         {
             "type": "json_schema",

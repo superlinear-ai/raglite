@@ -39,7 +39,7 @@ async def start_chat() -> None:
             TextInput(id="llm", label="LLM", initial=config.llm),
             TextInput(id="embedder", label="Embedder", initial=config.embedder),
             Switch(id="vector_search_query_adapter", label="Query adapter", initial=True),
-        ]
+        ],
     ).send()
     await update_config(settings)
 
@@ -95,7 +95,9 @@ async def handle_message(user_message: cl.Message) -> None:
     messages: list[dict[str, str]] = cl.chat_context.to_openai()[:-1]  # type: ignore[no-untyped-call]
     messages.append({"role": "user", "content": user_prompt})
     async for token in async_rag(
-        messages, on_retrieval=lambda x: chunk_spans.extend(x), config=config
+        messages,
+        on_retrieval=lambda x: chunk_spans.extend(x),
+        config=config,
     ):
         await assistant_message.stream_token(token)
     # Append RAG sources, if any.

@@ -39,7 +39,8 @@ def is_accelerator_available() -> bool:
         pytest.param("none", id="tool_choice=none"),
         pytest.param("auto", id="tool_choice=auto"),
         pytest.param(
-            {"type": "function", "function": {"name": "get_weather"}}, id="tool_choice=fixed"
+            {"type": "function", "function": {"name": "get_weather"}},
+            id="tool_choice=fixed",
         ),
     ],
 )
@@ -68,7 +69,8 @@ def is_accelerator_available() -> bool:
             "unsloth/Qwen3-8B-GGUF",
             id="qwen3_8B",
             marks=pytest.mark.skipif(
-                not is_accelerator_available(), reason="Accelerator not available"
+                not is_accelerator_available(),
+                reason="Accelerator not available",
             ),
         ),
     ],
@@ -93,7 +95,7 @@ def test_llama_cpp_python_tool_use(
         chat_handler=chatml_function_calling_with_streaming,
     )
     messages: list[llama_types.ChatCompletionRequestMessage] = [
-        {"role": "user", "content": user_prompt}
+        {"role": "user", "content": user_prompt},
     ]
     tools: list[llama_types.ChatCompletionTool] = [
         {
@@ -106,10 +108,13 @@ def test_llama_cpp_python_tool_use(
                     "properties": {"location": {"type": "string", "description": "A city name."}},
                 },
             },
-        }
+        },
     ]
     response = llm.create_chat_completion(
-        messages=messages, tools=tools, tool_choice=tool_choice, stream=stream
+        messages=messages,
+        tools=tools,
+        tool_choice=tool_choice,
+        stream=stream,
     )
     if stream:
         response = cast("Iterator[llama_types.CreateChatCompletionStreamResponse]", response)

@@ -36,17 +36,17 @@ def __getattr__(name: str) -> object:
     class LazyAttributeError:
         error_message = "To use llama.cpp models, please install `llama-cpp-python`."
 
-        def __init__(self, error: ModuleNotFoundError | None = None):
+        def __init__(self, error: ModuleNotFoundError | None = None) -> None:
             self.error = error
 
         def __getattr__(self, name: str) -> NoReturn:
             raise ModuleNotFoundError(self.error_message) from self.error
 
-        def __call__(self, *args: Any, **kwargs: Any) -> NoReturn:
+        def __call__(self, *args: Any, **kwargs: Any) -> NoReturn:  # noqa: ARG002, ANN401
             raise ModuleNotFoundError(self.error_message) from self.error
 
     class LazySubmoduleError:
-        def __init__(self, error: ModuleNotFoundError):
+        def __init__(self, error: ModuleNotFoundError) -> None:
             self.error = error
 
         def __getattr__(self, name: str) -> LazyAttributeError | type[LazyAttributeError]:

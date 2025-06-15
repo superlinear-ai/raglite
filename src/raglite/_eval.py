@@ -29,10 +29,11 @@ def generate_eval(*, max_chunks: int = 20, config: RAGLiteConfig | None = None) 
         """A specific question about the content of a set of document contexts."""
 
         model_config = ConfigDict(
-            extra="forbid"  # Forbid extra attributes as required by OpenAI's strict mode.
+            extra="forbid",  # Forbid extra attributes as required by OpenAI's strict mode.
         )
         question: str = Field(
-            ..., description="A specific question about the content of a set of document contexts."
+            ...,
+            description="A specific question about the content of a set of document contexts.",
         )
         system_prompt: ClassVar[str] = """
 You are given a set of contexts extracted from a document.
@@ -69,7 +70,7 @@ The question MUST satisfy ALL of the following criteria:
             select(Chunk)
             .where(Chunk.document_id == seed_document.id)
             .order_by(func.random())
-            .limit(1)
+            .limit(1),
         ).first()
         assert isinstance(seed_chunk, Chunk)
         # Expand the seed chunk into a set of related chunks.
@@ -84,11 +85,16 @@ The question MUST satisfy ALL of the following criteria:
         ]
         # Extract a question from the seed chunk's related chunks.
         question = extract_with_llm(
-            QuestionResponse, related_chunks, strict=True, config=config
+            QuestionResponse,
+            related_chunks,
+            strict=True,
+            config=config,
         ).question
         # Search for candidate chunks to answer the generated question.
         candidate_chunk_ids, _ = vector_search(
-            query=question, num_results=2 * max_chunks, config=config
+            query=question,
+            num_results=2 * max_chunks,
+            config=config,
         )
         candidate_chunks = [session.get(Chunk, chunk_id) for chunk_id in candidate_chunk_ids]
 
@@ -97,7 +103,7 @@ The question MUST satisfy ALL of the following criteria:
         """Indicate whether the provided context can be used to answer a given question."""
 
         model_config = ConfigDict(
-            extra="forbid"  # Forbid extra attributes as required by OpenAI's strict mode.
+            extra="forbid",  # Forbid extra attributes as required by OpenAI's strict mode.
         )
         hit: bool = Field(
             ...,
@@ -120,7 +126,10 @@ An example of a context that does NOT contain (a part of) the answer is a table 
     ):
         try:
             context_eval_response = extract_with_llm(
-                ContextEvalResponse, str(candidate_chunk), strict=True, config=config
+                ContextEvalResponse,
+                str(candidate_chunk),
+                strict=True,
+                config=config,
             )
         except ValueError:  # noqa: PERF203
             pass
@@ -136,7 +145,7 @@ An example of a context that does NOT contain (a part of) the answer is a table 
         """Answer a question using the provided context."""
 
         model_config = ConfigDict(
-            extra="forbid"  # Forbid extra attributes as required by OpenAI's strict mode.
+            extra="forbid",  # Forbid extra attributes as required by OpenAI's strict mode.
         )
         answer: str = Field(
             ...,
@@ -229,7 +238,8 @@ def answer_evals(
 
 
 def evaluate(
-    answered_evals: "pd.DataFrame | int" = 100, config: RAGLiteConfig | None = None
+    answered_evals: "pd.DataFrame | int" = 100,
+    config: RAGLiteConfig | None = None,
 ) -> "pd.DataFrame":
     """Evaluate the performance of a set of answered evals with Ragas."""
     try:
@@ -251,7 +261,7 @@ def evaluate(
     class RAGLiteRagasEmbeddings(BaseRagasEmbeddings):
         """A RAGLite embedder for Ragas."""
 
-        def __init__(self, config: RAGLiteConfig | None = None):
+        def __init__(self, config: RAGLiteConfig | None = None) -> None:
             self.config = config or RAGLiteConfig()
 
         def embed_query(self, text: str) -> list[float]:

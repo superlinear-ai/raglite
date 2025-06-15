@@ -1,5 +1,7 @@
 """Add support for llama-cpp-python models to LiteLLM."""
 
+# ruff: noqa: ANN401, ARG002
+
 import asyncio
 import contextlib
 import logging
@@ -142,7 +144,7 @@ class LlamaCppPythonLLM(CustomLLM):
                 "supports_function_calling": True,
                 "supports_parallel_function_calling": True,
                 "supports_vision": False,
-            }
+            },
         }
         litellm.register_model(model_info)  # type: ignore[attr-defined]
         return llm
@@ -166,7 +168,9 @@ class LlamaCppPythonLLM(CustomLLM):
         return llama_cpp_python_params
 
     def _add_recommended_model_params(
-        self, model: str, llama_cpp_python_params: dict[str, Any]
+        self,
+        model: str,
+        llama_cpp_python_params: dict[str, Any],
     ) -> dict[str, Any]:
         """Add recommended model settings."""
         recommended_settings = {}
@@ -320,7 +324,7 @@ class LlamaCppPythonLLM(CustomLLM):
 # Register the LlamaCppPythonLLM provider.
 if not any(provider["provider"] == "llama-cpp-python" for provider in litellm.custom_provider_map):
     litellm.custom_provider_map.append(
-        {"provider": "llama-cpp-python", "custom_handler": LlamaCppPythonLLM()}
+        {"provider": "llama-cpp-python", "custom_handler": LlamaCppPythonLLM()},
     )
     custom_llm_setup()  # type: ignore[no-untyped-call]
 

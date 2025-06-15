@@ -1,5 +1,7 @@
 """RAGLite typing."""
 
+# ruff: noqa: ANN401, ARG002
+
 import io
 import pickle
 from collections.abc import Callable
@@ -31,13 +33,21 @@ IntVector = np.ndarray[tuple[int], np.dtype[np.intp]]
 
 class BasicSearchMethod(Protocol):
     def __call__(
-        self, query: str, *, num_results: int, config: "RAGLiteConfig | None" = None
+        self,
+        query: str,
+        *,
+        num_results: int,
+        config: "RAGLiteConfig | None" = None,
     ) -> tuple[list[ChunkId], list[float]]: ...
 
 
 class SearchMethod(Protocol):
     def __call__(
-        self, query: str, *, num_results: int, config: "RAGLiteConfig | None" = None
+        self,
+        query: str,
+        *,
+        num_results: int,
+        config: "RAGLiteConfig | None" = None,
     ) -> tuple[list[ChunkId], list[float]] | list["Chunk"] | list["ChunkSpan"]: ...
 
 
@@ -47,7 +57,9 @@ class NumpyArray(TypeDecorator[np.ndarray[Any, np.dtype[np.floating[Any]]]]):
     impl = LargeBinary
 
     def process_bind_param(
-        self, value: np.ndarray[Any, np.dtype[np.floating[Any]]] | None, dialect: Dialect
+        self,
+        value: np.ndarray[Any, np.dtype[np.floating[Any]]] | None,
+        dialect: Dialect,
     ) -> bytes | None:
         """Convert a NumPy array to bytes."""
         if value is None:
@@ -57,7 +69,9 @@ class NumpyArray(TypeDecorator[np.ndarray[Any, np.dtype[np.floating[Any]]]]):
         return buffer.getvalue()
 
     def process_result_value(
-        self, value: bytes | None, dialect: Dialect
+        self,
+        value: bytes | None,
+        dialect: Dialect,
     ) -> np.ndarray[Any, np.dtype[np.floating[Any]]] | None:
         """Convert bytes to a NumPy array."""
         if value is None:
@@ -150,7 +164,9 @@ class PostgresHalfVec(UserDefinedType[FloatVector]):
         return process
 
     def result_processor(
-        self, dialect: Dialect, coltype: Any
+        self,
+        dialect: Dialect,
+        coltype: Any,
     ) -> Callable[[str | None], FloatVector | None]:
         """Process PostgreSQL halfvec format to NumPy ndarray."""
 
@@ -175,7 +191,8 @@ class DuckDBSingleVec(UserDefinedType[FloatVector]):
         return f"FLOAT[{self.dim}]" if self.dim is not None else "FLOAT[]"
 
     def bind_processor(
-        self, dialect: Dialect
+        self,
+        dialect: Dialect,
     ) -> Callable[[FloatVector | None], list[float] | None]:
         """Process NumPy ndarray to DuckDB single precision vector format for bound parameters."""
 
@@ -185,7 +202,9 @@ class DuckDBSingleVec(UserDefinedType[FloatVector]):
         return process
 
     def result_processor(
-        self, dialect: Dialect, coltype: Any
+        self,
+        dialect: Dialect,
+        coltype: Any,
     ) -> Callable[[list[float] | None], FloatVector | None]:
         """Process DuckDB single precision vector format to NumPy ndarray."""
 
@@ -202,7 +221,7 @@ class Embedding(TypeDecorator[FloatVector]):
     impl = NumpyArray
     comparator_factory: type[EmbeddingComparator] = EmbeddingComparator
 
-    def __init__(self, dim: int = -1):
+    def __init__(self, dim: int = -1) -> None:
         super().__init__()
         self.dim = dim
 

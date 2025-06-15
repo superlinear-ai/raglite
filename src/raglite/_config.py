@@ -24,9 +24,12 @@ cache_path = Path(user_data_dir("raglite", ensure_exists=True))
 
 
 # Lazily load the default search method to avoid circular imports.
-# TODO: Replace with search_and_rerank_chunk_spans after benchmarking.
+# TODO(lsorber): Replace with search_and_rerank_chunk_spans after benchmarking.
 def _vector_search(
-    query: str, *, num_results: int = 8, config: "RAGLiteConfig | None" = None
+    query: str,
+    *,
+    num_results: int = 8,
+    config: "RAGLiteConfig | None" = None,
 ) -> tuple[list[ChunkId], list[float]]:
     from raglite._search import vector_search
 
@@ -45,7 +48,7 @@ class RAGLiteConfig:
             "llama-cpp-python/unsloth/Qwen3-8B-GGUF/*Q4_K_M.gguf@8192"
             if llama_supports_gpu_offload()
             else "llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192"
-        )
+        ),
     )
     llm_max_tries: int = 4
     # Embedder config used for indexing.
@@ -54,7 +57,7 @@ class RAGLiteConfig:
             "llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512"
             if llama_supports_gpu_offload() or (os.cpu_count() or 1) >= 4  # noqa: PLR2004
             else "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@512"
-        )
+        ),
     )
     embedder_normalize: bool = True
     # Chunk config used to partition documents into chunks.

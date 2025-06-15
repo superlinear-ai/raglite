@@ -19,7 +19,7 @@ def test_raglite_import_without_llama_cpp(monkeypatch: pytest.MonkeyPatch) -> No
     original_import = builtins.__import__
 
     # Define a fake import function that raises ModuleNotFoundError when trying to import llama_cpp.
-    def fake_import(name: str, *args: Any) -> Any:
+    def fake_import(name: str, *args: Any) -> Any:  # noqa: ANN401
         if name.startswith("llama_cpp"):
             import_error = f"No module named '{name}'"
             raise ModuleNotFoundError(import_error)

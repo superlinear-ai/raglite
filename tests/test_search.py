@@ -57,7 +57,8 @@ def test_search(raglite_test_config: RAGLiteConfig, search_method: BasicSearchMe
 
 
 def test_search_no_results(
-    raglite_test_config: RAGLiteConfig, search_method: BasicSearchMethod
+    raglite_test_config: RAGLiteConfig,
+    search_method: BasicSearchMethod,
 ) -> None:
     """Test searching for a query with no keyword search results."""
     query = "supercalifragilisticexpialidocious"

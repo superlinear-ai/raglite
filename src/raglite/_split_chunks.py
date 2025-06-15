@@ -68,7 +68,8 @@ def split_chunks(  # noqa: C901, PLR0915
     partition_similarity = np.sum(X[:-1] * X[1:], axis=1)
     # Make partition similarity nonnegative before modification and optimisation.
     partition_similarity = np.maximum(
-        (partition_similarity + 1) / 2, np.sqrt(np.finfo(X.dtype).eps)
+        (partition_similarity + 1) / 2,
+        np.sqrt(np.finfo(X.dtype).eps),
     )
     # Modify the partition similarity to encourage splitting on Markdown headings.
     prev_chunklet_is_heading = True

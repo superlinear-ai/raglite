@@ -48,7 +48,9 @@ def test_reranker(
     """Test inserting a document, updating the indexes, and searching for a query."""
     # Update the config with the reranker.
     raglite_test_config = RAGLiteConfig(
-        db_url=raglite_test_config.db_url, embedder=raglite_test_config.embedder, reranker=reranker
+        db_url=raglite_test_config.db_url,
+        embedder=raglite_test_config.embedder,
+        reranker=reranker,
     )
     # Search for a query.
     query = "What does it mean for two events to be simultaneous?"

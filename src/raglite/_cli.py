@@ -14,7 +14,9 @@ class RAGLiteCLIConfig(BaseSettings):
     """RAGLite CLI config."""
 
     model_config: ClassVar[SettingsConfigDict] = SettingsConfigDict(
-        env_prefix="RAGLITE_", env_file=".env", extra="allow"
+        env_prefix="RAGLITE_",
+        env_file=".env",
+        extra="allow",
     )
 
     mcp_server_name: str = "RAGLite"
@@ -67,7 +69,7 @@ def install_mcp_server(
     claude_config_path = get_claude_config_path()
     if not claude_config_path:
         typer.echo(
-            "Please download the Claude desktop app from https://claude.ai/download before installing an MCP server."
+            "Please download the Claude desktop app from https://claude.ai/download before installing an MCP server.",
         )
         return
     claude_config_filepath = claude_config_path / "claude_desktop_config.json"
@@ -88,7 +90,7 @@ def install_mcp_server(
             "--python",
             "3.11",
             "--with",
-            "numpy<2.0.0",  # TODO: Remove this constraint when uv no longer needs it to solve the environment.
+            "numpy<2.0.0",  # TODO(lsorber): Remove this constraint when uv no longer needs it to solve the environment.
             "raglite",
             "mcp",
             "run",
@@ -112,7 +114,9 @@ def run_mcp_server(
     from raglite._mcp import create_mcp_server
 
     config = RAGLiteConfig(
-        db_url=ctx.obj["db_url"], llm=ctx.obj["llm"], embedder=ctx.obj["embedder"]
+        db_url=ctx.obj["db_url"],
+        llm=ctx.obj["llm"],
+        embedder=ctx.obj["embedder"],
     )
     mcp = create_mcp_server(server_name, config=config)
     mcp.run()
@@ -122,7 +126,10 @@ def run_mcp_server(
 def bench(
     ctx: typer.Context,
     dataset_name: str = typer.Option(
-        "nano-beir/hotpotqa", "--dataset", "-d", help="Dataset to use from https://ir-datasets.com/"
+        "nano-beir/hotpotqa",
+        "--dataset",
+        "-d",
+        help="Dataset to use from https://ir-datasets.com/",
     ),
     measure: str = typer.Option(
         "AP@10",
@@ -157,7 +164,9 @@ def bench(
     )
     dataset = ir_datasets.load(dataset_name)
     evaluator = RAGLiteEvaluator(
-        dataset, insert_variant=f"single-vector-{chunk_max_size // 4}t", config=config
+        dataset,
+        insert_variant=f"single-vector-{chunk_max_size // 4}t",
+        config=config,
     )
     index.append("RAGLite (single-vector)")
     results.append(ir_measures.calc_aggregate(measures, dataset.qrels_iter(), evaluator.score()))
@@ -170,7 +179,9 @@ def bench(
     )
     dataset = ir_datasets.load(dataset_name)
     evaluator = RAGLiteEvaluator(
-        dataset, insert_variant=f"multi-vector-{chunk_max_size // 4}t", config=config
+        dataset,
+        insert_variant=f"multi-vector-{chunk_max_size // 4}t",
+        config=config,
     )
     index.append("RAGLite (multi-vector)")
     results.append(ir_measures.calc_aggregate(measures, dataset.qrels_iter(), evaluator.score()))

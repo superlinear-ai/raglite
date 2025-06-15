@@ -40,7 +40,7 @@ def parsed_pdf_to_markdown(pages: list[dict[str, Any]]) -> list[str]:  # noqa: C
                 for block in page["blocks"]
                 for line in block["lines"]
                 for span in line["spans"]
-            ]
+            ],
         )
         font_sizes = np.round(font_sizes * 2) / 2
         unique_font_sizes, counts = np.unique(font_sizes, return_counts=True)
@@ -113,7 +113,8 @@ def parsed_pdf_to_markdown(pages: list[dict[str, Any]]) -> list[str]:  # noqa: C
                     line
                     for line in block["lines"]
                     if not re.match(
-                        r"^\s*[#0]*\d+\s*$", "".join(span["text"] for span in line["spans"])
+                        r"^\s*[#0]*\d+\s*$",
+                        "".join(span["text"] for span in line["spans"]),
                     )
                 ]
         return pages

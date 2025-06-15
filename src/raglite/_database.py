@@ -68,7 +68,7 @@ class Document(SQLModel, table=True):
     chunks: list["Chunk"] = Relationship(back_populates="document", cascade_delete=True)
     evals: list["Eval"] = Relationship(back_populates="document", cascade_delete=True)
 
-    def __init__(self, **kwargs: Any) -> None:
+    def __init__(self, **kwargs: Any) -> None:  # noqa: ANN401
         # Workaround for https://github.com/fastapi/sqlmodel/issues/149.
         super().__init__(**kwargs)
         self.content = kwargs.get("content")
@@ -87,7 +87,7 @@ class Document(SQLModel, table=True):
         *,
         id: DocumentId | None = None,  # noqa: A002
         url: str | None = None,
-        **kwargs: Any,
+        **kwargs: Any,  # noqa: ANN401
     ) -> "Document":
         """Create a document from a file path.
 
@@ -133,7 +133,7 @@ class Document(SQLModel, table=True):
         id: DocumentId | None = None,  # noqa: A002
         url: str | None = None,
         filename: str | None = None,
-        **kwargs: Any,
+        **kwargs: Any,  # noqa: ANN401
     ) -> "Document":
         """Create a document from text content.
 
@@ -197,7 +197,11 @@ class Chunk(SQLModel, table=True):
 
     @staticmethod
     def from_body(
-        document: Document, index: int, body: str, headings: str = "", **kwargs: Any
+        document: Document,
+        index: int,
+        body: str,
+        headings: str = "",
+        **kwargs: Any,  # noqa: ANN401
     ) -> "Chunk":
         """Create a chunk from Markdown."""
         return Chunk(
@@ -324,7 +328,7 @@ class ChunkSpan:
                 f"<content>\n{escape(''.join(chunk.body for chunk in self.chunks).strip())}\n</content>",
                 "</span>",
                 "</document>",
-            ]
+            ],
         )
         return xml_document
 
@@ -410,10 +414,11 @@ class IndexMetadata(SQLModel, table=True):
     # Table columns.
     id: IndexId = Field(..., primary_key=True)
     version: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
+        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc),
     )
     metadata_: dict[str, Any] = Field(
-        default_factory=dict, sa_column=Column("metadata", PickledObject)
+        default_factory=dict,
+        sa_column=Column("metadata", PickledObject),
     )
 
     @staticmethod
@@ -453,7 +458,10 @@ class Eval(SQLModel, table=True):
 
     @staticmethod
     def from_chunks(
-        question: str, contexts: list[Chunk], ground_truth: str, **kwargs: Any
+        question: str,
+        contexts: list[Chunk],
+        ground_truth: str,
+        **kwargs: Any,  # noqa: ANN401
     ) -> "Eval":
         """Create a chunk from Markdown."""
         document_id = contexts[0].document_id
@@ -521,7 +529,7 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
             session.execute(
                 text("""
                 CREATE INDEX IF NOT EXISTS keyword_search_chunk_index ON chunk USING GIN (to_tsvector('simple', body));
-                """)
+                """),
             )
             metrics = {"cosine": "cosine", "dot": "ip", "l1": "l1", "l2": "l2"}
             create_vector_index_sql = f"""
@@ -534,7 +542,7 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
             """
             # Enable iterative scan for pgvector v0.8.0 and up.
             pgvector_version = session.execute(
-                text("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+                text("SELECT extversion FROM pg_extension WHERE extname = 'vector'"),
             ).scalar_one()
             if pgvector_version and version.parse(pgvector_version) >= version.parse("0.8.0"):
                 create_vector_index_sql += f"\nSET hnsw.iterative_scan = {'relaxed_order' if config.reranker else 'strict_order'};"
@@ -548,20 +556,20 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
             num_chunks = session.execute(text("SELECT COUNT(*) FROM chunk")).scalar_one()
             try:
                 num_indexed_chunks = session.execute(
-                    text("SELECT COUNT(*) FROM fts_main_chunk.docs")
+                    text("SELECT COUNT(*) FROM fts_main_chunk.docs"),
                 ).scalar_one()
             except ProgrammingError:
                 num_indexed_chunks = 0
             if num_indexed_chunks == 0 or num_indexed_chunks != num_chunks:
                 session.execute(
-                    text("PRAGMA create_fts_index('chunk', 'id', 'body', overwrite = 1);")
+                    text("PRAGMA create_fts_index('chunk', 'id', 'body', overwrite = 1);"),
                 )
             # Create a vector search index with VSS if it doesn't exist.
             session.execute(
                 text(f"""
                 SET hnsw_ef_search = {ef_search};
                 SET hnsw_enable_experimental_persistence = true;
-                """)
+                """),
             )
             vss_index_exists = session.execute(
                 text("""
@@ -570,7 +578,7 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
                 WHERE schema_name = current_schema()
                 AND table_name = 'chunk_embedding'
                 AND index_name = 'vector_search_chunk_index'
-                """)
+                """),
             ).scalar_one()
             if not vss_index_exists:
                 metrics = {"cosine": "cosine", "dot": "ip", "l2": "l2sq"}

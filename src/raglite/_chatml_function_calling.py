@@ -98,9 +98,9 @@ def _convert_chunks_to_completion(
             {
                 "text": text,
                 "index": 0,
-                "logprobs": logprobs,  # TODO: Improve accumulation of logprobs
+                "logprobs": logprobs,  # TODO(lsorber): Improve accumulation of logprobs
                 "finish_reason": finish_reason,  # type: ignore[typeddict-item]
-            }
+            },
         ],
     }
     # Add usage section if present in the chunks
@@ -131,7 +131,8 @@ def _stream_tool_calls(
         prompt += f"functions.{tool_name}:\n"
         try:
             grammar = llama_grammar.LlamaGrammar.from_json_schema(
-                json.dumps(tool["function"]["parameters"]), verbose=llama.verbose
+                json.dumps(tool["function"]["parameters"]),
+                verbose=llama.verbose,
             )
         except Exception as e:
             warnings.warn(
@@ -140,7 +141,8 @@ def _stream_tool_calls(
                 stacklevel=2,
             )
             grammar = llama_grammar.LlamaGrammar.from_string(
-                llama_grammar.JSON_GBNF, verbose=llama.verbose
+                llama_grammar.JSON_GBNF,
+                verbose=llama.verbose,
             )
         completion_or_chunks = llama.create_completion(
             prompt=prompt,
@@ -182,7 +184,8 @@ def _stream_tool_calls(
                     "stop": [*completion_kwargs["stop"], ":", "</function_calls>"],
                     "max_tokens": None,
                     "grammar": llama_grammar.LlamaGrammar.from_string(
-                        follow_up_gbnf_tool_grammar, verbose=llama.verbose
+                        follow_up_gbnf_tool_grammar,
+                        verbose=llama.verbose,
                     ),
                 },
             ),
@@ -253,7 +256,7 @@ def chatml_function_calling_with_streaming(
     grammar: Optional[llama.LlamaGrammar] = None,  # type: ignore[name-defined]
     logprobs: Optional[bool] = None,
     top_logprobs: Optional[int] = None,
-    **kwargs: Any,
+    **kwargs: Any,  # noqa: ANN401
 ) -> Union[
     llama_types.CreateChatCompletionResponse,
     Iterator[llama_types.CreateChatCompletionStreamResponse],
@@ -381,7 +384,10 @@ def chatml_function_calling_with_streaming(
         or len(tools) == 0
     ):
         prompt = template_renderer.render(
-            messages=messages, tools=[], tool_calls=None, add_generation_prompt=True
+            messages=messages,
+            tools=[],
+            tool_calls=None,
+            add_generation_prompt=True,
         )
         return llama_chat_format._convert_completion_to_chat(  # noqa: SLF001
             llama.create_completion(
@@ -404,7 +410,10 @@ def chatml_function_calling_with_streaming(
         assert tools
     function_names = " | ".join([f'''"functions.{t["function"]["name"]}:"''' for t in tools])
     prompt = template_renderer.render(
-        messages=messages, tools=tools, tool_calls=True, add_generation_prompt=True
+        messages=messages,
+        tools=tools,
+        tool_calls=True,
+        add_generation_prompt=True,
     )
     initial_gbnf_tool_grammar = (
         (
@@ -429,7 +438,8 @@ def chatml_function_calling_with_streaming(
                 "stream": False,
                 "max_tokens": None,
                 "grammar": llama_grammar.LlamaGrammar.from_string(
-                    initial_gbnf_tool_grammar, verbose=llama.verbose
+                    initial_gbnf_tool_grammar,
+                    verbose=llama.verbose,
                 ),
             },
         ),
@@ -449,7 +459,10 @@ def chatml_function_calling_with_streaming(
     # Case 2 step 2A: Respond with a message
     if tool_name is None:
         prompt = template_renderer.render(
-            messages=messages, tools=[], tool_calls=None, add_generation_prompt=True
+            messages=messages,
+            tools=[],
+            tool_calls=None,
+            add_generation_prompt=True,
         )
         prompt += think
         return llama_chat_format._convert_completion_to_chat(  # noqa: SLF001
@@ -469,7 +482,12 @@ def chatml_function_calling_with_streaming(
     prompt += "<function_calls>\n"
     if stream:
         return _stream_tool_calls(
-            llama, prompt, tools, tool_name, completion_kwargs, follow_up_gbnf_tool_grammar
+            llama,
+            prompt,
+            tools,
+            tool_name,
+            completion_kwargs,
+            follow_up_gbnf_tool_grammar,
         )
     tool = next((tool for tool in tools if tool["function"]["name"] == tool_name), None)
     completions: List[llama_types.CreateCompletionResponse] = []
@@ -479,7 +497,8 @@ def chatml_function_calling_with_streaming(
         prompt += f"functions.{tool_name}:\n"
         try:
             grammar = llama_grammar.LlamaGrammar.from_json_schema(
-                json.dumps(tool["function"]["parameters"]), verbose=llama.verbose
+                json.dumps(tool["function"]["parameters"]),
+                verbose=llama.verbose,
             )
         except Exception as e:
             warnings.warn(
@@ -488,7 +507,8 @@ def chatml_function_calling_with_streaming(
                 stacklevel=2,
             )
             grammar = llama_grammar.LlamaGrammar.from_string(
-                llama_grammar.JSON_GBNF, verbose=llama.verbose
+                llama_grammar.JSON_GBNF,
+                verbose=llama.verbose,
             )
         completion_or_chunks = llama.create_completion(
             prompt=prompt,
@@ -515,7 +535,8 @@ def chatml_function_calling_with_streaming(
                     "stop": [*completion_kwargs["stop"], ":", "</function_calls>"],  # type: ignore[misc]
                     "max_tokens": None,
                     "grammar": llama_grammar.LlamaGrammar.from_string(
-                        follow_up_gbnf_tool_grammar, verbose=llama.verbose
+                        follow_up_gbnf_tool_grammar,
+                        verbose=llama.verbose,
                     ),
                 },
             ),
@@ -533,7 +554,7 @@ def chatml_function_calling_with_streaming(
                 "finish_reason": "tool_calls",
                 "index": 0,
                 "logprobs": _convert_text_completion_logprobs_to_chat(
-                    completion["choices"][0]["logprobs"]
+                    completion["choices"][0]["logprobs"],
                 ),
                 "message": {
                     "role": "assistant",
@@ -548,11 +569,11 @@ def chatml_function_calling_with_streaming(
                             },
                         }
                         for i, (tool_name, completion) in enumerate(
-                            zip(completions_tool_name, completions, strict=True)
+                            zip(completions_tool_name, completions, strict=True),
                         )
                     ],
                 },
-            }
+            },
         ],
         "usage": {
             "completion_tokens": sum(

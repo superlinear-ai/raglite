@@ -1,6 +1,6 @@
 """Compute and update an optimal query adapter."""
 
-# ruff: noqa: N806
+# ruff: noqa: N806, RUF002
 
 from dataclasses import replace
 
@@ -154,13 +154,19 @@ def update_query_adapter(
         Q = np.zeros((0, len(chunk_embedding.embedding)))
         T = np.zeros_like(Q)
         for eval_ in tqdm(
-            evals, desc="Optimizing evals", unit="eval", dynamic_ncols=True, leave=False
+            evals,
+            desc="Optimizing evals",
+            unit="eval",
+            dynamic_ncols=True,
+            leave=False,
         ):
             # Embed the question.
             q = embed_strings([eval_.question], config=config)[0]
             # Retrieve chunks that would be used to answer the question.
             chunk_ids, _ = vector_search(
-                q, num_results=optimize_top_k, config=config_no_query_adapter
+                q,
+                num_results=optimize_top_k,
+                config=config_no_query_adapter,
             )
             retrieved_chunks = session.exec(select(Chunk).where(col(Chunk.id).in_(chunk_ids))).all()
             retrieved_chunks = sorted(retrieved_chunks, key=lambda chunk: chunk_ids.index(chunk.id))
@@ -173,13 +179,13 @@ def update_query_adapter(
                 [
                     chunk.embedding_matrix[[np.argmax(chunk.embedding_matrix @ q)]]
                     for chunk in np.array(retrieved_chunks)[is_relevant]
-                ]
+                ],
             )
             N = np.vstack(
                 [
                     chunk.embedding_matrix[[np.argmax(chunk.embedding_matrix @ q)]]
                     for chunk in np.array(retrieved_chunks)[~is_relevant]
-                ]
+                ],
             )
             # Compute the optimal target vector t for this query embedding q.
             t = _optimize_query_target(q, P, N, α=optimize_gap)
