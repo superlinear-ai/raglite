@@ -68,7 +68,7 @@ class Document(SQLModel, table=True):
     chunks: list["Chunk"] = Relationship(back_populates="document", cascade_delete=True)
     evals: list["Eval"] = Relationship(back_populates="document", cascade_delete=True)
 
-    def __init__(self, **kwargs: Any) -> None:  # noqa: ANN401
+    def __init__(self, **kwargs: Any) -> None:
         # Workaround for https://github.com/fastapi/sqlmodel/issues/149.
         super().__init__(**kwargs)
         self.content = kwargs.get("content")
@@ -87,7 +87,7 @@ class Document(SQLModel, table=True):
         *,
         id: DocumentId | None = None,  # noqa: A002
         url: str | None = None,
-        **kwargs: Any,  # noqa: ANN401
+        **kwargs: Any,
     ) -> "Document":
         """Create a document from a file path.
 
@@ -133,7 +133,7 @@ class Document(SQLModel, table=True):
         id: DocumentId | None = None,  # noqa: A002
         url: str | None = None,
         filename: str | None = None,
-        **kwargs: Any,  # noqa: ANN401
+        **kwargs: Any,
     ) -> "Document":
         """Create a document from text content.
 
@@ -197,11 +197,7 @@ class Chunk(SQLModel, table=True):
 
     @staticmethod
     def from_body(
-        document: Document,
-        index: int,
-        body: str,
-        headings: str = "",
-        **kwargs: Any,  # noqa: ANN401
+        document: Document, index: int, body: str, headings: str = "", **kwargs: Any
     ) -> "Chunk":
         """Create a chunk from Markdown."""
         return Chunk(
@@ -457,10 +453,7 @@ class Eval(SQLModel, table=True):
 
     @staticmethod
     def from_chunks(
-        question: str,
-        contexts: list[Chunk],
-        ground_truth: str,
-        **kwargs: Any,  # noqa: ANN401
+        question: str, contexts: list[Chunk], ground_truth: str, **kwargs: Any
     ) -> "Eval":
         """Create a chunk from Markdown."""
         document_id = contexts[0].document_id

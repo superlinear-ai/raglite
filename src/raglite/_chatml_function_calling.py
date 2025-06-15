@@ -232,7 +232,7 @@ def chatml_function_calling_with_streaming(
     grammar: Optional[llama.LlamaGrammar] = None,  # type: ignore[name-defined]
     logprobs: Optional[bool] = None,
     top_logprobs: Optional[int] = None,
-    **kwargs: Any,  # noqa: ANN401
+    **kwargs: Any,
 ) -> Union[
     llama_types.CreateChatCompletionResponse,
     Iterator[llama_types.CreateChatCompletionStreamResponse],

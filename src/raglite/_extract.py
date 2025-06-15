@@ -15,7 +15,7 @@ def extract_with_llm(
     user_prompt: str | list[str],
     strict: bool = False,  # noqa: FBT001, FBT002
     config: RAGLiteConfig | None = None,
-    **kwargs: Any,  # noqa: ANN401
+    **kwargs: Any,
 ) -> T:
     """Extract structured data from unstructured text with an LLM.
 

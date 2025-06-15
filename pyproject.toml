@@ -149,6 +149,9 @@ select = ["ALL"]
 ignore = ["CPY", "FIX", "ARG001", "COM812", "D203", "D213", "E501", "PD008", "PD009", "RET504", "S101", "TD003"]
 unfixable = ["ERA001", "F401", "F841", "T201", "T203"]
 
+[tool.ruff.lint.flake8-annotations]
+allow-star-arg-any = true
+
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
 

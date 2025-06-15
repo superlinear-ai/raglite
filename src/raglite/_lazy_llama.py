@@ -42,7 +42,7 @@ def __getattr__(name: str) -> object:
         def __getattr__(self, name: str) -> NoReturn:
             raise ModuleNotFoundError(self.error_message) from self.error
 
-        def __call__(self, *args: Any, **kwargs: Any) -> NoReturn:  # noqa: ARG002, ANN401
+        def __call__(self, *args: Any, **kwargs: Any) -> NoReturn:  # noqa: ARG002
             raise ModuleNotFoundError(self.error_message) from self.error
 
     class LazySubmoduleError:
