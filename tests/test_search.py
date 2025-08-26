@@ -3,14 +3,16 @@
 import pytest
 
 from raglite import (
+    Document,
     RAGLiteConfig,
     hybrid_search,
+    insert_documents,
     keyword_search,
     retrieve_chunk_spans,
     retrieve_chunks,
     vector_search,
 )
-from raglite._database import Chunk, ChunkSpan, Document
+from raglite._database import Chunk, ChunkSpan
 from raglite._typing import BasicSearchMethod
 
 
@@ -78,4 +80,72 @@ def test_search_empty_database(llm: str, embedder: str, search_method: BasicSear
     num_results_expected = 0
     assert len(chunk_ids) == len(scores) == num_results_expected
     assert all(isinstance(chunk_id, str) for chunk_id in chunk_ids)
+    assert all(isinstance(score, float) for score in scores)
+
+
+def test_search_with_metadata_filter(
+    raglite_test_config: RAGLiteConfig, search_method: BasicSearchMethod
+) -> None:
+    """Test searching with metadata filtering."""
+    # Insert test documents with metadata.
+    test_docs = [
+        Document.from_text("Python guide", filename="python.md", metadata={"user_id": "user_123"}),
+        Document.from_text("JavaScript guide", filename="js.md", metadata={"user_id": "user_456"}),
+    ]
+    insert_documents(test_docs, config=raglite_test_config)
+    # Test search with user_id filter.
+    metadata_filter = {"user_id": "user_123"}
+    filtered_results, filtered_scores = search_method(
+        "guide", num_results=10, metadata_filter=metadata_filter, config=raglite_test_config
+    )
+    assert len(filtered_results) == len(filtered_scores)
+    assert all(isinstance(chunk_id, str) for chunk_id in filtered_results)
+    assert all(isinstance(score, float) for score in filtered_scores)
+    # Verify chunks belong to the correct user.
+    if filtered_results:
+        chunks = retrieve_chunks(filtered_results, config=raglite_test_config)
+        for chunk in chunks:
+            if "user_id" in chunk.metadata_:
+                assert chunk.metadata_["user_id"] == "user_123"
+
+
+def test_search_with_multiple_metadata_filters(
+    raglite_test_config: RAGLiteConfig, search_method: BasicSearchMethod
+) -> None:
+    """Test searching with multiple metadata filters."""
+    # Insert test document with multiple metadata fields.
+    test_doc = Document.from_text(
+        "Python guide",
+        filename="python.md",
+        metadata={"user_id": "user_123", "category": "programming"},
+    )
+    insert_documents([test_doc], config=raglite_test_config)
+    # Test with multiple metadata fields.
+    metadata_filter = {"user_id": "user_123", "category": "programming"}
+    results, scores = search_method(
+        "guide", num_results=10, metadata_filter=metadata_filter, config=raglite_test_config
+    )
+    assert len(results) == len(scores)
+    assert all(isinstance(chunk_id, str) for chunk_id in results)
+    assert all(isinstance(score, float) for score in scores)
+    # Verify chunks match all filters.
+    if results:
+        chunks = retrieve_chunks(results, config=raglite_test_config)
+        for chunk in chunks:
+            if "user_id" in chunk.metadata_ and "category" in chunk.metadata_:
+                assert chunk.metadata_["user_id"] == "user_123"
+                assert chunk.metadata_["category"] == "programming"
+
+
+def test_search_with_nonexistent_metadata_filter(
+    raglite_test_config: RAGLiteConfig, search_method: BasicSearchMethod
+) -> None:
+    """Test searching with metadata filter that matches no documents."""
+    metadata_filter = {"user_id": "nonexistent_user"}
+    results, scores = search_method(
+        "guide", num_results=10, metadata_filter=metadata_filter, config=raglite_test_config
+    )
+    # Should return no results or fewer results.
+    assert len(results) == len(scores)
+    assert all(isinstance(chunk_id, str) for chunk_id in results)
     assert all(isinstance(score, float) for score in scores)

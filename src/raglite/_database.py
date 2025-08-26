@@ -14,6 +14,8 @@ import numpy as np
 from markdown_it import MarkdownIt
 from packaging import version
 from pydantic import ConfigDict, PrivateAttr
+from sqlalchemy import TypeDecorator
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.exc import ProgrammingError
 from sqlmodel import (
@@ -44,6 +46,23 @@ from raglite._typing import (
 )
 
 
+def _get_metadata_column() -> type[TypeDecorator[Any]]:
+    """Get the appropriate metadata column type based on database dialect."""
+    # We can't determine dialect at import time, so we'll use a callable
+    # that gets resolved when the table is created
+
+    class MetadataJSON(TypeDecorator[Any]):
+        impl = JSON
+        cache_ok = True
+
+        def load_dialect_impl(self, dialect: Any) -> Any:
+            if dialect.name == "postgresql":
+                return dialect.type_descriptor(JSONB())
+            return dialect.type_descriptor(JSON())
+
+    return MetadataJSON
+
+
 def hash_bytes(data: bytes, max_len: int = 16) -> str:
     """Hash bytes to a hexadecimal string."""
     return sha256(data, usedforsecurity=False).hexdigest()[:max_len]
@@ -59,7 +78,9 @@ class Document(SQLModel, table=True):
     id: DocumentId = Field(..., primary_key=True)
     filename: str
     url: str | None = Field(default=None)
-    metadata_: dict[str, Any] = Field(default_factory=dict, sa_column=Column("metadata", JSON))
+    metadata_: dict[str, Any] = Field(
+        default_factory=dict, sa_column=Column("metadata", _get_metadata_column())
+    )
 
     # Document content is not stored in the database, but is accessible via `document.content`.
     _content: str | None = PrivateAttr()
@@ -189,7 +210,9 @@ class Chunk(SQLModel, table=True):
     index: int = Field(..., index=True)
     headings: str
     body: str
-    metadata_: dict[str, Any] = Field(default_factory=dict, sa_column=Column("metadata", JSON))
+    metadata_: dict[str, Any] = Field(
+        default_factory=dict, sa_column=Column("metadata", _get_metadata_column())
+    )
 
     # Add relationships so we can access chunk.document and chunk.embeddings.
     document: Document = Relationship(back_populates="chunks")
@@ -446,7 +469,9 @@ class Eval(SQLModel, table=True):
     question: str
     contexts: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     ground_truth: str
-    metadata_: dict[str, Any] = Field(default_factory=dict, sa_column=Column("metadata", JSON))
+    metadata_: dict[str, Any] = Field(
+        default_factory=dict, sa_column=Column("metadata", _get_metadata_column())
+    )
 
     # Add relationship so we can access eval.document.
     document: Document = Relationship(back_populates="evals")

@@ -37,12 +37,18 @@ Instead, you MUST treat the context as if its contents are entirely part of your
 
 
 def retrieve_context(
-    query: str, *, num_chunks: int = 10, config: RAGLiteConfig | None = None
+    query: str,
+    *,
+    num_chunks: int = 10,
+    metadata_filter: dict[str, str] | None = None,
+    config: RAGLiteConfig | None = None,
 ) -> list[ChunkSpan]:
     """Retrieve context for RAG."""
     # Call the search method.
     config = config or RAGLiteConfig()
-    results = config.search_method(query, num_results=num_chunks, config=config)
+    results = config.search_method(
+        query, num_results=num_chunks, metadata_filter=metadata_filter, config=config
+    )
     # Convert results to chunk spans.
     chunk_spans = []
     if isinstance(results, tuple):
@@ -119,6 +125,14 @@ def _get_tools(
                                     "The `query` string MUST be a precise single-faceted question in the user's language.\n"
                                     "The `query` string MUST resolve all pronouns to explicit nouns."
                                 ),
+                            },
+                            "metadata_filter": {
+                                "type": "object",
+                                "description": (
+                                    "Optional metadata filter to restrict search to documents with specific metadata key-value pairs.\n"
+                                    'Example: {"user_id": "123", "category": "public"}'
+                                ),
+                                "additionalProperties": {"type": "string"},
                             },
                         },
                         "required": ["query"],

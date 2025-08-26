@@ -26,11 +26,17 @@ cache_path = Path(user_data_dir("raglite", ensure_exists=True))
 # Lazily load the default search method to avoid circular imports.
 # TODO: Replace with search_and_rerank_chunk_spans after benchmarking.
 def _vector_search(
-    query: str, *, num_results: int = 8, config: "RAGLiteConfig | None" = None
+    query: str,
+    *,
+    num_results: int = 8,
+    metadata_filter: dict[str, str] | None = None,
+    config: "RAGLiteConfig | None" = None,
 ) -> tuple[list[ChunkId], list[float]]:
     from raglite._search import vector_search
 
-    return vector_search(query, num_results=num_results, config=config)
+    return vector_search(
+        query, num_results=num_results, metadata_filter=metadata_filter, config=config
+    )
 
 
 @dataclass(frozen=True)

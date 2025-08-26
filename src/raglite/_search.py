@@ -1,10 +1,12 @@
 """Search and retrieve chunks."""
 
 import contextlib
+import json
 import re
 import string
 from collections import defaultdict
 from itertools import groupby
+from typing import Any
 
 import numpy as np
 from langdetect import LangDetectException, detect
@@ -23,11 +25,57 @@ from raglite._embed import embed_strings
 from raglite._typing import BasicSearchMethod, ChunkId, FloatVector
 
 
+def _apply_metadata_filter_to_query(
+    query_obj: Any, session: Session, metadata_filter: dict[str, str] | None
+) -> Any:
+    """Apply metadata filtering to a SQLAlchemy query object."""
+    if not metadata_filter:
+        return query_obj
+
+    # Ensure the query joins with Chunk table if not already joined
+    query_obj = query_obj.join(Chunk, ChunkEmbedding.chunk_id == Chunk.id)
+
+    dialect = session.get_bind().dialect.name
+
+    if dialect == "postgresql":
+        # Use JSONB containment operator for PostgreSQL
+        query_obj = query_obj.where(col(Chunk.metadata_).op("@>")(metadata_filter))
+    elif dialect == "duckdb":
+        # Use json_contains for DuckDB (containment approach like PostgreSQL)
+        query_obj = query_obj.where(
+            func.json_contains(col(Chunk.metadata_), func.json(json.dumps(metadata_filter)))
+        )
+
+    return query_obj
+
+
+def _build_metadata_filter_sql(
+    base_sql: str, params: dict[str, Any], metadata_filter: dict[str, str] | None, dialect: str
+) -> tuple[str, dict[str, Any]]:
+    """Build SQL and parameters for metadata filtering in raw SQL queries."""
+    if not metadata_filter:
+        return base_sql, params
+
+    if dialect == "postgresql":
+        # Use JSONB containment operator for PostgreSQL
+        # Use named parameter to match the rest of the query
+        base_sql += " AND metadata @> :metadata_filter"
+        # Add to params dict
+        params["metadata_filter"] = json.dumps(metadata_filter)
+    elif dialect == "duckdb":
+        # Use json_contains for DuckDB (containment approach like PostgreSQL)
+        base_sql += " AND json_contains(metadata, JSON(:metadata_filter))"
+        params["metadata_filter"] = json.dumps(metadata_filter)
+
+    return base_sql, params
+
+
 def vector_search(
     query: str | FloatVector,
     *,
     num_results: int = 3,
     oversample: int = 4,
+    metadata_filter: dict[str, str] | None = None,
     config: RAGLiteConfig | None = None,
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks using ANN vector search."""
@@ -52,7 +100,15 @@ def vector_search(
             query_embedding, metric=config.vector_search_distance_metric
         ).label("dist")
         sim = (1.0 - dist).label("sim")
-        top_vectors = select(ChunkEmbedding.chunk_id, sim).order_by(dist).limit(num_hits).subquery()
+
+        top_vectors_query = select(ChunkEmbedding.chunk_id, sim).order_by(dist)
+
+        # Apply metadata filtering if provided.
+        top_vectors_query = _apply_metadata_filter_to_query(
+            top_vectors_query, session, metadata_filter
+        )
+
+        top_vectors = top_vectors_query.limit(num_hits).subquery()
         sim_norm = func.max(top_vectors.c.sim).label("sim_norm")
         statement = (
             select(top_vectors.c.chunk_id, sim_norm)
@@ -67,7 +123,11 @@ def vector_search(
 
 
 def keyword_search(
-    query: str, *, num_results: int = 3, config: RAGLiteConfig | None = None
+    query: str,
+    *,
+    num_results: int = 3,
+    metadata_filter: dict[str, str] | None = None,
+    config: RAGLiteConfig | None = None,
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks using BM25 keyword search."""
     # Read the config.
@@ -75,34 +135,63 @@ def keyword_search(
     # Connect to the database.
     with Session(create_database_engine(config)) as session:
         dialect = session.get_bind().dialect.name
+
         if dialect == "postgresql":
             # Convert the query to a tsquery [1].
             # [1] https://www.postgresql.org/docs/current/textsearch-controls.html
             query_escaped = re.sub(f"[{re.escape(string.punctuation)}]", " ", query)
             tsv_query = " | ".join(query_escaped.split())
-            # Perform keyword search with tsvector.
-            statement = text("""
-                SELECT id as chunk_id, ts_rank(to_tsvector('simple', body), to_tsquery('simple', :query)) AS score
+
+            # Build the SQL query
+            base_sql = """
+                SELECT id as chunk_id,
+                       ts_rank(to_tsvector('simple', body), to_tsquery('simple', :tsv_query)) as score
                 FROM chunk
-                WHERE to_tsvector('simple', body) @@ to_tsquery('simple', :query)
+                WHERE to_tsvector('simple', body) @@ to_tsquery('simple', :tsv_query)
+            """
+
+            # Build parameters
+            params = {"tsv_query": tsv_query, "limit": num_results}
+
+            # Add metadata filtering conditions dynamically
+            base_sql, params = _build_metadata_filter_sql(
+                base_sql, params, metadata_filter, dialect
+            )
+
+            # Complete the query
+            base_sql += """
                 ORDER BY score DESC
                 LIMIT :limit;
-                """)
-            results = session.execute(statement, params={"query": tsv_query, "limit": num_results})
+            """
+
+            statement = text(base_sql)
+            results = session.execute(statement, params)
+
         elif dialect == "duckdb":
-            statement = text(
-                """
+            base_sql = """
                 SELECT chunk_id, score
                 FROM (
                     SELECT id AS chunk_id, fts_main_chunk.match_bm25(id, :query) AS score
                     FROM chunk
+                    WHERE 1=1
+            """
+
+            params = {"query": query, "limit": num_results}
+
+            # Add metadata filtering conditions dynamically
+            base_sql, params = _build_metadata_filter_sql(
+                base_sql, params, metadata_filter, dialect
+            )
+
+            base_sql += """
                 ) sq
                 WHERE score IS NOT NULL
                 ORDER BY score DESC
                 LIMIT :limit;
-                """
-            )
-            results = session.execute(statement, params={"query": query, "limit": num_results})
+            """
+
+            statement = text(base_sql)
+            results = session.execute(statement, params)
         # Unpack the results.
         results = list(results)  # type: ignore[assignment]
         chunk_ids = [result.chunk_id for result in results]
@@ -141,12 +230,17 @@ def hybrid_search(  # noqa: PLR0913
     oversample: int = 2,
     vector_search_weight: float = 0.75,
     keyword_search_weight: float = 0.25,
+    metadata_filter: dict[str, str] | None = None,
     config: RAGLiteConfig | None = None,
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks by combining ANN vector search with BM25 keyword search."""
     # Run both searches.
-    vs_chunk_ids, _ = vector_search(query, num_results=oversample * num_results, config=config)
-    ks_chunk_ids, _ = keyword_search(query, num_results=oversample * num_results, config=config)
+    vs_chunk_ids, _ = vector_search(
+        query, num_results=oversample * num_results, metadata_filter=metadata_filter, config=config
+    )
+    ks_chunk_ids, _ = keyword_search(
+        query, num_results=oversample * num_results, metadata_filter=metadata_filter, config=config
+    )
     # Combine the results with Reciprocal Rank Fusion (RRF).
     chunk_ids, hybrid_score = reciprocal_rank_fusion(
         [vs_chunk_ids, ks_chunk_ids], weights=[vector_search_weight, keyword_search_weight]
@@ -272,16 +366,19 @@ def rerank_chunks(
     return chunks
 
 
-def search_and_rerank_chunks(
+def search_and_rerank_chunks(  # noqa: PLR0913
     query: str,
     *,
     num_results: int = 8,
     oversample: int = 4,
     search: BasicSearchMethod = hybrid_search,
     config: RAGLiteConfig | None = None,
+    metadata_filter: dict[str, str] | None = None,
 ) -> list[Chunk]:
     """Search and rerank chunks."""
-    chunk_ids, _ = search(query, num_results=oversample * num_results, config=config)
+    chunk_ids, _ = search(
+        query, num_results=oversample * num_results, metadata_filter=metadata_filter, config=config
+    )
     chunks = rerank_chunks(query, chunk_ids, config=config)[:num_results]
     return chunks
 
@@ -294,9 +391,12 @@ def search_and_rerank_chunk_spans(  # noqa: PLR0913
     neighbors: tuple[int, ...] | None = (-1, 1),
     search: BasicSearchMethod = hybrid_search,
     config: RAGLiteConfig | None = None,
+    metadata_filter: dict[str, str] | None = None,
 ) -> list[ChunkSpan]:
     """Search and rerank chunks, and then collate into chunk spans."""
-    chunk_ids, _ = search(query, num_results=oversample * num_results, config=config)
+    chunk_ids, _ = search(
+        query, num_results=oversample * num_results, metadata_filter=metadata_filter, config=config
+    )
     chunks = rerank_chunks(query, chunk_ids, config=config)[:num_results]
     chunk_spans = retrieve_chunk_spans(chunks, neighbors=neighbors, config=config)
     return chunk_spans

@@ -31,13 +31,23 @@ IntVector = np.ndarray[tuple[int], np.dtype[np.intp]]
 
 class BasicSearchMethod(Protocol):
     def __call__(
-        self, query: str, *, num_results: int, config: "RAGLiteConfig | None" = None
+        self,
+        query: str,
+        *,
+        num_results: int,
+        metadata_filter: dict[str, str] | None = None,
+        config: "RAGLiteConfig | None" = None,
     ) -> tuple[list[ChunkId], list[float]]: ...
 
 
 class SearchMethod(Protocol):
     def __call__(
-        self, query: str, *, num_results: int, config: "RAGLiteConfig | None" = None
+        self,
+        query: str,
+        *,
+        num_results: int,
+        metadata_filter: dict[str, str] | None = None,
+        config: "RAGLiteConfig | None" = None,
     ) -> tuple[list[ChunkId], list[float]] | list["Chunk"] | list["ChunkSpan"]: ...
 
 
