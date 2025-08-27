@@ -3,10 +3,8 @@
 import json
 
 from raglite import (
-    Document,
     RAGLiteConfig,
     add_context,
-    insert_documents,
     retrieve_context,
 )
 from raglite._database import ChunkSpan
@@ -62,26 +60,3 @@ def test_rag_auto_without_retrieval(raglite_test_config: RAGLiteConfig) -> None:
     # Verify that no RAG context was retrieved.
     assert [message["role"] for message in messages] == ["user", "assistant"]
     assert not chunk_spans
-
-
-def test_retrieve_context_with_metadata_filter(raglite_test_config: RAGLiteConfig) -> None:
-    """Test retrieving context with metadata filtering."""
-    # Insert test documents with metadata.
-    test_docs = [
-        Document.from_text("Python guide", filename="python.md", user_id="user_123"),
-        Document.from_text("JavaScript guide", filename="js.md", user_id="user_456"),
-    ]
-    insert_documents(test_docs, config=raglite_test_config)
-    # Test retrieve_context with metadata filter.
-    filtered_context = retrieve_context(
-        query="guide",
-        num_chunks=2,
-        metadata_filter={"user_id": "user_123"},
-        config=raglite_test_config,
-    )
-    assert all(isinstance(chunk_span, ChunkSpan) for chunk_span in filtered_context)
-    # Verify that filtered context only includes chunks from the specified user.
-    for chunk_span in filtered_context:
-        for chunk in chunk_span.chunks:
-            if "user_id" in chunk.metadata_:
-                assert chunk.metadata_["user_id"] == "user_123"

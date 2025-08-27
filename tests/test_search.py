@@ -6,7 +6,6 @@ from raglite import (
     Document,
     RAGLiteConfig,
     hybrid_search,
-    insert_documents,
     keyword_search,
     retrieve_chunk_spans,
     retrieve_chunks,
@@ -83,70 +82,46 @@ def test_search_empty_database(llm: str, embedder: str, search_method: BasicSear
     assert all(isinstance(score, float) for score in scores)
 
 
-def test_search_with_metadata_filter(
+def test_search_metadata_filter(
     raglite_test_config: RAGLiteConfig, search_method: BasicSearchMethod
 ) -> None:
-    """Test searching with metadata filtering."""
-    # Insert test documents with metadata.
-    test_docs = [
-        Document.from_text("Python guide", filename="python.md", user_id="user_123"),
-        Document.from_text("JavaScript guide", filename="js.md", user_id="user_456"),
-    ]
-    insert_documents(test_docs, config=raglite_test_config)
-    # Test search with user_id filter.
-    metadata_filter = {"user_id": "user_123"}
-    filtered_results, filtered_scores = search_method(
-        "guide", num_results=10, metadata_filter=metadata_filter, config=raglite_test_config
+    """Test searching with metadata filtering that should return results."""
+    query = "What does it mean for two events to be simultaneous?"
+    num_results = 5
+    # Filter for Physics paper (should match Einstein's special relativity paper)
+    metadata_filter = {"type": "Paper", "topic": "Physics"}
+    chunk_ids, scores = search_method(
+        query, num_results=num_results, metadata_filter=metadata_filter, config=raglite_test_config
     )
-    assert len(filtered_results) == len(filtered_scores)
-    assert all(isinstance(chunk_id, str) for chunk_id in filtered_results)
-    assert all(isinstance(score, float) for score in filtered_scores)
-    # Verify chunks belong to the correct user.
-    if filtered_results:
-        chunks = retrieve_chunks(filtered_results, config=raglite_test_config)
-        for chunk in chunks:
-            if "user_id" in chunk.metadata_:
-                assert chunk.metadata_["user_id"] == "user_123"
-
-
-def test_search_with_multiple_metadata_filters(
-    raglite_test_config: RAGLiteConfig, search_method: BasicSearchMethod
-) -> None:
-    """Test searching with multiple metadata filters."""
-    # Insert test document with multiple metadata fields.
-    test_doc = Document.from_text(
-        "Python guide",
-        filename="python.md",
-        user_id="user_123",
-        category="programming",
-    )
-    insert_documents([test_doc], config=raglite_test_config)
-    # Test with multiple metadata fields.
-    metadata_filter = {"user_id": "user_123", "category": "programming"}
-    results, scores = search_method(
-        "guide", num_results=10, metadata_filter=metadata_filter, config=raglite_test_config
-    )
-    assert len(results) == len(scores)
-    assert all(isinstance(chunk_id, str) for chunk_id in results)
+    # Assert basic properties of the results
+    assert len(chunk_ids) == len(scores)
+    assert len(chunk_ids) > 0, "Expected results when filtering for Physics papers"
+    assert len(chunk_ids) <= num_results, "Should not exceed requested number of results"
+    assert all(isinstance(chunk_id, str) for chunk_id in chunk_ids)
     assert all(isinstance(score, float) for score in scores)
-    # Verify chunks match all filters.
-    if results:
-        chunks = retrieve_chunks(results, config=raglite_test_config)
-        for chunk in chunks:
-            if "user_id" in chunk.metadata_ and "category" in chunk.metadata_:
-                assert chunk.metadata_["user_id"] == "user_123"
-                assert chunk.metadata_["category"] == "programming"
+    # Retrieve and verify the chunks match the metadata filter
+    chunks = retrieve_chunks(chunk_ids, config=raglite_test_config)
+    assert all(isinstance(chunk, Chunk) for chunk in chunks)
+    for chunk in chunks:
+        assert chunk.metadata_.get("type") == "Paper", (
+            f"Expected type='Paper', got {chunk.metadata_.get('type')}"
+        )
+        assert chunk.metadata_.get("topic") == "Physics", (
+            f"Expected topic='Physics', got {chunk.metadata_.get('topic')}"
+        )
 
-
-def test_search_with_nonexistent_metadata_filter(
-    raglite_test_config: RAGLiteConfig, search_method: BasicSearchMethod
-) -> None:
-    """Test searching with metadata filter that matches no documents."""
-    metadata_filter = {"user_id": "nonexistent_user"}
-    results, scores = search_method(
-        "guide", num_results=10, metadata_filter=metadata_filter, config=raglite_test_config
+    # Test with different topic that should return no results
+    metadata_filter_no_match = {"type": "Paper", "topic": "Mathematics"}
+    chunk_ids_no_match, scores_no_match = search_method(
+        query,
+        num_results=num_results,
+        metadata_filter=metadata_filter_no_match,
+        config=raglite_test_config,
     )
-    # Should return no results or fewer results.
-    assert len(results) == len(scores)
-    assert all(isinstance(chunk_id, str) for chunk_id in results)
-    assert all(isinstance(score, float) for score in scores)
+    assert len(chunk_ids_no_match) == len(scores_no_match) == 0, (
+        "Expected no results when filtering for Mathematics papers"
+    )
+    assert all(isinstance(chunk_id, str) for chunk_id in chunk_ids_no_match)
+    assert all(isinstance(score, float) for score in scores_no_match)
+    assert all(isinstance(chunk_id, str) for chunk_id in chunk_ids_no_match)
+    assert all(isinstance(score, float) for score in scores_no_match)
