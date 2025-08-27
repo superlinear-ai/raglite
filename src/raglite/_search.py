@@ -6,7 +6,6 @@ import re
 import string
 from collections import defaultdict
 from itertools import groupby
-from typing import Any
 
 import numpy as np
 from langdetect import LangDetectException, detect
@@ -23,51 +22,6 @@ from raglite._database import (
 )
 from raglite._embed import embed_strings
 from raglite._typing import BasicSearchMethod, ChunkId, FloatVector
-
-
-def _apply_metadata_filter_to_query(
-    query_obj: Any, session: Session, metadata_filter: dict[str, str] | None
-) -> Any:
-    """Apply metadata filtering to a SQLAlchemy query object."""
-    if not metadata_filter:
-        return query_obj
-
-    # Ensure the query joins with Chunk table if not already joined
-    query_obj = query_obj.join(Chunk, ChunkEmbedding.chunk_id == Chunk.id)
-
-    dialect = session.get_bind().dialect.name
-
-    if dialect == "postgresql":
-        # Use JSONB containment operator for PostgreSQL
-        query_obj = query_obj.where(col(Chunk.metadata_).op("@>")(metadata_filter))
-    elif dialect == "duckdb":
-        # Use json_contains for DuckDB (containment approach like PostgreSQL)
-        query_obj = query_obj.where(
-            func.json_contains(col(Chunk.metadata_), func.json(json.dumps(metadata_filter)))
-        )
-
-    return query_obj
-
-
-def _build_metadata_filter_sql(
-    base_sql: str, params: dict[str, Any], metadata_filter: dict[str, str] | None, dialect: str
-) -> tuple[str, dict[str, Any]]:
-    """Build SQL and parameters for metadata filtering in raw SQL queries."""
-    if not metadata_filter:
-        return base_sql, params
-
-    if dialect == "postgresql":
-        # Use JSONB containment operator for PostgreSQL
-        # Use named parameter to match the rest of the query
-        base_sql += " AND metadata @> :metadata_filter"
-        # Add to params dict
-        params["metadata_filter"] = json.dumps(metadata_filter)
-    elif dialect == "duckdb":
-        # Use json_contains for DuckDB (containment approach like PostgreSQL)
-        base_sql += " AND json_contains(metadata, JSON(:metadata_filter))"
-        params["metadata_filter"] = json.dumps(metadata_filter)
-
-    return base_sql, params
 
 
 def vector_search(
@@ -96,17 +50,43 @@ def vector_search(
     with Session(create_database_engine(config)) as session:
         corrected_oversample = oversample * config.chunk_max_size / RAGLiteConfig.chunk_max_size
         num_hits = round(corrected_oversample) * max(num_results, 10)
-        dist = ChunkEmbedding.embedding.distance(  # type: ignore[attr-defined]
-            query_embedding, metric=config.vector_search_distance_metric
-        ).label("dist")
-        sim = (1.0 - dist).label("sim")
 
-        top_vectors_query = select(ChunkEmbedding.chunk_id, sim).order_by(dist)
+        if metadata_filter:
+            dialect = session.get_bind().dialect.name
 
-        # Apply metadata filtering if provided.
-        top_vectors_query = _apply_metadata_filter_to_query(
-            top_vectors_query, session, metadata_filter
-        )
+            # First subquery: Filter chunk_ids based on metadata
+            filtered_chunks_subquery = select(ChunkEmbedding.chunk_id).join(
+                Chunk,
+                ChunkEmbedding.chunk_id == Chunk.id,  # type: ignore[arg-type]
+            )
+            if dialect == "postgresql":
+                # Use JSONB containment operator for PostgreSQL
+                filtered_chunks_subquery = filtered_chunks_subquery.where(
+                    col(Chunk.metadata_).op("@>")(metadata_filter)
+                )
+            elif dialect == "duckdb":
+                # Use json_contains for DuckDB
+                filtered_chunks_subquery = filtered_chunks_subquery.where(
+                    func.json_contains(col(Chunk.metadata_), func.json(json.dumps(metadata_filter)))
+                )
+
+            # Second query: Calculate distance and similarity on filtered chunks
+            dist = ChunkEmbedding.embedding.distance(  # type: ignore[attr-defined]
+                query_embedding, metric=config.vector_search_distance_metric
+            ).label("dist")
+            sim = (1.0 - dist).label("sim")
+            top_vectors_query = (
+                select(ChunkEmbedding.chunk_id, sim)
+                .where(col(ChunkEmbedding.chunk_id).in_(filtered_chunks_subquery))
+                .order_by(dist)
+            )
+        else:
+            # No metadata filtering
+            dist = ChunkEmbedding.embedding.distance(  # type: ignore[attr-defined]
+                query_embedding, metric=config.vector_search_distance_metric
+            ).label("dist")
+            sim = (1.0 - dist).label("sim")
+            top_vectors_query = select(ChunkEmbedding.chunk_id, sim).order_by(dist)
 
         top_vectors = top_vectors_query.limit(num_hits).subquery()
         sim_norm = func.max(top_vectors.c.sim).label("sim_norm")
@@ -142,7 +122,6 @@ def keyword_search(
             query_escaped = re.sub(f"[{re.escape(string.punctuation)}]", " ", query)
             tsv_query = " | ".join(query_escaped.split())
 
-            # Build the SQL query
             base_sql = """
                 SELECT id as chunk_id,
                        ts_rank(to_tsvector('simple', body), to_tsquery('simple', :tsv_query)) as score
@@ -150,15 +129,11 @@ def keyword_search(
                 WHERE to_tsvector('simple', body) @@ to_tsquery('simple', :tsv_query)
             """
 
-            # Build parameters
             params = {"tsv_query": tsv_query, "limit": num_results}
+            if metadata_filter:
+                base_sql += " AND metadata @> :metadata_filter"
+                params["metadata_filter"] = json.dumps(metadata_filter)
 
-            # Add metadata filtering conditions dynamically
-            base_sql, params = _build_metadata_filter_sql(
-                base_sql, params, metadata_filter, dialect
-            )
-
-            # Complete the query
             base_sql += """
                 ORDER BY score DESC
                 LIMIT :limit;
@@ -177,11 +152,9 @@ def keyword_search(
             """
 
             params = {"query": query, "limit": num_results}
-
-            # Add metadata filtering conditions dynamically
-            base_sql, params = _build_metadata_filter_sql(
-                base_sql, params, metadata_filter, dialect
-            )
+            if metadata_filter:
+                base_sql += " AND json_contains(metadata, JSON(:metadata_filter))"
+                params["metadata_filter"] = json.dumps(metadata_filter)
 
             base_sql += """
                 ) sq
