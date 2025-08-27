@@ -126,14 +126,6 @@ def _get_tools(
                                     "The `query` string MUST resolve all pronouns to explicit nouns."
                                 ),
                             },
-                            "metadata_filter": {
-                                "type": "object",
-                                "description": (
-                                    "Optional metadata filter to restrict search to documents with specific metadata key-value pairs.\n"
-                                    'Example: {"user_id": "123", "category": "public"}'
-                                ),
-                                "additionalProperties": {"type": "string"},
-                            },
                         },
                         "required": ["query"],
                         "additionalProperties": False,
