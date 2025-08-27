@@ -68,8 +68,8 @@ def test_retrieve_context_with_metadata_filter(raglite_test_config: RAGLiteConfi
     """Test retrieving context with metadata filtering."""
     # Insert test documents with metadata.
     test_docs = [
-        Document.from_text("Python guide", filename="python.md", metadata={"user_id": "user_123"}),
-        Document.from_text("JavaScript guide", filename="js.md", metadata={"user_id": "user_456"}),
+        Document.from_text("Python guide", filename="python.md", user_id="user_123"),
+        Document.from_text("JavaScript guide", filename="js.md", user_id="user_456"),
     ]
     insert_documents(test_docs, config=raglite_test_config)
     # Test retrieve_context with metadata filter.

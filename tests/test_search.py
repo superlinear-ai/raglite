@@ -89,8 +89,8 @@ def test_search_with_metadata_filter(
     """Test searching with metadata filtering."""
     # Insert test documents with metadata.
     test_docs = [
-        Document.from_text("Python guide", filename="python.md", metadata={"user_id": "user_123"}),
-        Document.from_text("JavaScript guide", filename="js.md", metadata={"user_id": "user_456"}),
+        Document.from_text("Python guide", filename="python.md", user_id="user_123"),
+        Document.from_text("JavaScript guide", filename="js.md", user_id="user_456"),
     ]
     insert_documents(test_docs, config=raglite_test_config)
     # Test search with user_id filter.
@@ -117,7 +117,8 @@ def test_search_with_multiple_metadata_filters(
     test_doc = Document.from_text(
         "Python guide",
         filename="python.md",
-        metadata={"user_id": "user_123", "category": "programming"},
+        user_id="user_123",
+        category="programming",
     )
     insert_documents([test_doc], config=raglite_test_config)
     # Test with multiple metadata fields.
