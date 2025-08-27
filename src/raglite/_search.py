@@ -51,6 +51,11 @@ def vector_search(
         corrected_oversample = oversample * config.chunk_max_size / RAGLiteConfig.chunk_max_size
         num_hits = round(corrected_oversample) * max(num_results, 10)
 
+        dist = ChunkEmbedding.embedding.distance(  # type: ignore[attr-defined]
+            query_embedding, metric=config.vector_search_distance_metric
+        ).label("dist")
+        sim = (1.0 - dist).label("sim")
+
         if metadata_filter:
             dialect = session.get_bind().dialect.name
 
@@ -70,11 +75,7 @@ def vector_search(
                     func.json_contains(col(Chunk.metadata_), func.json(json.dumps(metadata_filter)))
                 )
 
-            # Second query: Calculate distance and similarity on filtered chunks
-            dist = ChunkEmbedding.embedding.distance(  # type: ignore[attr-defined]
-                query_embedding, metric=config.vector_search_distance_metric
-            ).label("dist")
-            sim = (1.0 - dist).label("sim")
+            # Second query: Distance of filtered chunks
             top_vectors_query = (
                 select(ChunkEmbedding.chunk_id, sim)
                 .where(col(ChunkEmbedding.chunk_id).in_(filtered_chunks_subquery))
@@ -82,10 +83,6 @@ def vector_search(
             )
         else:
             # No metadata filtering
-            dist = ChunkEmbedding.embedding.distance(  # type: ignore[attr-defined]
-                query_embedding, metric=config.vector_search_distance_metric
-            ).label("dist")
-            sim = (1.0 - dist).label("sim")
             top_vectors_query = select(ChunkEmbedding.chunk_id, sim).order_by(dist)
 
         top_vectors = top_vectors_query.limit(num_hits).subquery()
