@@ -6,6 +6,7 @@ import re
 import string
 from collections import defaultdict
 from itertools import groupby
+from typing import Any
 
 import numpy as np
 from langdetect import LangDetectException, detect
@@ -22,6 +23,97 @@ from raglite._database import (
 )
 from raglite._embed import embed_strings
 from raglite._typing import BasicSearchMethod, ChunkId, FloatVector
+
+# Constants
+METADATA_FILTER_THRESHOLD = 1000  # Maximum results for metadata-first filtering
+DISTANCE_FIRST_OVERSAMPLE = 5  # Oversampling factor for distance-first approach
+
+
+def _apply_metadata_filter(query: Any, metadata_filter: dict[str, str], dialect: str) -> Any:
+    """Apply metadata filter to a SQLModel query based on database dialect."""
+    if dialect == "postgresql":
+        return query.where(col(Chunk.metadata_).op("@>")(metadata_filter))
+    if dialect == "duckdb":
+        return query.where(
+            func.json_contains(col(Chunk.metadata_), func.json(json.dumps(metadata_filter)))
+        )
+    return query
+
+
+def _build_metadata_first_query(
+    metadata_filter: dict[str, str], dialect: str, sim: Any, dist: Any, num_hits: int
+) -> Any:
+    """Build query that filters metadata first, then computes distances."""
+    filtered_chunks_subquery = _apply_metadata_filter(
+        select(ChunkEmbedding.chunk_id).join(
+            Chunk,
+            ChunkEmbedding.chunk_id == Chunk.id,  # type: ignore[arg-type]
+        ),
+        metadata_filter,
+        dialect,
+    )
+    return (
+        select(ChunkEmbedding.chunk_id, sim, dist)
+        .where(col(ChunkEmbedding.chunk_id).in_(filtered_chunks_subquery))
+        .order_by(dist)
+        .limit(num_hits)
+        .subquery()
+    )
+
+
+def _build_distance_first_query(  # noqa: PLR0913
+    metadata_filter: dict[str, str],
+    dialect: str,
+    sim: Any,
+    dist: Any,
+    num_hits: int,
+    session: Session,
+) -> Any:
+    """Build query that orders by distance first, then filters metadata."""
+    # Get top candidates by distance first (use fixed oversampling factor)
+    top_by_distance = (
+        select(ChunkEmbedding.chunk_id, sim, dist)
+        .order_by(dist)
+        .limit(num_hits * DISTANCE_FIRST_OVERSAMPLE)
+        .subquery()
+    )
+
+    # Apply metadata filtering to the distance-ordered results and limit
+    return (
+        _apply_metadata_filter(
+            select(
+                top_by_distance.c.chunk_id, top_by_distance.c.sim, top_by_distance.c.dist
+            ).select_from(top_by_distance.join(Chunk, top_by_distance.c.chunk_id == Chunk.id)),
+            metadata_filter,
+            dialect,
+        )
+        .limit(num_hits)
+        .subquery()
+    )
+
+
+def _get_top_vectors_subquery(
+    metadata_filter: dict[str, str] | None, session: Session, sim: Any, dist: Any, num_hits: int
+) -> Any:
+    """Get the appropriate subquery based on metadata filter selectivity."""
+    if not metadata_filter:
+        return select(ChunkEmbedding.chunk_id, sim, dist).order_by(dist).limit(num_hits).subquery()
+
+    dialect = session.get_bind().dialect.name
+
+    # Check metadata selectivity
+    metadata_count = session.exec(
+        _apply_metadata_filter(
+            select(func.count(col(Chunk.id))).select_from(Chunk), metadata_filter, dialect
+        )
+    ).one()
+
+    if metadata_count <= METADATA_FILTER_THRESHOLD:
+        # Metadata filtering is selective - filter first
+        return _build_metadata_first_query(metadata_filter, dialect, sim, dist, num_hits)
+
+    # Metadata filtering not selective - distance first
+    return _build_distance_first_query(metadata_filter, dialect, sim, dist, num_hits, session)
 
 
 def vector_search(
@@ -56,36 +148,9 @@ def vector_search(
         ).label("dist")
         sim = (1.0 - dist).label("sim")
 
-        if metadata_filter:
-            dialect = session.get_bind().dialect.name
+        # Get the appropriate subquery based on metadata filtering strategy
+        top_vectors = _get_top_vectors_subquery(metadata_filter, session, sim, dist, num_hits)
 
-            # First subquery: Filter chunk_ids based on metadata
-            filtered_chunks_subquery = select(ChunkEmbedding.chunk_id).join(
-                Chunk,
-                ChunkEmbedding.chunk_id == Chunk.id,  # type: ignore[arg-type]
-            )
-            if dialect == "postgresql":
-                # Use JSONB containment operator for PostgreSQL
-                filtered_chunks_subquery = filtered_chunks_subquery.where(
-                    col(Chunk.metadata_).op("@>")(metadata_filter)
-                )
-            elif dialect == "duckdb":
-                # Use json_contains for DuckDB
-                filtered_chunks_subquery = filtered_chunks_subquery.where(
-                    func.json_contains(col(Chunk.metadata_), func.json(json.dumps(metadata_filter)))
-                )
-
-            # Second query: Distance of filtered chunks
-            top_vectors_query = (
-                select(ChunkEmbedding.chunk_id, sim)
-                .where(col(ChunkEmbedding.chunk_id).in_(filtered_chunks_subquery))
-                .order_by(dist)
-            )
-        else:
-            # No metadata filtering
-            top_vectors_query = select(ChunkEmbedding.chunk_id, sim).order_by(dist)
-
-        top_vectors = top_vectors_query.limit(num_hits).subquery()
         sim_norm = func.max(top_vectors.c.sim).label("sim_norm")
         statement = (
             select(top_vectors.c.chunk_id, sim_norm)
