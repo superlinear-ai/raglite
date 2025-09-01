@@ -24,9 +24,8 @@ from raglite._database import (
 from raglite._embed import embed_strings
 from raglite._typing import BasicSearchMethod, ChunkId, FloatVector
 
-# Constants
-METADATA_FILTER_THRESHOLD = 1000  # Maximum results for metadata-first filtering
-DISTANCE_FIRST_OVERSAMPLE = 5  # Oversampling factor for distance-first approach
+METADATA_FILTER_THRESHOLD = 1000  # Maximum results to use metadata-first filtering
+DISTANCE_FIRST_OVERSAMPLE = 5  # Oversampling factor when using distance-first filtering
 
 
 def _apply_metadata_filter(query: Any, metadata_filter: dict[str, str], dialect: str) -> Any:
@@ -61,16 +60,11 @@ def _build_metadata_first_query(
     )
 
 
-def _build_distance_first_query(  # noqa: PLR0913
-    metadata_filter: dict[str, str],
-    dialect: str,
-    sim: Any,
-    dist: Any,
-    num_hits: int,
-    session: Session,
+def _build_distance_first_query(
+    metadata_filter: dict[str, str], dialect: str, sim: Any, dist: Any, num_hits: int
 ) -> Any:
     """Build query that orders by distance first, then filters metadata."""
-    # Get top candidates by distance first (use fixed oversampling factor)
+    # Get top candidates by distance first
     top_by_distance = (
         select(ChunkEmbedding.chunk_id, sim, dist)
         .order_by(dist)
@@ -109,11 +103,11 @@ def _get_top_vectors_subquery(
     ).one()
 
     if metadata_count <= METADATA_FILTER_THRESHOLD:
-        # Metadata filtering is selective - filter first
+        # Metadata filtering is selective enough - filter first
         return _build_metadata_first_query(metadata_filter, dialect, sim, dist, num_hits)
 
-    # Metadata filtering not selective - distance first
-    return _build_distance_first_query(metadata_filter, dialect, sim, dist, num_hits, session)
+    # Metadata filtering is not selective enough - distance first
+    return _build_distance_first_query(metadata_filter, dialect, sim, dist, num_hits)
 
 
 def vector_search(
