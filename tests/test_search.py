@@ -121,7 +121,3 @@ def test_search_metadata_filter(
     assert len(chunk_ids_no_match) == len(scores_no_match) == 0, (
         "Expected no results when filtering for Mathematics papers"
     )
-    assert all(isinstance(chunk_id, str) for chunk_id in chunk_ids_no_match)
-    assert all(isinstance(score, float) for score in scores_no_match)
-    assert all(isinstance(chunk_id, str) for chunk_id in chunk_ids_no_match)
-    assert all(isinstance(score, float) for score in scores_no_match)
