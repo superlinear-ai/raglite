@@ -25,7 +25,6 @@ from raglite._embed import embed_strings
 from raglite._typing import BasicSearchMethod, ChunkId, FloatVector
 
 METADATA_FILTER_THRESHOLD = 1000  # Maximum results to use metadata-first filtering
-DISTANCE_FIRST_OVERSAMPLE = 5  # Oversampling factor when using distance-first filtering
 
 
 def _apply_metadata_filter(query: Any, metadata_filter: dict[str, str], dialect: str) -> Any:
@@ -68,7 +67,7 @@ def _build_distance_first_query(
     top_by_distance = (
         select(ChunkEmbedding.chunk_id, sim, dist)
         .order_by(dist)
-        .limit(num_hits * DISTANCE_FIRST_OVERSAMPLE)
+        .limit(METADATA_FILTER_THRESHOLD)
         .subquery()
     )
 
@@ -82,6 +81,7 @@ def _build_distance_first_query(
             dialect,
         )
         .limit(num_hits)
+        .order_by(top_by_distance.c.dist)
         .subquery()
     )
 
