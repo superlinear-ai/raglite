@@ -24,7 +24,10 @@ from raglite._database import (
 from raglite._embed import embed_strings
 from raglite._typing import BasicSearchMethod, ChunkId, FloatVector
 
-METADATA_FILTER_THRESHOLD = 1000  # Maximum results to use metadata-first filtering
+METADATA_FILTER_THRESHOLD = 100000  # Maximum results to use metadata-first filtering
+NUM_ENTRIES_DISTANCE_FIRST = (
+    1000000  # Max number of returned entries when using distance-first filtering
+)
 
 
 def _apply_metadata_filter(query: Any, metadata_filter: dict[str, str], dialect: str) -> Any:
@@ -67,7 +70,7 @@ def _build_distance_first_query(
     top_by_distance = (
         select(ChunkEmbedding.chunk_id, sim, dist)
         .order_by(dist)
-        .limit(METADATA_FILTER_THRESHOLD)
+        .limit(NUM_ENTRIES_DISTANCE_FIRST)
         .subquery()
     )
 
@@ -98,7 +101,12 @@ def _get_top_vectors_subquery(
     # Check metadata selectivity
     metadata_count = session.exec(
         _apply_metadata_filter(
-            select(func.count(col(Chunk.id))).select_from(Chunk), metadata_filter, dialect
+            select(func.count(col(ChunkEmbedding.chunk_id))).join(
+                Chunk,
+                ChunkEmbedding.chunk_id == Chunk.id,  # type: ignore[arg-type]
+            ),
+            metadata_filter,
+            dialect,
         )
     ).one()
 
