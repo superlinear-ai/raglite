@@ -83,8 +83,8 @@ def _build_distance_first_query(
             metadata_filter,
             dialect,
         )
-        .limit(num_hits)
         .order_by(top_by_distance.c.dist)
+        .limit(num_hits)
         .subquery()
     )
 
