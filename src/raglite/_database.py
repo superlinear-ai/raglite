@@ -541,14 +541,14 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
     oversample = round(4 * config.chunk_max_size / RAGLiteConfig.chunk_max_size)
     ef_search = (10 * 4) * oversample  # This is (# reranked results) * oversampling factor.
     if db_backend == "postgresql":
-        # Create a keyword search index with `tsvector` and a vector search index with `pgvector`.
         with Session(engine) as session:
+            # Create a keyword search index with `tsvector`
             session.execute(
                 text("""
                 CREATE INDEX IF NOT EXISTS keyword_search_chunk_index ON chunk USING GIN (to_tsvector('simple', body));
-                CREATE INDEX IF NOT EXISTS metadata_gin_index ON chunk USING GIN (metadata);
                 """)
             )
+            # Create a vector search index with `pgvector`
             metrics = {"cosine": "cosine", "dot": "ip", "l1": "l1", "l2": "l2"}
             create_vector_index_sql = f"""
                 CREATE INDEX IF NOT EXISTS vector_search_chunk_index ON chunk_embedding
@@ -565,6 +565,25 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
             if pgvector_version and version.parse(pgvector_version) >= version.parse("0.8.0"):
                 create_vector_index_sql += f"\nSET hnsw.iterative_scan = {'relaxed_order' if config.reranker else 'strict_order'};"
             session.execute(text(create_vector_index_sql))
+            # Create a metadata search index
+            metadata_column_type = session.execute(
+                text("""
+                SELECT data_type
+                FROM information_schema.columns
+                WHERE table_name = 'chunk' AND column_name = 'metadata'
+                """)
+            ).scalar_one_or_none()
+            if metadata_column_type == "json":
+                session.execute(
+                    text("""
+                    ALTER TABLE chunk ALTER COLUMN metadata TYPE jsonb USING metadata::jsonb;
+                    """)
+                )
+            session.execute(
+                text("""
+                CREATE INDEX IF NOT EXISTS metadata_gin_index ON chunk USING GIN (metadata jsonb_path_ops);
+                """)
+            )
             session.commit()
     elif db_backend == "duckdb":
         with Session(engine) as session:
