@@ -24,6 +24,8 @@ IndexId = str
 
 DistanceMetric = Literal["cosine", "dot", "l1", "l2"]
 
+MetadataFilter = dict[str, str]
+
 FloatMatrix = np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]
 FloatVector = np.ndarray[tuple[int], np.dtype[np.floating[Any]]]
 IntVector = np.ndarray[tuple[int], np.dtype[np.intp]]
@@ -35,7 +37,7 @@ class BasicSearchMethod(Protocol):
         query: str,
         *,
         num_results: int,
-        metadata_filter: dict[str, str] | None = None,
+        metadata_filter: MetadataFilter | None = None,
         config: "RAGLiteConfig | None" = None,
     ) -> tuple[list[ChunkId], list[float]]: ...
 
@@ -46,7 +48,7 @@ class SearchMethod(Protocol):
         query: str,
         *,
         num_results: int,
-        metadata_filter: dict[str, str] | None = None,
+        metadata_filter: MetadataFilter | None = None,
         config: "RAGLiteConfig | None" = None,
     ) -> tuple[list[ChunkId], list[float]] | list["Chunk"] | list["ChunkSpan"]: ...
 

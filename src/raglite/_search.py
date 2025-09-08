@@ -22,7 +22,7 @@ from raglite._database import (
     create_database_engine,
 )
 from raglite._embed import embed_strings
-from raglite._typing import BasicSearchMethod, ChunkId, FloatVector
+from raglite._typing import BasicSearchMethod, ChunkId, FloatVector, MetadataFilter
 
 METADATA_FILTER_THRESHOLD = 100000  # Maximum results to use metadata-first filtering
 NUM_ENTRIES_DISTANCE_FIRST = (
@@ -30,7 +30,7 @@ NUM_ENTRIES_DISTANCE_FIRST = (
 )
 
 
-def _apply_metadata_filter(query: Any, metadata_filter: dict[str, str], dialect: str) -> Any:
+def _apply_metadata_filter(query: Any, metadata_filter: MetadataFilter, dialect: str) -> Any:
     """Apply metadata filter to a SQLModel query based on database dialect."""
     if dialect == "postgresql":
         return query.where(col(Chunk.metadata_).op("@>")(metadata_filter))
@@ -42,7 +42,7 @@ def _apply_metadata_filter(query: Any, metadata_filter: dict[str, str], dialect:
 
 
 def _build_metadata_first_query(
-    metadata_filter: dict[str, str], dialect: str, sim: Any, dist: Any, num_hits: int
+    metadata_filter: MetadataFilter, dialect: str, sim: Any, dist: Any, num_hits: int
 ) -> Any:
     """Build query that filters metadata first, then computes distances."""
     filtered_chunks_subquery = _apply_metadata_filter(
@@ -63,7 +63,7 @@ def _build_metadata_first_query(
 
 
 def _build_distance_first_query(
-    metadata_filter: dict[str, str], dialect: str, sim: Any, dist: Any, num_hits: int
+    metadata_filter: MetadataFilter, dialect: str, sim: Any, dist: Any, num_hits: int
 ) -> Any:
     """Build query that orders by distance first, then filters metadata."""
     # Get top candidates by distance first
@@ -90,7 +90,7 @@ def _build_distance_first_query(
 
 
 def _get_top_vectors_subquery(
-    metadata_filter: dict[str, str] | None, session: Session, sim: Any, dist: Any, num_hits: int
+    metadata_filter: MetadataFilter | None, session: Session, sim: Any, dist: Any, num_hits: int
 ) -> Any:
     """Get the appropriate subquery based on metadata filter selectivity."""
     if not metadata_filter:
@@ -123,7 +123,7 @@ def vector_search(
     *,
     num_results: int = 3,
     oversample: int = 4,
-    metadata_filter: dict[str, str] | None = None,
+    metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig | None = None,
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks using ANN vector search."""
@@ -170,7 +170,7 @@ def keyword_search(
     query: str,
     *,
     num_results: int = 3,
-    metadata_filter: dict[str, str] | None = None,
+    metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig | None = None,
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks using BM25 keyword search."""
@@ -267,7 +267,7 @@ def hybrid_search(  # noqa: PLR0913
     oversample: int = 2,
     vector_search_weight: float = 0.75,
     keyword_search_weight: float = 0.25,
-    metadata_filter: dict[str, str] | None = None,
+    metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig | None = None,
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks by combining ANN vector search with BM25 keyword search."""
@@ -410,7 +410,7 @@ def search_and_rerank_chunks(  # noqa: PLR0913
     oversample: int = 4,
     search: BasicSearchMethod = hybrid_search,
     config: RAGLiteConfig | None = None,
-    metadata_filter: dict[str, str] | None = None,
+    metadata_filter: MetadataFilter | None = None,
 ) -> list[Chunk]:
     """Search and rerank chunks."""
     chunk_ids, _ = search(
@@ -428,7 +428,7 @@ def search_and_rerank_chunk_spans(  # noqa: PLR0913
     neighbors: tuple[int, ...] | None = (-1, 1),
     search: BasicSearchMethod = hybrid_search,
     config: RAGLiteConfig | None = None,
-    metadata_filter: dict[str, str] | None = None,
+    metadata_filter: MetadataFilter | None = None,
 ) -> list[ChunkSpan]:
     """Search and rerank chunks, and then collate into chunk spans."""
     chunk_ids, _ = search(

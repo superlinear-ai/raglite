@@ -11,7 +11,7 @@ from platformdirs import user_data_dir
 from sqlalchemy.engine import URL
 
 from raglite._lazy_llama import llama_supports_gpu_offload
-from raglite._typing import ChunkId, SearchMethod
+from raglite._typing import ChunkId, MetadataFilter, SearchMethod
 
 # Suppress rerankers output on import until [1] is fixed.
 # [1] https://github.com/AnswerDotAI/rerankers/issues/36
@@ -29,7 +29,7 @@ def _vector_search(
     query: str,
     *,
     num_results: int = 8,
-    metadata_filter: dict[str, str] | None = None,
+    metadata_filter: MetadataFilter | None = None,
     config: "RAGLiteConfig | None" = None,
 ) -> tuple[list[ChunkId], list[float]]:
     from raglite._search import vector_search
