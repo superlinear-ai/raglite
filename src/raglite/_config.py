@@ -11,7 +11,13 @@ from platformdirs import user_data_dir
 from sqlalchemy.engine import URL
 
 from raglite._lazy_llama import llama_supports_gpu_offload
-from raglite._typing import ChunkId, MetadataFilter, SearchMethod
+from raglite._typing import (
+    ChunkId,
+    ChunkMetadataFunction,
+    DocumentMetadataFunction,
+    MetadataFilter,
+    SearchMethod,
+)
 
 # Suppress rerankers output on import until [1] is fixed.
 # [1] https://github.com/AnswerDotAI/rerankers/issues/36
@@ -80,3 +86,11 @@ class RAGLiteConfig:
     # Search config: you can pick any search method that returns (list[ChunkId], list[float]),
     # list[Chunk], or list[ChunkSpan].
     search_method: SearchMethod = field(default=_vector_search, compare=False)
+    # Function applied at document loading that outputs
+    # a dictionary of metadata tags to be added to the document.
+    # Takes (content: str, metadata: dict[str, str]) -> dict[str, str].
+    document_metadata_function: DocumentMetadataFunction | None = None
+    # Function applied on chunks after they have been built that
+    # outputs a dictionary of metadata tags to be added to the chunk.
+    # Takes (content: str, metadata: dict[str, str]) -> dict[str, str].
+    chunk_metadata_function: ChunkMetadataFunction | None = None

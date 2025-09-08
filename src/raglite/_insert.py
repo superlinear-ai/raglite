@@ -25,6 +25,11 @@ def _create_chunk_records(
     """Process chunks into chunk and chunk embedding records."""
     # Partition the document into chunks.
     assert document.content is not None
+    if config.document_metadata_function is not None:
+        generated_metadata = config.document_metadata_function(
+            content=document.content, metadata=document.metadata_
+        )
+        document.metadata_.update(generated_metadata)
     sentences = split_sentences(document.content, max_len=config.chunk_max_size)
     chunklets = split_chunklets(sentences, max_size=config.chunk_max_size)
     chunklet_embeddings = embed_strings(chunklets, config=config)
@@ -37,8 +42,14 @@ def _create_chunk_records(
     chunk_records, headings = [], ""
     for i, chunk in enumerate(chunks):
         # Create and append the chunk record.
+        chunk_metadata = dict(document.metadata_)
+        if config.chunk_metadata_function is not None:
+            generated_metadata = config.chunk_metadata_function(
+                document.content, metadata=document.metadata_
+            )
+            chunk_metadata.update(generated_metadata)
         record = Chunk.from_body(
-            document=document, index=i, body=chunk, headings=headings, **document.metadata_
+            document=document, index=i, body=chunk, headings=headings, **chunk_metadata
         )
         chunk_records.append(record)
         # Update the Markdown headings with those of this chunk.
