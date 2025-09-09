@@ -565,7 +565,7 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
             if pgvector_version and version.parse(pgvector_version) >= version.parse("0.8.0"):
                 create_vector_index_sql += f"\nSET hnsw.iterative_scan = {'relaxed_order' if config.reranker else 'strict_order'};"
             session.execute(text(create_vector_index_sql))
-            # Create a metadata search index
+            # Create a metadata search index if the metadata column is JSONB.
             metadata_column_type = session.execute(
                 text("""
                 SELECT data_type
@@ -573,17 +573,12 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
                 WHERE table_name = 'chunk' AND column_name = 'metadata'
                 """)
             ).scalar_one_or_none()
-            if metadata_column_type == "json":
+            if metadata_column_type == "jsonb":
                 session.execute(
                     text("""
-                    ALTER TABLE chunk ALTER COLUMN metadata TYPE jsonb USING metadata::jsonb;
+                    CREATE INDEX IF NOT EXISTS metadata_gin_index ON chunk USING GIN (metadata jsonb_path_ops);
                     """)
                 )
-            session.execute(
-                text("""
-                CREATE INDEX IF NOT EXISTS metadata_gin_index ON chunk USING GIN (metadata jsonb_path_ops);
-                """)
-            )
             session.commit()
     elif db_backend == "duckdb":
         with Session(engine) as session:

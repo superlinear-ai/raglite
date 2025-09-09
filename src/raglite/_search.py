@@ -10,6 +10,7 @@ from typing import Any
 
 import numpy as np
 from langdetect import LangDetectException, detect
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import joinedload
 from sqlmodel import Session, and_, col, func, or_, select, text
 
@@ -74,7 +75,10 @@ def vector_search(
             # Helper function, using dialect and metadata_filter from enclosing scope
             def _apply_metadata_filter(query_builder: Any) -> Any:
                 if dialect == "postgresql":
-                    return query_builder.where(col(Chunk.metadata_).op("@>")(metadata_filter))
+                    # Always cast to JSONB before using @> operator
+                    return query_builder.where(
+                        col(Chunk.metadata_).cast(JSONB).op("@>")(metadata_filter)  # type: ignore[attr-defined]
+                    )
                 if dialect == "duckdb":
                     return query_builder.where(
                         func.json_contains(
@@ -172,7 +176,8 @@ def keyword_search(
 
             params = {"tsv_query": tsv_query, "limit": num_results}
             if metadata_filter:
-                base_sql += " AND metadata @> :metadata_filter"
+                # Always cast to JSONB before using @> operator
+                base_sql += " AND metadata::jsonb @> :metadata_filter"
                 params["metadata_filter"] = json.dumps(metadata_filter)
 
             base_sql += """
