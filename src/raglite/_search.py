@@ -25,19 +25,16 @@ from raglite._database import (
 from raglite._embed import embed_strings
 from raglite._typing import BasicSearchMethod, ChunkId, FloatVector, MetadataFilter
 
-METADATA_FILTER_THRESHOLD = 100000  # Maximum results to use metadata-first filtering
-NUM_ENTRIES_DISTANCE_FIRST = (
-    1000000  # Max number of returned entries when using distance-first filtering
-)
 
-
-def vector_search(
+def vector_search(  # noqa: PLR0913
     query: str | FloatVector,
     *,
     num_results: int = 3,
     oversample: int = 4,
     metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig | None = None,
+    metadata_filter_threshold: int = 100000,
+    num_entries_distance_first: int = 1000000,
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks using ANN vector search."""
     # Read the config.
@@ -96,7 +93,7 @@ def vector_search(
             )
             metadata_count = session.exec(metadata_count_query).one()
 
-            if metadata_count <= METADATA_FILTER_THRESHOLD:
+            if metadata_count <= metadata_filter_threshold:
                 # Metadata filtering is selective enough - filter first, then compute distances
                 filtered_chunks_subquery = _apply_metadata_filter(
                     select(ChunkEmbedding.chunk_id).join(
@@ -116,7 +113,7 @@ def vector_search(
                 top_by_distance = (
                     select(ChunkEmbedding.chunk_id, sim, dist)
                     .order_by(dist)
-                    .limit(NUM_ENTRIES_DISTANCE_FIRST)
+                    .limit(num_entries_distance_first)
                     .subquery()
                 )
                 top_vectors = (
