@@ -2,7 +2,7 @@
 
 import io
 import pickle
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 import numpy as np
@@ -25,7 +25,7 @@ IndexId = str
 DistanceMetric = Literal["cosine", "dot", "l1", "l2"]
 
 MetadataValue = str | float | bool | list[str] | list[float] | list[bool]
-MetadataFilter = dict[str, MetadataValue]
+MetadataFilter = Mapping[str, MetadataValue]
 
 FloatMatrix = np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]
 FloatVector = np.ndarray[tuple[int], np.dtype[np.floating[Any]]]
