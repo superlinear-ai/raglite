@@ -125,7 +125,7 @@ def test_search_metadata_filter(
 
     # Test distance-first filtering by setting a very low threshold
     if search_method == vector_search:
-        chunk_ids_distance, scores_distance = vector_search(
+        chunk_ids_distance, _ = vector_search(
             query,
             num_results=num_results,
             metadata_filter=metadata_filter,
