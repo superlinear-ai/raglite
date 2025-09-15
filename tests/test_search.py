@@ -88,18 +88,19 @@ def test_search_metadata_filter(
     """Test searching with metadata filtering that should return results."""
     query = "What does it mean for two events to be simultaneous?"
     num_results = 5
-    # Filter for Physics paper (should match Einstein's special relativity paper)
     metadata_filter = {"type": "Paper", "topic": "Physics"}
+
+    # Verify basic properties
     chunk_ids, scores = search_method(
         query, num_results=num_results, metadata_filter=metadata_filter, config=raglite_test_config
     )
-    # Assert basic properties of the results
     assert len(chunk_ids) == len(scores)
     assert len(chunk_ids) > 0, "Expected results when filtering for Physics papers"
     assert len(chunk_ids) <= num_results, "Should not exceed requested number of results"
     assert all(isinstance(chunk_id, str) for chunk_id in chunk_ids)
     assert all(isinstance(score, float) for score in scores)
-    # Retrieve and verify the chunks match the metadata filter
+
+    # Verify chunks match metadata filter
     chunks = retrieve_chunks(chunk_ids, config=raglite_test_config)
     assert all(isinstance(chunk, Chunk) for chunk in chunks)
     for chunk in chunks:
@@ -110,14 +111,29 @@ def test_search_metadata_filter(
             f"Expected topic='Physics', got {chunk.metadata_.get('topic')}"
         )
 
-    # Test with different topic that should return no results
-    metadata_filter_no_match = {"type": "Paper", "topic": "Mathematics"}
-    chunk_ids_no_match, scores_no_match = search_method(
+    # Test filtering for a different topic that should return no results
+    metadata_filter_empty = {"type": "Paper", "topic": "Mathematics"}
+    chunk_ids_empty, scores_empty = search_method(
         query,
         num_results=num_results,
-        metadata_filter=metadata_filter_no_match,
+        metadata_filter=metadata_filter_empty,
         config=raglite_test_config,
     )
-    assert len(chunk_ids_no_match) == len(scores_no_match) == 0, (
+    assert len(chunk_ids_empty) == len(scores_empty) == 0, (
         "Expected no results when filtering for Mathematics papers"
     )
+
+    # Test distance-first filtering by setting a very low threshold
+    if search_method == vector_search:
+        chunk_ids_distance, scores_distance = vector_search(
+            query,
+            num_results=num_results,
+            metadata_filter=metadata_filter,
+            config=raglite_test_config,
+            metadata_filter_threshold=1,  # Very low threshold forces distance-first
+        )
+        assert len(chunk_ids_distance) > 0, "Expected results with distance-first filtering"
+        chunks_distance = retrieve_chunks(chunk_ids_distance, config=raglite_test_config)
+        for chunk in chunks_distance:
+            assert chunk.metadata_.get("type") == "Paper"
+            assert chunk.metadata_.get("topic") == "Physics"
