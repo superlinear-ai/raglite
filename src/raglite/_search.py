@@ -109,7 +109,7 @@ def vector_search(  # noqa: PLR0913
                     .subquery()
                 )
             else:
-                # Metadata filtering is not selective enough - distance first, then filter metadata
+                # Metadata filter produces many results: first order by distance, then filter.
                 top_by_distance = (
                     select(ChunkEmbedding.chunk_id, sim, dist)
                     .order_by(dist)
