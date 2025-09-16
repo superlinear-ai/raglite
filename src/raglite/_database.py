@@ -548,7 +548,7 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
                 CREATE INDEX IF NOT EXISTS keyword_search_chunk_index ON chunk USING GIN (to_tsvector('simple', body));
                 """)
             )
-            # Create a vector search index with `pgvector`
+            # Create a vector search index with `pgvector`.
             metrics = {"cosine": "cosine", "dot": "ip", "l1": "l1", "l2": "l2"}
             create_vector_index_sql = f"""
                 CREATE INDEX IF NOT EXISTS vector_search_chunk_index ON chunk_embedding
