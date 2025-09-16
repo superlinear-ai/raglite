@@ -94,7 +94,7 @@ def vector_search(  # noqa: PLR0913
             metadata_count = session.exec(metadata_count_query).one()
 
             if metadata_count <= metadata_filter_threshold:
-                # Metadata filtering is selective enough - filter first, then compute distances
+                # Metadata filter produces few results: filter first, then order by distance.
                 filtered_chunks_subquery = _apply_metadata_filter(
                     select(ChunkEmbedding.chunk_id).join(
                         Chunk,
