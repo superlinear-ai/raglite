@@ -84,7 +84,7 @@ def vector_search(  # noqa: PLR0913
                     )
                 return query_builder
 
-            # Check metadata selectivity to decide on filtering strategy
+            # Count how many results match the given metadata filter.
             metadata_count_query = _apply_metadata_filter(
                 select(func.count(col(ChunkEmbedding.chunk_id))).join(
                     Chunk,
