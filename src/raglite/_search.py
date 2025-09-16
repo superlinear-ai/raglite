@@ -62,7 +62,7 @@ def vector_search(  # noqa: PLR0913
 
         # Build the appropriate subquery based on metadata filtering strategy
         if not metadata_filter:
-            # No metadata filter - just get top results by distance
+            # No metadata filter: use an index to get the top results by distance.
             top_vectors = (
                 select(ChunkEmbedding.chunk_id, sim, dist).order_by(dist).limit(num_hits).subquery()
             )
@@ -84,7 +84,7 @@ def vector_search(  # noqa: PLR0913
                     )
                 return query_builder
 
-            # Check metadata selectivity to decide on filtering strategy
+            # Count how many results match the given metadata filter.
             metadata_count_query = _apply_metadata_filter(
                 select(func.count(col(ChunkEmbedding.chunk_id))).join(
                     Chunk,
@@ -94,7 +94,7 @@ def vector_search(  # noqa: PLR0913
             metadata_count = session.exec(metadata_count_query).one()
 
             if metadata_count <= metadata_filter_threshold:
-                # Metadata filtering is selective enough - filter first, then compute distances
+                # Metadata filter produces few results: filter first, then order by distance.
                 filtered_chunks_subquery = _apply_metadata_filter(
                     select(ChunkEmbedding.chunk_id).join(
                         Chunk,
@@ -109,7 +109,7 @@ def vector_search(  # noqa: PLR0913
                     .subquery()
                 )
             else:
-                # Metadata filtering is not selective enough - distance first, then filter metadata
+                # Metadata filter produces many results: first order by distance, then filter.
                 top_by_distance = (
                     select(ChunkEmbedding.chunk_id, sim, dist)
                     .order_by(dist)
