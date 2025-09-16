@@ -240,32 +240,29 @@ class LlamaCppPythonLLM(CustomLLM):
             choices = chunk.get("choices")
             if not choices:
                 continue
-            delta: dict[str, Any] = choices[0].get("delta", {})
-            # Ensure text is a str (TypedDict requires 'text' to be a str)
-            text_any = delta.get("content")
-            text: str = "" if text_any is None else str(text_any)
-            tool_calls = delta.get("tool_calls")
+            text = choices[0].get("delta", {}).get("content", None)
+            tool_calls = choices[0].get("delta", {}).get("tool_calls", None)
             tool_use = (
                 ChatCompletionToolCallChunk(
-                    id=tool_calls[0]["id"],
+                    id=tool_calls[0]["id"],  # type: ignore[index]
                     type="function",
                     function=ChatCompletionToolCallFunctionChunk(
-                        name=tool_calls[0]["function"]["name"],
-                        arguments=tool_calls[0]["function"]["arguments"],
+                        name=tool_calls[0]["function"]["name"],  # type: ignore[index]
+                        arguments=tool_calls[0]["function"]["arguments"],  # type: ignore[index]
                     ),
-                    index=tool_calls[0]["index"],
+                    index=tool_calls[0]["index"],  # type: ignore[index]
                 )
                 if tool_calls
                 else None
             )
             finish_reason = choices[0].get("finish_reason")
             litellm_generic_streaming_chunk = GenericStreamingChunk(
-                text=text,
+                text=text,  # type: ignore[typeddict-item]
                 tool_use=tool_use,
                 is_finished=bool(finish_reason),
-                finish_reason=finish_reason,
+                finish_reason=finish_reason,  # type: ignore[typeddict-item]
                 usage=None,
-                index=choices[0].get("index"),
+                index=choices[0].get("index"),  # type: ignore[typeddict-item]
                 provider_specific_fields={
                     "id": chunk.get("id"),
                     "model": chunk.get("model"),
