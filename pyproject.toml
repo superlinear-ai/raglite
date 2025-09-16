@@ -81,7 +81,7 @@ llama-cpp-python = ["llama-cpp-python (>=0.3.9)"]
 # Markdown conversion:
 pandoc = ["pypandoc-binary (>=1.13)"]
 # Evaluation:
-ragas = ["pandas (>=2.1.1)", "ragas (>=0.1.12)"]
+ragas = ["pandas (>=2.1.1)", "ragas (>=0.3.3)"]
 # Benchmarking:
 bench = [
   "faiss-cpu (>=1.11.0)",
