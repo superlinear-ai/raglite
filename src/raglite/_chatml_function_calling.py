@@ -198,30 +198,33 @@ def _convert_text_completion_logprobs_to_chat(
 ) -> llama_types.ChatCompletionLogprobs | None:
     if logprobs is None:
         return None
-    return {
-        "content": [
-            {
-                "token": token,
-                "bytes": None,
-                "logprob": logprob,  # type: ignore[typeddict-item]
-                "top_logprobs": [
-                    {
-                        "token": top_token,
-                        "logprob": top_logprob,
-                        "bytes": None,
-                    }
-                    for top_token, top_logprob in (top_logprobs or {}).items()
-                ],
-            }
-            for (token, logprob, top_logprobs) in zip(
-                logprobs["tokens"],
-                logprobs["token_logprobs"],
-                logprobs["top_logprobs"],
-                strict=False,
-            )
-        ],
-        "refusal": None,
-    }
+    return cast(
+        "llama_types.ChatCompletionLogprobs",
+        {
+            "content": [
+                {
+                    "token": token,
+                    "bytes": None,
+                    "logprob": logprob,
+                    "top_logprobs": [
+                        {
+                            "token": top_token,
+                            "logprob": top_logprob,
+                            "bytes": None,
+                        }
+                        for top_token, top_logprob in (top_logprobs or {}).items()
+                    ],
+                }
+                for (token, logprob, top_logprobs) in zip(
+                    logprobs["tokens"],
+                    logprobs["token_logprobs"],
+                    logprobs["top_logprobs"],
+                    strict=False,
+                )
+            ],
+            "refusal": None,
+        },
+    )
 
 
 def chatml_function_calling_with_streaming(
