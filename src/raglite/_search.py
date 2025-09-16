@@ -62,7 +62,7 @@ def vector_search(  # noqa: PLR0913
 
         # Build the appropriate subquery based on metadata filtering strategy
         if not metadata_filter:
-            # No metadata filter - just get top results by distance
+            # No metadata filter: use an index to get the top results by distance.
             top_vectors = (
                 select(ChunkEmbedding.chunk_id, sim, dist).order_by(dist).limit(num_hits).subquery()
             )
