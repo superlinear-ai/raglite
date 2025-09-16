@@ -542,7 +542,7 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
     ef_search = (10 * 4) * oversample  # This is (# reranked results) * oversampling factor.
     if db_backend == "postgresql":
         with Session(engine) as session:
-            # Create a keyword search index with `tsvector`
+            # Create a keyword search index with `tsvector`.
             session.execute(
                 text("""
                 CREATE INDEX IF NOT EXISTS keyword_search_chunk_index ON chunk USING GIN (to_tsvector('simple', body));
