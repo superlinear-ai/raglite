@@ -98,7 +98,7 @@ def _convert_chunks_to_completion(
                 "text": text,
                 "index": 0,
                 "logprobs": logprobs,  # TODO: Improve accumulation of logprobs
-                "finish_reason": finish_reason,  # type: ignore[typeddict-item]
+                "finish_reason": finish_reason,
             }
         ],
     }
@@ -152,7 +152,7 @@ def _stream_tool_calls(
         chunks: List[llama_types.CreateCompletionResponse] = []
         chat_chunks = llama_chat_format._convert_completion_to_chat_function(  # noqa: SLF001
             tool_name,
-            _accumulate_chunks(completion_or_chunks, chunks),  # type: ignore[arg-type]
+            _accumulate_chunks(completion_or_chunks, chunks),
             stream=True,
         )
         for chat_chunk in chat_chunks:
@@ -198,12 +198,12 @@ def _convert_text_completion_logprobs_to_chat(
 ) -> llama_types.ChatCompletionLogprobs | None:
     if logprobs is None:
         return None
-    return {
+    result = {
         "content": [
             {
                 "token": token,
                 "bytes": None,
-                "logprob": logprob,  # type: ignore[typeddict-item]
+                "logprob": logprob,
                 "top_logprobs": [
                     {
                         "token": top_token,
@@ -222,6 +222,7 @@ def _convert_text_completion_logprobs_to_chat(
         ],
         "refusal": None,
     }
+    return cast("llama_types.ChatCompletionLogprobs", result)
 
 
 def chatml_function_calling_with_streaming(
@@ -249,7 +250,7 @@ def chatml_function_calling_with_streaming(
     mirostat_eta: float = 0.1,
     model: str | None = None,
     logits_processor: llama.LogitsProcessorList | None = None,
-    grammar: llama.LlamaGrammar | None = None,  # type: ignore[name-defined]
+    grammar: llama.LlamaGrammar | None = None,
     logprobs: bool | None = None,
     top_logprobs: int | None = None,
     **kwargs: Any,
@@ -385,7 +386,7 @@ def chatml_function_calling_with_streaming(
         return llama_chat_format._convert_completion_to_chat(  # noqa: SLF001
             llama.create_completion(
                 prompt=prompt,
-                **completion_kwargs,  # type: ignore[arg-type]
+                **completion_kwargs,
                 logprobs=top_logprobs if logprobs else None,
             ),
             stream=stream,
@@ -422,7 +423,7 @@ def chatml_function_calling_with_streaming(
         "llama_types.CreateCompletionResponse",
         llama.create_completion(
             prompt=prompt,
-            **{  # type: ignore[arg-type]
+            **{
                 **completion_kwargs,
                 "temperature": 0,
                 "stream": False,
@@ -454,7 +455,7 @@ def chatml_function_calling_with_streaming(
         return llama_chat_format._convert_completion_to_chat(  # noqa: SLF001
             llama.create_completion(
                 prompt=prompt,
-                **completion_kwargs,  # type: ignore[arg-type]
+                **completion_kwargs,
                 logprobs=top_logprobs if logprobs else None,
             ),
             stream=stream,
@@ -491,7 +492,7 @@ def chatml_function_calling_with_streaming(
             )
         completion_or_chunks = llama.create_completion(
             prompt=prompt,
-            **{  # type: ignore[arg-type]
+            **{
                 **completion_kwargs,
                 "max_tokens": None,
                 "grammar": grammar,
@@ -507,7 +508,7 @@ def chatml_function_calling_with_streaming(
             "llama_types.CreateCompletionResponse",
             llama.create_completion(
                 prompt=prompt,
-                **{  # type: ignore[arg-type]
+                **{
                     **completion_kwargs,
                     "temperature": 0,
                     "stream": False,
