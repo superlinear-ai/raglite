@@ -573,7 +573,7 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
                 WHERE table_name = 'chunk' AND column_name = 'metadata'
                 """)
             ).scalar_one_or_none()
-            if metadata_column_type == "jsonb":
+            if metadata_column_type and metadata_column_type.lower() == "jsonb":
                 session.execute(
                     text("""
                     CREATE INDEX IF NOT EXISTS metadata_gin_index ON chunk USING GIN (metadata jsonb_path_ops);
