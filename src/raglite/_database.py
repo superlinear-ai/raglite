@@ -14,7 +14,6 @@ import numpy as np
 from markdown_it import MarkdownIt
 from packaging import version
 from pydantic import ConfigDict, PrivateAttr
-from sqlalchemy import TypeDecorator
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.exc import ProgrammingError
@@ -45,22 +44,7 @@ from raglite._typing import (
     PickledObject,
 )
 
-
-def _metadata_column_type() -> type[TypeDecorator[Any]]:
-    """Get the appropriate metadata column type based on database dialect."""
-    # We can't determine dialect at import time, so we'll use a callable
-    # that gets resolved when the table is created
-
-    class MetadataJSON(TypeDecorator[Any]):
-        impl = JSON
-        cache_ok = True
-
-        def load_dialect_impl(self, dialect: Any) -> Any:
-            if dialect.name == "postgresql":
-                return dialect.type_descriptor(JSONB())
-            return dialect.type_descriptor(JSON())
-
-    return MetadataJSON
+MetadataJSON = JSON().with_variant(JSONB(), "postgresql")
 
 
 def hash_bytes(data: bytes, max_len: int = 16) -> str:
@@ -79,7 +63,7 @@ class Document(SQLModel, table=True):
     filename: str
     url: str | None = Field(default=None)
     metadata_: dict[str, Any] = Field(
-        default_factory=dict, sa_column=Column("metadata", _metadata_column_type())
+        default_factory=dict, sa_column=Column("metadata", MetadataJSON)
     )
 
     # Document content is not stored in the database, but is accessible via `document.content`.
@@ -211,7 +195,7 @@ class Chunk(SQLModel, table=True):
     headings: str
     body: str
     metadata_: dict[str, Any] = Field(
-        default_factory=dict, sa_column=Column("metadata", _metadata_column_type())
+        default_factory=dict, sa_column=Column("metadata", MetadataJSON)
     )
 
     # Add relationships so we can access chunk.document and chunk.embeddings.
@@ -470,7 +454,7 @@ class Eval(SQLModel, table=True):
     contexts: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     ground_truth: str
     metadata_: dict[str, Any] = Field(
-        default_factory=dict, sa_column=Column("metadata", _metadata_column_type())
+        default_factory=dict, sa_column=Column("metadata", MetadataJSON)
     )
 
     # Add relationship so we can access eval.document.
