@@ -21,7 +21,7 @@ Changes:
     d. ✨ Set temperature=0 to determine whether to continue with another tool call, similar to the initial decision on whether to call a tool.
 """
 # This file uses old-style type hints and ignores certain ruff rules to minimise changes w.r.t. the original implementation:
-# ruff: noqa: C901, PLR0913, PLR0912, PLR0915, UP006, UP007, FBT001, FBT002, B006, TRY003, EM102, BLE001, PT018, W505
+# ruff: noqa: C901, PLR0913, PLR0912, PLR0915, UP006, UP007, FBT001, FBT002, B006, BLE001, W505
 
 import json
 import warnings
@@ -29,7 +29,6 @@ from typing import (  # noqa: UP035
     Any,
     Iterator,
     List,
-    Optional,
     Union,
     cast,
 )
@@ -60,14 +59,14 @@ def _convert_chunks_to_completion(
     """Convert a list of completion chunks to a completion."""
     # Accumulate completion response values
     text: str = ""
-    finish_reason: Optional[str] = None
-    logprobs: Optional[llama_types.CompletionLogprobs] = None
+    finish_reason: str | None = None
+    logprobs: llama_types.CompletionLogprobs | None = None
     prompt_tokens = 0
     completion_tokens = 0
     total_tokens = 0
-    completion_id: Optional[str] = None
-    completion_model: Optional[str] = None
-    completion_created: Optional[int] = None
+    completion_id: str | None = None
+    completion_model: str | None = None
+    completion_created: int | None = None
     for chunk in chunks:
         # Extract the id, model, and created values from the first chunk
         if completion_id is None:
@@ -199,48 +198,51 @@ def _convert_text_completion_logprobs_to_chat(
 ) -> llama_types.ChatCompletionLogprobs | None:
     if logprobs is None:
         return None
-    return {
-        "content": [
-            {
-                "token": token,
-                "bytes": None,
-                "logprob": logprob,  # type: ignore[typeddict-item]
-                "top_logprobs": [
-                    {
-                        "token": top_token,
-                        "logprob": top_logprob,
-                        "bytes": None,
-                    }
-                    for top_token, top_logprob in (top_logprobs or {}).items()
-                ],
-            }
-            for (token, logprob, top_logprobs) in zip(
-                logprobs["tokens"],
-                logprobs["token_logprobs"],
-                logprobs["top_logprobs"],
-                strict=False,
-            )
-        ],
-        "refusal": None,
-    }
+    return cast(
+        "llama_types.ChatCompletionLogprobs",
+        {
+            "content": [
+                {
+                    "token": token,
+                    "bytes": None,
+                    "logprob": logprob,
+                    "top_logprobs": [
+                        {
+                            "token": top_token,
+                            "logprob": top_logprob,
+                            "bytes": None,
+                        }
+                        for top_token, top_logprob in (top_logprobs or {}).items()
+                    ],
+                }
+                for (token, logprob, top_logprobs) in zip(
+                    logprobs["tokens"],
+                    logprobs["token_logprobs"],
+                    logprobs["top_logprobs"],
+                    strict=False,
+                )
+            ],
+            "refusal": None,
+        },
+    )
 
 
 def chatml_function_calling_with_streaming(
     llama: llama.Llama,
     messages: List[llama_types.ChatCompletionRequestMessage],
-    functions: Optional[List[llama_types.ChatCompletionFunction]] = None,
-    function_call: Optional[llama_types.ChatCompletionRequestFunctionCall] = None,
-    tools: Optional[List[llama_types.ChatCompletionTool]] = None,
-    tool_choice: Optional[llama_types.ChatCompletionToolChoiceOption] = None,
+    functions: List[llama_types.ChatCompletionFunction] | None = None,
+    function_call: llama_types.ChatCompletionRequestFunctionCall | None = None,
+    tools: List[llama_types.ChatCompletionTool] | None = None,
+    tool_choice: llama_types.ChatCompletionToolChoiceOption | None = None,
     temperature: float = 0.2,
     top_p: float = 0.95,
     top_k: int = 40,
     min_p: float = 0.05,
     typical_p: float = 1.0,
     stream: bool = False,
-    stop: Optional[Union[str, List[str]]] = [],
-    response_format: Optional[llama_types.ChatCompletionRequestResponseFormat] = None,
-    max_tokens: Optional[int] = None,
+    stop: Union[str, List[str]] | None = [],
+    response_format: llama_types.ChatCompletionRequestResponseFormat | None = None,
+    max_tokens: int | None = None,
     presence_penalty: float = 0.0,
     frequency_penalty: float = 0.0,
     repeat_penalty: float = 1.1,
@@ -248,11 +250,11 @@ def chatml_function_calling_with_streaming(
     mirostat_mode: int = 0,
     mirostat_tau: float = 5.0,
     mirostat_eta: float = 0.1,
-    model: Optional[str] = None,
-    logits_processor: Optional[llama.LogitsProcessorList] = None,
-    grammar: Optional[llama.LlamaGrammar] = None,  # type: ignore[name-defined]
-    logprobs: Optional[bool] = None,
-    top_logprobs: Optional[int] = None,
+    model: str | None = None,
+    logits_processor: llama.LogitsProcessorList | None = None,
+    grammar: llama.LlamaGrammar | None = None,  # type: ignore[name-defined]
+    logprobs: bool | None = None,
+    top_logprobs: int | None = None,
     **kwargs: Any,
 ) -> Union[
     llama_types.CreateChatCompletionResponse,

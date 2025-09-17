@@ -240,8 +240,8 @@ class LlamaCppPythonLLM(CustomLLM):
             choices = chunk.get("choices")
             if not choices:
                 continue
-            text = choices[0].get("delta", {}).get("content", None)
-            tool_calls = choices[0].get("delta", {}).get("tool_calls", None)
+            text = choices[0].get("delta", {}).get("content", None)  # type: ignore[call-overload]
+            tool_calls = choices[0].get("delta", {}).get("tool_calls", None)  # type: ignore[call-overload]
             tool_use = (
                 ChatCompletionToolCallChunk(
                     id=tool_calls[0]["id"],  # type: ignore[index]

@@ -33,5 +33,5 @@ def test_raglite_import_without_llama_cpp(monkeypatch: pytest.MonkeyPatch) -> No
     from raglite._config import llama_supports_gpu_offload  # type: ignore[attr-defined]
 
     # Verify that lazily using llama-cpp-python raises a ModuleNotFoundError.
-    with pytest.raises(ModuleNotFoundError, match="llama.cpp models"):
+    with pytest.raises(ModuleNotFoundError, match=r"llama.cpp models"):
         llama_supports_gpu_offload()

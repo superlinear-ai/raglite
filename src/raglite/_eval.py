@@ -1,5 +1,6 @@
 """Generation and evaluation of evals."""
 
+import asyncio
 import contextlib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
@@ -264,6 +265,14 @@ def evaluate(
             embeddings = embed_strings(texts, config=self.config)
             return embeddings.tolist()  # type: ignore[no-any-return]
 
+        async def aembed_query(self, text: str) -> list[float]:
+            # Async wrapper that runs the sync embed_query in a thread.
+            return await asyncio.to_thread(self.embed_query, text)
+
+        async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
+            # Async wrapper that runs the sync embed_documents in a thread.
+            return await asyncio.to_thread(self.embed_documents, texts)
+
     # Create a set of answered evals if not provided.
     config = config or RAGLiteConfig()
     answered_evals_df = (
@@ -285,7 +294,7 @@ def evaluate(
         lc_llm = ChatLiteLLM(model=config.llm)
     embedder = RAGLiteRagasEmbeddings(config=config)
     # Evaluate the answered evals with Ragas.
-    evaluation_df = ragas_evaluate(
+    evaluation_df = ragas_evaluate(  # type: ignore[union-attr]
         dataset=Dataset.from_pandas(answered_evals_df),
         llm=lc_llm,
         embeddings=embedder,
