@@ -67,12 +67,9 @@ def vector_search(  # noqa: PLR0913
                 select(ChunkEmbedding.chunk_id, sim, dist).order_by(dist).limit(num_hits).subquery()
             )
         else:
-            dialect = session.get_bind().dialect.name
-
-            # Helper function, using dialect and metadata_filter from enclosing scope
             def _apply_metadata_filter(query_builder: Any) -> Any:
-                if dialect == "postgresql":
-                    # Always cast to JSONB before using @> operator
+                if (dialect := session.get_bind().dialect.name) == "postgresql":
+                    # Always cast to JSONB before using @> operator.
                     return query_builder.where(
                         col(Chunk.metadata_).cast(JSONB).op("@>")(metadata_filter)  # type: ignore[attr-defined]
                     )
