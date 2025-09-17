@@ -33,8 +33,8 @@ def vector_search(  # noqa: PLR0913
     oversample: int = 4,
     metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig | None = None,
-    metadata_filter_threshold: int = 100000,
-    num_entries_distance_first: int = 1000000,
+    metadata_filter_threshold: int = 100_000,
+    num_entries_distance_first: int = 1000_000,
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks using ANN vector search."""
     # Read the config.
@@ -67,6 +67,7 @@ def vector_search(  # noqa: PLR0913
                 select(ChunkEmbedding.chunk_id, sim, dist).order_by(dist).limit(num_hits).subquery()
             )
         else:
+
             def _apply_metadata_filter(query_builder: Any) -> Any:
                 if (dialect := session.get_bind().dialect.name) == "postgresql":
                     # Always cast to JSONB before using @> operator.
