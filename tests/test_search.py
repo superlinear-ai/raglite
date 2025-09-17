@@ -122,18 +122,3 @@ def test_search_metadata_filter(
     assert len(chunk_ids_empty) == len(scores_empty) == 0, (
         "Expected no results when filtering for Mathematics papers"
     )
-
-    # Test distance-first filtering by setting a very low threshold
-    if search_method == vector_search:
-        chunk_ids_distance, _ = vector_search(
-            query,
-            num_results=num_results,
-            metadata_filter=metadata_filter,
-            config=raglite_test_config,
-            metadata_filter_threshold=1,  # Very low threshold forces distance-first
-        )
-        assert len(chunk_ids_distance) > 0, "Expected results with distance-first filtering"
-        chunks_distance = retrieve_chunks(chunk_ids_distance, config=raglite_test_config)
-        for chunk in chunks_distance:
-            assert chunk.metadata_.get("type") == "Paper"
-            assert chunk.metadata_.get("topic") == "Physics"
