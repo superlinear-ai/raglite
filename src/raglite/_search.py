@@ -60,7 +60,7 @@ def vector_search(  # noqa: PLR0913
         ).label("dist")
         sim = (1.0 - dist).label("sim")
 
-        # Build the appropriate subquery based on metadata filtering strategy
+        # Build the query that retrieves the top chunk embeddings.
         if not metadata_filter:
             # No metadata filter: use an index to get the top results by distance.
             top_vectors = (
