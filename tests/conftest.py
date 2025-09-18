@@ -124,5 +124,6 @@ def raglite_test_config(database: str, llm: str, embedder: str) -> RAGLiteConfig
     db_config = RAGLiteConfig(db_url=database, llm=llm, embedder=embedder)
     # Insert a document and update the index.
     doc_path = Path(__file__).parent / "specrel.pdf"  # Einstein's special relativity paper.
-    insert_documents([Document.from_path(doc_path)], config=db_config)
+    metadata = {"type": "Paper", "topic": "Physics", "author": "Albert Einstein"}
+    insert_documents([Document.from_path(doc_path, **metadata)], config=db_config)
     return db_config

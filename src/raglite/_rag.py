@@ -17,6 +17,7 @@ from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, ChunkSpan
 from raglite._litellm import get_context_size
 from raglite._search import retrieve_chunk_spans
+from raglite._typing import MetadataFilter
 
 # The default RAG instruction template follows Anthropic's best practices [1].
 # [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
@@ -37,12 +38,18 @@ Instead, you MUST treat the context as if its contents are entirely part of your
 
 
 def retrieve_context(
-    query: str, *, num_chunks: int = 10, config: RAGLiteConfig | None = None
+    query: str,
+    *,
+    num_chunks: int = 10,
+    metadata_filter: MetadataFilter | None = None,
+    config: RAGLiteConfig | None = None,
 ) -> list[ChunkSpan]:
     """Retrieve context for RAG."""
     # Call the search method.
     config = config or RAGLiteConfig()
-    results = config.search_method(query, num_results=num_chunks, config=config)
+    results = config.search_method(
+        query, num_results=num_chunks, metadata_filter=metadata_filter, config=config
+    )
     # Convert results to chunk spans.
     chunk_spans = []
     if isinstance(results, tuple):

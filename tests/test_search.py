@@ -3,6 +3,7 @@
 import pytest
 
 from raglite import (
+    Document,
     RAGLiteConfig,
     hybrid_search,
     keyword_search,
@@ -10,7 +11,7 @@ from raglite import (
     retrieve_chunks,
     vector_search,
 )
-from raglite._database import Chunk, ChunkSpan, Document
+from raglite._database import Chunk, ChunkSpan
 from raglite._typing import BasicSearchMethod
 
 
@@ -79,3 +80,45 @@ def test_search_empty_database(llm: str, embedder: str, search_method: BasicSear
     assert len(chunk_ids) == len(scores) == num_results_expected
     assert all(isinstance(chunk_id, str) for chunk_id in chunk_ids)
     assert all(isinstance(score, float) for score in scores)
+
+
+def test_search_metadata_filter(
+    raglite_test_config: RAGLiteConfig, search_method: BasicSearchMethod
+) -> None:
+    """Test searching with metadata filtering that should return results."""
+    query = "What does it mean for two events to be simultaneous?"
+    num_results = 5
+    metadata_filter = {"type": "Paper", "topic": "Physics"}
+
+    # Verify basic properties
+    chunk_ids, scores = search_method(
+        query, num_results=num_results, metadata_filter=metadata_filter, config=raglite_test_config
+    )
+    assert len(chunk_ids) == len(scores)
+    assert len(chunk_ids) > 0, "Expected results when filtering for Physics papers"
+    assert len(chunk_ids) <= num_results, "Should not exceed requested number of results"
+    assert all(isinstance(chunk_id, str) for chunk_id in chunk_ids)
+    assert all(isinstance(score, float) for score in scores)
+
+    # Verify chunks match metadata filter
+    chunks = retrieve_chunks(chunk_ids, config=raglite_test_config)
+    assert all(isinstance(chunk, Chunk) for chunk in chunks)
+    for chunk in chunks:
+        assert chunk.metadata_.get("type") == "Paper", (
+            f"Expected type='Paper', got {chunk.metadata_.get('type')}"
+        )
+        assert chunk.metadata_.get("topic") == "Physics", (
+            f"Expected topic='Physics', got {chunk.metadata_.get('topic')}"
+        )
+
+    # Test filtering for a different topic that should return no results
+    metadata_filter_empty = {"type": "Paper", "topic": "Mathematics"}
+    chunk_ids_empty, scores_empty = search_method(
+        query,
+        num_results=num_results,
+        metadata_filter=metadata_filter_empty,
+        config=raglite_test_config,
+    )
+    assert len(chunk_ids_empty) == len(scores_empty) == 0, (
+        "Expected no results when filtering for Mathematics papers"
+    )

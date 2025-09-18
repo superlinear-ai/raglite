@@ -48,5 +48,5 @@ def test_edge_cases(chunklets: list[str]) -> None:
 def test_long_chunklet(chunklets: list[str]) -> None:
     """Test chunking on chunklets that are too long."""
     chunklet_embeddings = np.ones((len(chunklets), 768)).astype(np.float16)
-    with pytest.raises(ValueError, match="Chunklet larger than chunk max_size detected."):
+    with pytest.raises(ValueError, match=r"Chunklet larger than chunk max_size detected."):
         _ = split_chunks(chunklets, chunklet_embeddings, max_size=1440)

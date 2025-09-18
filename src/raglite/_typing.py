@@ -2,7 +2,7 @@
 
 import io
 import pickle
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 import numpy as np
@@ -24,6 +24,9 @@ IndexId = str
 
 DistanceMetric = Literal["cosine", "dot", "l1", "l2"]
 
+MetadataValue = str | int | float | bool | list[str] | list[int] | list[float] | list[bool]
+MetadataFilter = Mapping[str, MetadataValue]
+
 FloatMatrix = np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]
 FloatVector = np.ndarray[tuple[int], np.dtype[np.floating[Any]]]
 IntVector = np.ndarray[tuple[int], np.dtype[np.intp]]
@@ -31,13 +34,23 @@ IntVector = np.ndarray[tuple[int], np.dtype[np.intp]]
 
 class BasicSearchMethod(Protocol):
     def __call__(
-        self, query: str, *, num_results: int, config: "RAGLiteConfig | None" = None
+        self,
+        query: str,
+        *,
+        num_results: int,
+        metadata_filter: MetadataFilter | None = None,
+        config: "RAGLiteConfig | None" = None,
     ) -> tuple[list[ChunkId], list[float]]: ...
 
 
 class SearchMethod(Protocol):
     def __call__(
-        self, query: str, *, num_results: int, config: "RAGLiteConfig | None" = None
+        self,
+        query: str,
+        *,
+        num_results: int,
+        metadata_filter: MetadataFilter | None = None,
+        config: "RAGLiteConfig | None" = None,
     ) -> tuple[list[ChunkId], list[float]] | list["Chunk"] | list["ChunkSpan"]: ...
 
 
@@ -53,9 +66,7 @@ class DocumentMetadataFunction(Protocol):
         Dictionary of metadata tags to add to the document
     """
 
-    def __call__(
-        self, content: str | None, metadata: dict[str, str] | None
-    ) -> dict[str, str]: ...
+    def __call__(self, content: str | None, metadata: dict[str, str] | None) -> dict[str, str]: ...
 
 
 class ChunkMetadataFunction(Protocol):
@@ -70,9 +81,7 @@ class ChunkMetadataFunction(Protocol):
         Dictionary of metadata tags to add to the chunk
     """
 
-    def __call__(
-        self, content: str | None, metadata: dict[str, str] | None
-    ) -> dict[str, str]: ...
+    def __call__(self, content: str | None, metadata: dict[str, str] | None) -> dict[str, str]: ...
 
 
 class NumpyArray(TypeDecorator[np.ndarray[Any, np.dtype[np.floating[Any]]]]):
