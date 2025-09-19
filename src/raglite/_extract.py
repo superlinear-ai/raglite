@@ -126,23 +126,25 @@ def extract_metadata(  # noqa: PLR0913
 
     Examples
     --------
-    >>> metadata = extract_metadata(
-    ...     text="This is a research paper about machine learning algorithms.",
-    ...     prompt="What type of document is this?",
-    ...     key="document_type",
-    ...     allowed_values=["research", "tutorial", "documentation"],
-    ...     allow_multiple=False,
-    ... )
-    >>> print(metadata)
-    {"document_type": "research"}
+    Extract document type with constrained values:
 
-    >>> metadata = extract_metadata(
-    ...     text="This is a research paper about machine learning algorithms.",
-    ...     prompt="Summarize the main topic",
-    ...     key="summary",
-    ... )
-    >>> print(metadata)
-    {"summary": "Machine learning algorithm implementation"}
+        metadata = extract_metadata(
+            text="This is a research paper about machine learning algorithms.",
+            prompt="What type of document is this?",
+            key="document_type",
+            allowed_values=["research", "tutorial", "documentation"],
+            allow_multiple=False,
+        )
+        # Returns: {"document_type": "research"}
+
+    Extract free-text summary:
+
+        metadata = extract_metadata(
+            text="This is a research paper about machine learning algorithms.",
+            prompt="Summarize the main topic",
+            key="summary",
+        )
+        # Returns: {"summary": "Machine learning algorithm implementation"}
     """
     config = config or RAGLiteConfig()
 
