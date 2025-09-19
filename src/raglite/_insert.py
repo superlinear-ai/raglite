@@ -45,7 +45,7 @@ def _create_chunk_records(
         chunk_metadata = dict(document.metadata_)
         if config.chunk_metadata_function is not None:
             generated_metadata = config.chunk_metadata_function(
-                document.content, metadata=document.metadata_
+                content=chunk, metadata=document.metadata_
             )
             chunk_metadata.update(generated_metadata)
         record = Chunk.from_body(
