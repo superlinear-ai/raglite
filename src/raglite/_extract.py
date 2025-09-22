@@ -1,4 +1,4 @@
-"""Extract structured data from unstructured text with an LLM."""
+"""Extract structured metadata from documents using LLMs."""
 
 from collections.abc import Iterator
 from typing import Any, Literal, TypeVar, get_args, get_origin
@@ -238,9 +238,8 @@ def expand_document_metadata(  # noqa: C901, PLR0912
         key = field_spec["key"]
         field_type = field_spec["type"]
 
-        # Check if it's a list type by looking at the string representation
-        type_str = str(field_type)
-        if type_str.startswith(("typing.List", "list[")):
+        # Check if it's a list type
+        if get_origin(field_type) is list:
             # Multi-choice field: use as-is with list default
             fields[key] = (field_type, Field(default_factory=list))
         else:
@@ -330,7 +329,7 @@ def expand_document_metadata(  # noqa: C901, PLR0912
         )
 
     # Yield documents with expanded metadata
-    for doc, response in zip(documents, responses, strict=False):
+    for doc, response in zip(documents, responses, strict=True):
         if isinstance(response, Exception):
             data = {}
         else:
