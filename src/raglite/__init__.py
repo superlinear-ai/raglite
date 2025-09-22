@@ -3,7 +3,7 @@
 from raglite._config import RAGLiteConfig
 from raglite._database import Document
 from raglite._eval import answer_evals, evaluate, insert_evals
-from raglite._extract import extract_metadata
+from raglite._extract import expand_document_metadata
 from raglite._insert import insert_documents
 from raglite._query_adapter import update_query_adapter
 from raglite._rag import add_context, async_rag, rag, retrieve_context
@@ -25,7 +25,7 @@ __all__ = [
     "Document",
     "insert_documents",
     # Extract
-    "extract_metadata",
+    "expand_document_metadata",
     # Search
     "hybrid_search",
     "keyword_search",

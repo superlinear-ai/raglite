@@ -66,9 +66,7 @@ class DocumentMetadataFunction(Protocol):
         Dictionary of metadata tags to add to the document
     """
 
-    def __call__(
-        self, content: str | None, metadata: dict[str, str] | None
-    ) -> dict[str, str]: ...
+    def __call__(self, content: str | None, metadata: dict[str, str] | None) -> dict[str, str]: ...
 
 
 class ChunkMetadataFunction(Protocol):
@@ -83,9 +81,7 @@ class ChunkMetadataFunction(Protocol):
         Dictionary of metadata tags to add to the chunk
     """
 
-    def __call__(
-        self, content: str | None, metadata: dict[str, str] | None
-    ) -> dict[str, str]: ...
+    def __call__(self, content: str | None, metadata: dict[str, str] | None) -> dict[str, str]: ...
 
 
 class NumpyArray(TypeDecorator[np.ndarray[Any, np.dtype[np.floating[Any]]]]):
