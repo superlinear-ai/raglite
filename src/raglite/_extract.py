@@ -1,5 +1,6 @@
 """Extract structured metadata from documents using LLMs."""
 
+import logging
 from collections.abc import Iterator
 from typing import Any, Literal, TypeVar, get_args, get_origin
 
@@ -14,6 +15,8 @@ from raglite import Document
 from raglite._config import RAGLiteConfig
 
 T = TypeVar("T", bound=BaseModel)
+
+logger = logging.getLogger(__name__)
 
 
 def extract_with_llm(
@@ -97,20 +100,17 @@ def extract_with_llm(
 
 
 def _extract_literal_values(field_type: Any) -> tuple[list[str] | None, bool]:
-    """Extract literal values and determine if it's a multi-choice field."""
-    # Check if it's a list type
+    """Extract literal values and determine if it's a multi-value field."""
     if get_origin(field_type) is list:
-        # Extract the inner type from list
         args = get_args(field_type)
-        if args and get_origin(args[0]) is Literal:
-            # Multi-choice literal field
+        if args and get_origin(args[0]) is Literal:  # Multi-value literal field
             return list(get_args(args[0])), True
-    elif get_origin(field_type) is Literal:
-        # Single-choice literal field
+        # Multi-value free-text field like list[str]
+        return None, True
+    if get_origin(field_type) is Literal:  # Single-value literal field
         return list(get_args(field_type)), False
 
-    # Not a literal type
-    return None, False
+    return None, False  # Single-value free-text field
 
 
 def _build_field_prompt(field_spec: dict[str, Any], doc: Document) -> str:
@@ -120,39 +120,43 @@ def _build_field_prompt(field_spec: dict[str, Any], doc: Document) -> str:
     prompt = field_spec["prompt"]
     source = field_spec.get("source", "content")
 
-    # Extract literal values and determine if multi-choice
-    values, allow_multiple = _extract_literal_values(field_type)
+    values, is_multi_value = _extract_literal_values(field_type)
 
-    # Get source text based on source specification
     if source == "content":
-        source_text = doc.content or ""
+        source_text = doc.content
         source_label = "document content"
+        if source_text is None or source_text.strip() == "":
+            msg = "Document content is empty; cannot extract metadata from content."
+            raise ValueError(msg)
     else:
-        # Extract from existing metadata field
-        source_text = str(doc.metadata_.get(source, ""))
+        source_text = doc.metadata_.get(source)
         source_label = f"metadata field '{source}'"
+        if source_text is None:
+            msg = f"Metadata field '{source}' not found in document metadata."
+            raise ValueError(msg)
 
     field_prompt = f"**{key}**: {prompt}\n"
     field_prompt += f"  - Source: {source_label}\n"
     field_prompt += f"  - Text to analyze: {source_text}\n"
 
-    if values:
+    # TODO: Determine if we want to add this also when supporting response_format
+    if values:  # Literal fields (single or multi-value)
         values_str = ", ".join(f'"{val}"' for val in values)
-        if allow_multiple:
+        if is_multi_value:
             field_prompt += f"  - Allowed values: {values_str}\n"
             field_prompt += "  - Select ALL that apply\n"
         else:
             field_prompt += f"  - Allowed values: {values_str}\n"
             field_prompt += "  - Select ONE that best fits\n"
-    elif allow_multiple:
+    elif is_multi_value:  # Multi-value free-text field
         field_prompt += "  - Provide relevant values (can be multiple)\n"
-    else:
+    else:  # Single-value free-text field
         field_prompt += "  - Provide a single, concise response\n"
 
     return field_prompt + "\n"
 
 
-def expand_document_metadata(  # noqa: C901, PLR0912
+def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
     documents: list[Document],
     metadata_fields: list[dict[str, Any]],
     config: RAGLiteConfig,
@@ -169,9 +173,12 @@ def expand_document_metadata(  # noqa: C901, PLR0912
     metadata_fields : list[dict[str, Any]]
         List of metadata field specifications. Each dict should contain:
         - key (str): The metadata field name
-        - type (Any): The exact type for the field, e.g., Literal["A","B"] for single-choice
-          or list[Literal["X","Y","Z"]] for multi-choice
-        - prompt (str): Instruction for the LLM on what to extract
+        - type (Any): The exact type for the field:
+            (a.) Literal["A","B"] for single-choice,
+            (b.) list[Literal["X","Y","Z"]] for multi-choice,
+            (c.) str, int, float, bool for single-value free-text fields, and
+            (d.) list[str], list[int], list[float], list[bool] for multi-value free-text fields
+        - prompt (str): Instruction to guide the LLM in extracting the field
         - source (str, optional): Source for extraction - either "content" (default)
           or metadata field key
     config : RAGLiteConfig
@@ -189,13 +196,12 @@ def expand_document_metadata(  # noqa: C901, PLR0912
     --------
     Extract document metadata from content and existing metadata before inserting into database:
 
+        from raglite import Document, RAGLiteConfig, insert_documents, expand_document_metadata
         documents = [
-            Document(
-                content="This is a research paper about machine learning...",
-                metadata_={"author": "John Doe", "year": "2024"}
-            ),
+            Document.from_path(path/to/document1.md, author = "John Doe"),
+            Document.from_path(path/to/document2.md, author = "Jane Smith"),
+            Document.from_path(path/to/document3.pdf, author = "Alice Johnson"),
         ]
-
         metadata_fields = [
             {
                 "key": "document_type",
@@ -224,38 +230,42 @@ def expand_document_metadata(  # noqa: C901, PLR0912
         ]
 
         # Expand metadata before inserting to database
-        expanded_docs = list(expand_document_metadata(documents, metadata_fields))
+        expanded_docs = list(expand_document_metadata(documents, metadata_fields, raglite_config))
 
         # Now insert to database
-        db.insert(expanded_docs)
+        insert_documents(expanded_docs)
     """
     if not documents:
-        yield from ()
+        return
 
-    # Build field specifications for Pydantic model
+    # Create dynamic Pydantic model for metadata validation
     fields: dict[str, Any] = {}
     for field_spec in metadata_fields:
         key = field_spec["key"]
         field_type = field_spec["type"]
 
-        # Check if it's a list type
-        if get_origin(field_type) is list:
-            # Multi-choice field: use as-is with list default
+        values, is_multi_value = _extract_literal_values(field_type)
+
+        if is_multi_value:  # Multi-value field (literal or free-text)
             fields[key] = (field_type, Field(default_factory=list))
+        elif values:  # Single-value literal field
+            fields[key] = (field_type, Field(default=values[0]))
+        # Single-value free-text fields
+        elif field_type is str:
+            fields[key] = (field_type, Field(default=""))
+        elif field_type is int:
+            fields[key] = (field_type, Field(default=0))
+        elif field_type is float:
+            fields[key] = (field_type, Field(default=0.0))
+        elif field_type is bool:
+            fields[key] = (field_type, Field(default=False))
         else:
-            # For non-list fields, we need to handle defaults
-            # Extract literal values to get a valid default
-            values, _ = _extract_literal_values(field_type)
-            if values:
-                # Use the first literal value as default
-                fields[key] = (field_type, Field(default=values[0]))
-            else:
-                # For non-literal types like str, use empty string
-                fields[key] = (field_type, Field(default=""))
+            msg = f"Unsupported field type for key '{key}': {field_type!r}"
+            raise ValueError(msg)
 
-    model = create_model("DocumentMetadata", __base__=BaseModel, **fields)
+    model: type[BaseModel] = create_model("DocumentMetadata", __base__=BaseModel, **fields)
 
-    # Build system prompt
+    # Base system prompt
     system_prompt = (
         "You are a precise metadata extractor for documents.\n"
         "Extract the requested metadata from the provided source text.\n"
@@ -264,17 +274,18 @@ def expand_document_metadata(  # noqa: C901, PLR0912
         "Output valid JSON matching the required schema."
     )
 
-    # Check if LLM supports structured output
+    # Construct response format if supported by the LLM
     supports_rf = "response_format" in (get_supported_openai_params(model=config.llm) or [])
     response_format: dict[str, Any] | None = None
 
     if supports_rf:
         schema = model.model_json_schema()
-        # OpenAI requires additionalProperties to be false for strict mode
+        # OpenAI-specific for strict mode:
+        # - additionalProperties must be false [1]
+        # - all fields must be in the required array [2]
+        # [1] https://platform.openai.com/docs/guides/structured-outputs#additionalproperties-false-must-always-be-set-in-objects
+        # [2] https://platform.openai.com/docs/guides/structured-outputs#all-fields-must-be-required
         schema["additionalProperties"] = False
-
-        # For strict mode, all properties must be in the required array
-        # Get all property names and add them to required
         if "properties" in schema:
             schema["required"] = list(schema["properties"].keys())
 
@@ -291,31 +302,22 @@ def expand_document_metadata(  # noqa: C901, PLR0912
         system_prompt += (
             f"\n\nFormat your response according to this JSON schema:\n{model.model_json_schema()}"
         )
+        response_format = None
 
-    # Build requests for batch processing
-    reqs: list[dict[str, Any]] = []
+    # Build messages for batch processing
+    all_messages = []
     for doc in documents:
-        # Build user prompt with field-specific instructions
-        user_prompt = "Please extract the following metadata:\n\n"
-
+        user_prompt = "Extract the following metadata:\n\n"
         for field_spec in metadata_fields:
             user_prompt += _build_field_prompt(field_spec, doc)
-
-        body: dict[str, Any] = {
-            "model": config.llm,
-            "messages": [
+        all_messages.append(
+            [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
-            ],
-        }
-        if response_format is not None:
-            body["response_format"] = response_format
-        reqs.append(body)
+            ]
+        )
 
-    # Process requests using batch_completion with correct signature
-    all_messages = [req["messages"] for req in reqs]
-    response_format = reqs[0].get("response_format") if reqs else None
-
+    # Process requests using batch_completion
     if response_format:
         responses = batch_completion(
             model=config.llm,
@@ -330,14 +332,27 @@ def expand_document_metadata(  # noqa: C901, PLR0912
 
     # Yield documents with expanded metadata
     for doc, response in zip(documents, responses, strict=True):
+        success = False
+        doc_name = getattr(doc, "filename", doc.id)
         if isinstance(response, Exception):
             data = {}
+            logger.warning(
+                "[RAGLite] Metadata extraction failed for document: %s (Exception: %r)",
+                doc_name,
+                response,
+            )
         else:
             try:
                 content = response["choices"][0]["message"]["content"]
                 data = model.model_validate_json(content).model_dump(exclude_none=True)
-            except (KeyError, ValueError, ValidationError):
+                success = True
+            except (KeyError, ValueError, ValidationError) as e:
                 data = {}
+                logger.warning(
+                    "[RAGLite] Metadata extraction failed for document: %s (Error: %r)", doc_name, e
+                )
+        if success:
+            logger.info("[RAGLite] Metadata extraction succeeded for document: %s", doc_name)
 
         yield Document(
             id=doc.id,
