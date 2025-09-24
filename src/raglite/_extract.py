@@ -250,18 +250,18 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
             fields[key] = (field_type, Field(default_factory=list))
         elif values:  # Single-value literal field
             fields[key] = (field_type, Field(default=values[0]))
-        # Single-value free-text fields
-        elif field_type is str:
-            fields[key] = (field_type, Field(default=""))
-        elif field_type is int:
-            fields[key] = (field_type, Field(default=0))
-        elif field_type is float:
-            fields[key] = (field_type, Field(default=0.0))
-        elif field_type is bool:
-            fields[key] = (field_type, Field(default=False))
-        else:
-            msg = f"Unsupported field type for key '{key}': {field_type!r}"
-            raise ValueError(msg)
+        else:  # Single-value free-text fields: str, int, float, bool
+            type_default_map = {
+                str: "",
+                int: 0,
+                float: 0.0,
+                bool: False,
+            }
+            if field_type in type_default_map:
+                fields[key] = (field_type, Field(default=type_default_map[field_type]))
+            else:
+                msg = f"Unsupported field type for key '{key}': {field_type!r}"
+                raise ValueError(msg)
 
     model: type[BaseModel] = create_model("DocumentMetadata", __base__=BaseModel, **fields)
 
