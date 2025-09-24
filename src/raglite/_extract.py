@@ -119,6 +119,7 @@ def _build_field_prompt(field_spec: dict[str, Any], doc: Document) -> str:
     field_type = field_spec["type"]
     prompt = field_spec["prompt"]
     source = field_spec.get("source", "content")
+    max_chars = field_spec.get("max_chars")
 
     values, is_multi_value = _extract_literal_values(field_type)
 
@@ -134,6 +135,11 @@ def _build_field_prompt(field_spec: dict[str, Any], doc: Document) -> str:
         if source_text is None:
             msg = f"Metadata field '{source}' not found in document metadata."
             raise ValueError(msg)
+
+    # Apply character limit if specified
+    if max_chars is not None and isinstance(source_text, str) and len(source_text) > max_chars:
+        source_text = source_text[:max_chars]
+        source_label += f" (truncated to {max_chars} chars)"
 
     field_prompt = f"**{key}**: {prompt}\n"
     field_prompt += f"  - Source: {source_label}\n"
@@ -181,6 +187,7 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
         - prompt (str): Instruction to guide the LLM in extracting the field
         - source (str, optional): Source for extraction - either "content" (default)
           or metadata field key
+        - max_chars (int, optional): Maximum number of characters to consider from the source text
     config : RAGLiteConfig
         RAGLite configuration
     max_concurrent_requests : int, optional
@@ -225,7 +232,8 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
                 "key": "summary",
                 "type": str,
                 "prompt": "Provide a brief summary of this document",
-                "source": "content"  # Extract from document content (default)
+                "source": "content",  # Extract from document content (default)
+                "max_chars": 2000  # Only analyze first 2000 characters
             }
         ]
 
