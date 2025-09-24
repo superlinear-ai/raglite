@@ -103,14 +103,14 @@ def _extract_literal_values(field_type: Any) -> tuple[list[str] | None, bool]:
     """Extract literal values and determine if it's a multi-value field."""
     if get_origin(field_type) is list:
         args = get_args(field_type)
-        if args and get_origin(args[0]) is Literal:  # Multi-value literal field
+        if args and get_origin(args[0]) is Literal:  # Multi-value literal field.
             return list(get_args(args[0])), True
-        # Multi-value free-text field like list[str]
+        # Multi-value free-text field like list[str].
         return None, True
-    if get_origin(field_type) is Literal:  # Single-value literal field
+    if get_origin(field_type) is Literal:  # Single-value literal field.
         return list(get_args(field_type)), False
 
-    return None, False  # Single-value free-text field
+    return None, False  # Single-value free-text field.
 
 
 def _build_field_prompt(field_spec: dict[str, Any], doc: Document) -> str:
@@ -246,7 +246,7 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
     if not documents:
         return
 
-    # Create dynamic Pydantic model for metadata validation
+    # Create dynamic Pydantic model for metadata validation.
     fields: dict[str, Any] = {}
     for field_spec in metadata_fields:
         key = field_spec["key"]
@@ -273,7 +273,7 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
 
     model: type[BaseModel] = create_model("DocumentMetadata", __base__=BaseModel, **fields)
 
-    # Base system prompt
+    # Base system prompt.
     system_prompt = (
         "You are a precise metadata extractor for documents.\n"
         "Extract the requested metadata from the provided source text.\n"
@@ -282,15 +282,15 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
         "Output valid JSON matching the required schema."
     )
 
-    # Construct response format if supported by the LLM
+    # Construct response format if supported by the LLM.
     supports_rf = "response_format" in (get_supported_openai_params(model=config.llm) or [])
     response_format: dict[str, Any] | None = None
 
     if supports_rf:
         schema = model.model_json_schema()
         # OpenAI-specific for strict mode:
-        # - additionalProperties must be false [1]
-        # - all fields must be in the required array [2]
+        # - additionalProperties must be false [1].
+        # - all fields must be in the required array [2].
         # [1] https://platform.openai.com/docs/guides/structured-outputs#additionalproperties-false-must-always-be-set-in-objects
         # [2] https://platform.openai.com/docs/guides/structured-outputs#all-fields-must-be-required
         schema["additionalProperties"] = False
@@ -312,7 +312,7 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
         )
         response_format = None
 
-    # Build messages for batch processing
+    # Build messages for batch processing.
     all_messages = []
     for doc in documents:
         user_prompt = "Extract the following metadata:\n\n"
@@ -325,7 +325,7 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
             ]
         )
 
-    # Process requests using batch_completion
+    # Process requests using batch_completion.
     if response_format:
         responses = batch_completion(
             model=config.llm,
@@ -338,7 +338,7 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
             model=config.llm, messages=all_messages, max_workers=max_concurrent_requests
         )
 
-    # Yield documents with expanded metadata
+    # Yield documents with expanded metadata.
     for doc, response in zip(documents, responses, strict=True):
         success = False
         doc_name = getattr(doc, "filename", doc.id)
