@@ -171,8 +171,6 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
                 "key": "summary",
                 "type": str,
                 "prompt": "Provide a brief summary of this document",
-                "source": "content",  # Extract from document content (default)
-                "max_chars": 2000  # Only analyze first 2000 characters
             }
         ]
 
