@@ -3,6 +3,7 @@
 import json
 import logging
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any, Literal, TypeVar, get_args, get_origin
 
 from litellm import (  # type: ignore[attr-defined]
@@ -100,9 +101,43 @@ def extract_with_llm(
     return instance
 
 
+@dataclass
+class MetadataField:
+    """
+    A declarative representation of a metadata field to be extracted by an LLM.
+
+    This class provides a structured, user-friendly way to define what metadata
+    to extract, from where, and how to instruct the model.
+
+    Attributes
+    ----------
+    key : str
+        The name of the metadata field to be created (e.g., 'document_type').
+
+    field_type : Any
+        The Python type hint for the expected value. This guides the LLM's output format. Examples:
+        - ``str``, ``int``, ``float``, ``bool``
+        - ``Literal[...]``: for single-choice literals
+        - ``list[Literal[...]]``: for multi-choice literals
+        - ``list[str]``: for multi-value free-text
+
+    prompt : str
+        The instructional prompt for the LLM to guide extraction for this specific field.
+
+    source : str, optional
+        The source of information for extraction. Can be set to the key of another metadata
+        field. Defaults to ``'content'``.
+    """
+
+    key: str
+    field_type: Any
+    prompt: str
+    source: str = "content"
+
+
 def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
     documents: list[Document],
-    metadata_fields: list[dict[str, Any]],
+    metadata_fields: list[MetadataField],
     config: RAGLiteConfig,
     content_char_limit: int | None = None,
     **kwargs: Any,
@@ -114,17 +149,8 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
     ----------
     documents : list[Document]
         List of documents to process
-    metadata_fields : list[dict[str, Any]]
-        List of metadata field specifications. Each dict should contain:
-        - key (str): The metadata field name
-        - type (Any): The exact type for the field:
-            (a.) Literal["A","B"] for single-choice,
-            (b.) list[Literal["X","Y","Z"]] for multi-choice,
-            (c.) str, int, float, bool for single-value free-text fields, and
-            (d.) list[str], list[int], list[float], list[bool] for multi-value free-text fields
-        - prompt (str): Instruction to guide the LLM in extracting the field
-        - source (str, optional): Source for extraction - either "content" (default)
-          or metadata field key
+    metadata_fields : list[MetadataField]
+        List of MetadataField objects specifying the metadata fields to extract.
     config : RAGLiteConfig
         RAGLite configuration
     content_char_limit (int, optional):
@@ -143,43 +169,39 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
     Extract document metadata from content and existing metadata before inserting into database:
 
         from raglite import Document, RAGLiteConfig, insert_documents, expand_document_metadata
+
         documents = [
-            Document.from_path(path/to/document1.md, author = "John Doe"),
-            Document.from_path(path/to/document2.md, author = "Jane Smith"),
-            Document.from_path(path/to/document3.pdf, author = "Alice Johnson"),
+            Document.from_path("path/to/document1.md", author="John Doe"),
+            Document.from_path("path/to/document2.md", author="Jane Smith"),
+            Document.from_path("path/to/document3.pdf", author="Alice Johnson"),
         ]
+
+        # Define metadata fields to extract
         metadata_fields = [
-            {
-                "key": "document_type",
-                "type": Literal["research-paper", "tutorial", "documentation"],
-                "prompt": "What type of document is this?",
-                "source": "content"  # Extract from document content
-            },
-            {
-                "key": "author_affiliation",
-                "type": Literal["academic", "industry", "government"],
-                "prompt": "What type of affiliation does this author likely have?",
-                "source": "author"  # Extract from existing 'author' metadata field
-            },
-            {
-                "key": "topics",
-                "type": list[Literal["AI", "ML", "NLP", "computer-vision", "robotics"]],
-                "prompt": "What topics does this document cover?",
-                "source": "content"  # Multi-choice field
-            },
-            {
-                "key": "summary",
-                "type": str,
-                "prompt": "Provide a brief summary of this document",
-            }
+            MetadataField(
+                key="document_type",
+                field_type=Literal["research-paper", "tutorial", "documentation"],
+                prompt="What type of document is this?",
+            ),
+            MetadataField(
+                key="author_affiliation",
+                field_type=Literal["academic", "industry", "government"],
+                prompt="What type of affiliation does this author likely have?",
+                source="author"
+            ),
+            MetadataField(
+                key="topics",
+                field_type=list[Literal["AI", "ML", "NLP", "computer-vision", "robotics"]],
+                prompt="What topics does this document cover?",
+            ),
+            MetadataField(
+                key="summary",
+                field_type=str,
+                prompt="Provide a brief summary of this document",
+            )
         ]
 
-        # Expand metadata before inserting to database
-        expanded_docs = list(
-            expand_document_metadata(documents, metadata_fields, raglite_config, max_workers=4)
-        )
-
-        # Now insert to database
+        expanded_docs = list(expand_document_metadata(documents, metadata_fields, raglite_config))
         insert_documents(expanded_docs)
     """
     if not documents:
@@ -196,10 +218,10 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
 
     # Build dynamic Pydantic model for metadata validation and add field specs to system prompt.
     for field_spec in metadata_fields:
-        key = field_spec["key"]
-        field_type = field_spec["type"]
-        prompt = field_spec["prompt"]
-        source = field_spec.get("source", "content")
+        key = field_spec.key
+        field_type = field_spec.field_type
+        prompt = field_spec.prompt
+        source = field_spec.source
 
         # Determine if the field is single or multi-value,
         # and if it has any literal constraints.
