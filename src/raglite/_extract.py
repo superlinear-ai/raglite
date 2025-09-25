@@ -166,8 +166,7 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
     documents: list[Document],
     metadata_fields: list[dict[str, Any]],
     config: RAGLiteConfig,
-    *,
-    max_concurrent_requests: int | None = None,
+    **kwargs: Any,
 ) -> Iterator[Document]:
     """
     Extract metadata from documents using LLM with configurable fields and constraints.
@@ -190,9 +189,8 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
         - max_chars (int, optional): Maximum number of characters to consider from the source text
     config : RAGLiteConfig
         RAGLite configuration
-    max_concurrent_requests : int, optional
-        Maximum number of concurrent LLM requests
-
+    **kwargs : Any
+        Additional keyword arguments passed to `batch_completion` (e.g., max_workers, threading)
 
     Returns
     -------
@@ -238,7 +236,9 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
         ]
 
         # Expand metadata before inserting to database
-        expanded_docs = list(expand_document_metadata(documents, metadata_fields, raglite_config))
+        expanded_docs = list(
+            expand_document_metadata(documents, metadata_fields, raglite_config, max_workers=4)
+        )
 
         # Now insert to database
         insert_documents(expanded_docs)
@@ -330,13 +330,11 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
         responses = batch_completion(
             model=config.llm,
             messages=all_messages,
-            max_workers=max_concurrent_requests,
             response_format=response_format,
+            **kwargs,
         )
     else:
-        responses = batch_completion(
-            model=config.llm, messages=all_messages, max_workers=max_concurrent_requests
-        )
+        responses = batch_completion(model=config.llm, messages=all_messages, **kwargs)
 
     # Yield documents with expanded metadata.
     for doc, response in zip(documents, responses, strict=True):
