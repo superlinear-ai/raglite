@@ -275,7 +275,7 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
 
     # Base system prompt.
     system_prompt = (
-        "You are a precise metadata extractor for documents.\n"
+        "You are a metadata extractor for documents with perfect precision and recall.\n"
         "Extract the requested metadata from the provided source text.\n"
         "For constrained fields, only use the provided allowed values.\n"
         "For free-text fields, provide concise and accurate responses.\n"
