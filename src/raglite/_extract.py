@@ -1,5 +1,6 @@
 """Extract structured metadata from documents using LLMs."""
 
+import json
 import logging
 from collections.abc import Iterator
 from typing import Any, Literal, TypeVar, get_args, get_origin
@@ -99,73 +100,11 @@ def extract_with_llm(
     return instance
 
 
-def _extract_literal_values(field_type: Any) -> tuple[list[str] | None, bool]:
-    """Extract literal values and determine if it's a multi-value field."""
-    if get_origin(field_type) is list:
-        args = get_args(field_type)
-        if args and get_origin(args[0]) is Literal:  # Multi-value literal field.
-            return list(get_args(args[0])), True
-        # Multi-value free-text field like list[str].
-        return None, True
-    if get_origin(field_type) is Literal:  # Single-value literal field.
-        return list(get_args(field_type)), False
-
-    return None, False  # Single-value free-text field.
-
-
-def _build_field_prompt(field_spec: dict[str, Any], doc: Document) -> str:
-    """Build prompt for a single metadata field."""
-    key = field_spec["key"]
-    field_type = field_spec["type"]
-    prompt = field_spec["prompt"]
-    source = field_spec.get("source", "content")
-    max_chars = field_spec.get("max_chars")
-
-    values, is_multi_value = _extract_literal_values(field_type)
-
-    if source == "content":
-        source_text = doc.content
-        source_label = "document content"
-        if source_text is None or source_text.strip() == "":
-            msg = "Document content is empty; cannot extract metadata from content."
-            raise ValueError(msg)
-    else:
-        source_text = doc.metadata_.get(source)
-        source_label = f"metadata field '{source}'"
-        if source_text is None:
-            msg = f"Metadata field '{source}' not found in document metadata."
-            raise ValueError(msg)
-
-    # Apply character limit if specified
-    if max_chars is not None and isinstance(source_text, str) and len(source_text) > max_chars:
-        source_text = source_text[:max_chars]
-        source_label += f" (truncated to {max_chars} chars)"
-
-    field_prompt = f"**{key}**: {prompt}\n"
-    field_prompt += f"  - Source: {source_label}\n"
-    field_prompt += f"  - Text to analyze: {source_text}\n"
-
-    # TODO: Determine if we want to add this also when supporting response_format
-    if values:  # Literal fields (single or multi-value)
-        values_str = ", ".join(f'"{val}"' for val in values)
-        if is_multi_value:
-            field_prompt += f"  - Allowed values: {values_str}\n"
-            field_prompt += "  - Select ALL that apply\n"
-        else:
-            field_prompt += f"  - Allowed values: {values_str}\n"
-            field_prompt += "  - Select ONE that best fits\n"
-    elif is_multi_value:  # Multi-value free-text field
-        field_prompt += "  - Provide relevant values (can be multiple)\n"
-    else:  # Single-value free-text field
-        field_prompt += "  - Provide a single, concise response\n"
-
-    return field_prompt + "\n"
-
-
 def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
     documents: list[Document],
     metadata_fields: list[dict[str, Any]],
     config: RAGLiteConfig,
+    content_char_limit: int | None = None,
     **kwargs: Any,
 ) -> Iterator[Document]:
     """
@@ -186,9 +125,11 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
         - prompt (str): Instruction to guide the LLM in extracting the field
         - source (str, optional): Source for extraction - either "content" (default)
           or metadata field key
-        - max_chars (int, optional): Maximum number of characters to consider from the source text
     config : RAGLiteConfig
         RAGLite configuration
+    content_char_limit (int, optional):
+        Maximum number of characters from the Document content to consider for extraction.
+        Should be used to limit the token usage in LLM calls for very large documents.
     **kwargs : Any
         Additional keyword arguments passed to `batch_completion` (e.g., max_workers, threading)
 
@@ -246,14 +187,43 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
     if not documents:
         return
 
-    # Create dynamic Pydantic model for metadata validation.
     fields: dict[str, Any] = {}
+    system_prompt = (
+        "You are a metadata extractor for documents with perfect precision and recall.\n"
+        "Extract the requested metadata from the provided source text.\n"
+        "For constrained fields, only use the provided allowed values.\n"
+        "For free-text fields, provide concise and accurate responses.\n"
+        "Output valid JSON matching the required schema."
+    )
+
+    # Build dynamic Pydantic model for metadata validation and add field specs to system prompt.
     for field_spec in metadata_fields:
         key = field_spec["key"]
         field_type = field_spec["type"]
+        prompt = field_spec["prompt"]
+        source = field_spec.get("source", "content")
 
-        values, is_multi_value = _extract_literal_values(field_type)
+        # Determine if the field is single or multi-value,
+        # and if it has any literal constraints.
+        values = None
+        is_multi_value = False
+        origin = get_origin(field_type)
+        if origin is list:
+            args = get_args(field_type)
+            if args and get_origin(args[0]) is Literal:
+                values = list(get_args(args[0]))
+                is_multi_value = True
+            else:
+                values = None
+                is_multi_value = True
+        elif origin is Literal:
+            values = list(get_args(field_type))
+            is_multi_value = False
+        else:
+            values = None
+            is_multi_value = False
 
+        # Build Pydantic field.
         if is_multi_value:  # Multi-value field (literal or free-text)
             fields[key] = (field_type, Field(default_factory=list))
         elif values:  # Single-value literal field
@@ -271,16 +241,24 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
                 msg = f"Unsupported field type for key '{key}': {field_type!r}"
                 raise ValueError(msg)
 
-    model: type[BaseModel] = create_model("DocumentMetadata", __base__=BaseModel, **fields)
+        # Build system prompt for this field.
+        source_label = "Content" if source == "content" else f"Metadata field '{source}'"
+        field_prompt = f"**{key}**: {prompt}\n"
+        field_prompt += f"  - Source: {source_label}\n"
+        if values:  # Literal fields (single or multi-value)
+            values_str = ", ".join(f'"{val}"' for val in values)
+            field_prompt += f"  - Allowed values: {values_str}\n"
+            if is_multi_value:
+                field_prompt += "  - Select ALL that apply\n"
+            else:
+                field_prompt += "  - Select ONE that best fits\n"
+        elif is_multi_value:  # Multi-value free-text field
+            field_prompt += "  - Provide relevant values (can be multiple)\n"
+        else:  # Single-value free-text field
+            field_prompt += "  - Provide a single, concise response\n"
+        system_prompt += field_prompt + "\n"
 
-    # Base system prompt.
-    system_prompt = (
-        "You are a metadata extractor for documents with perfect precision and recall.\n"
-        "Extract the requested metadata from the provided source text.\n"
-        "For constrained fields, only use the provided allowed values.\n"
-        "For free-text fields, provide concise and accurate responses.\n"
-        "Output valid JSON matching the required schema."
-    )
+    model: type[BaseModel] = create_model("DocumentMetadata", __base__=BaseModel, **fields)
 
     # Construct response format if supported by the LLM.
     supports_rf = "response_format" in (get_supported_openai_params(model=config.llm) or [])
@@ -312,12 +290,13 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
         )
         response_format = None
 
-    # Build messages for batch processing.
+    # Add metadata and content for each document to messages.
     all_messages = []
     for doc in documents:
-        user_prompt = "Extract the following metadata:\n\n"
-        for field_spec in metadata_fields:
-            user_prompt += _build_field_prompt(field_spec, doc)
+        source_text = doc.content or ""
+        if content_char_limit is not None and len(source_text) > content_char_limit:
+            source_text = source_text[:content_char_limit]
+        user_prompt = "Metadata:\n" + json.dumps(dict(doc.metadata_)) + "\nContent:\n" + source_text
         all_messages.append(
             [
                 {"role": "system", "content": system_prompt},
