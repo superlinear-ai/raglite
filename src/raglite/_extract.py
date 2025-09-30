@@ -3,8 +3,7 @@
 import json
 import logging
 from collections.abc import Iterator
-from dataclasses import dataclass
-from typing import Any, Literal, TypeVar, get_args, get_origin
+from typing import Annotated, Any, Literal, TypeVar, get_args, get_origin
 
 from litellm import (  # type: ignore[attr-defined]
     batch_completion,
@@ -101,108 +100,63 @@ def extract_with_llm(
     return instance
 
 
-@dataclass
-class MetadataField:
-    """
-    A declarative representation of a metadata field to be extracted by an LLM.
-
-    This class provides a structured, user-friendly way to define what metadata
-    to extract, from where, and how to instruct the model.
-
-    Attributes
-    ----------
-    key : str
-        The name of the metadata field to be created (e.g., 'document_type').
-
-    field_type : Any
-        The Python type hint for the expected value. This guides the LLM's output format. Examples:
-        - ``str``, ``int``, ``float``, ``bool``
-        - ``Literal[...]``: for single-choice literals
-        - ``list[Literal[...]]``: for multi-choice literals
-        - ``list[str]``: for multi-value free-text
-
-    prompt : str
-        The instructional prompt for the LLM to guide extraction for this specific field.
-
-    source : str, optional
-        The source of information for extraction. Can be set to the key of another metadata
-        field. Defaults to ``'content'``.
-    """
-
-    key: str
-    field_type: Any
-    prompt: str
-    source: str = "content"
+def _unwrap_annotated(tp: Any) -> tuple[Any, str | None]:
+    if get_origin(tp) is Annotated:
+        base, *meta = get_args(tp)
+        prompt = next((m for m in meta if isinstance(m, str)), None)
+        return base, prompt
+    return tp, None
 
 
 def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
     documents: list[Document],
-    metadata_fields: list[MetadataField],
+    metadata_fields: dict[str, Any],
     config: RAGLiteConfig,
     content_char_limit: int | None = None,
+    source: str = "content",
     **kwargs: Any,
 ) -> Iterator[Document]:
     """
-    Extract metadata from documents using LLM with configurable fields and constraints.
+    Extract metadata from documents using an LLM.
 
     Parameters
     ----------
-    documents : list[Document]
-        List of documents to process
-    metadata_fields : list[MetadataField]
-        List of MetadataField objects specifying the metadata fields to extract.
-    config : RAGLiteConfig
-        RAGLite configuration
-    content_char_limit (int, optional):
-        Maximum number of characters from the Document content to consider for extraction.
-        Should be used to limit the token usage in LLM calls for very large documents.
-    **kwargs : Any
-        Additional keyword arguments passed to `batch_completion` (e.g., max_workers, threading)
+    documents
+        Documents to enrich.
+    metadata_fields
+        A mapping ``{field_name: field_type}``.
 
-    Returns
-    -------
-    Iterator[Document]
-        Documents with expanded metadata
+        ``field_type`` may be a plain type (``str``, ``Literal[...]``, etc.) or
+        ``typing.Annotated`` with a prompt string:
 
-    Examples
-    --------
-    Extract document metadata from content and existing metadata before inserting into database:
+         from typing import Annotated, Literal
+         metadata_fields = {
+             "planet_mass": Annotated[float, "The mass of a planet"],
+             "subject": Annotated[
+                 Literal["Apple", "Meta", "Tesla"],
+                 "The subject of the document"
+             ],
+             "participants": Annotated[
+                 list[Literal["Alice", "Bob", "John", "Jane"]],
+                 "People mentioned in the text"
+             ],
+         }
+    config
+        RAGLite configuration.
+    content_char_limit
+        If set, only the first ``content_char_limit`` characters of each
+        document's content are sent to the LLM.
+    source
+        One of ``"content"`` (default) or the name of an existing metadata
+        field to use as the extraction source.  If multiple sources are needed,
+        call the function multiple times.
+    **kwargs
+        Passed through to ``litellm.batch_completion`` (e.g. ``max_workers``).
 
-        from raglite import Document, RAGLiteConfig, insert_documents, expand_document_metadata
-
-        documents = [
-            Document.from_path("path/to/document1.md", author="John Doe"),
-            Document.from_path("path/to/document2.md", author="Jane Smith"),
-            Document.from_path("path/to/document3.pdf", author="Alice Johnson"),
-        ]
-
-        # Define metadata fields to extract
-        metadata_fields = [
-            MetadataField(
-                key="document_type",
-                field_type=Literal["research-paper", "tutorial", "documentation"],
-                prompt="What type of document is this?",
-            ),
-            MetadataField(
-                key="author_affiliation",
-                field_type=Literal["academic", "industry", "government"],
-                prompt="What type of affiliation does this author likely have?",
-                source="author"
-            ),
-            MetadataField(
-                key="topics",
-                field_type=list[Literal["AI", "ML", "NLP", "computer-vision", "robotics"]],
-                prompt="What topics does this document cover?",
-            ),
-            MetadataField(
-                key="summary",
-                field_type=str,
-                prompt="Provide a brief summary of this document",
-            )
-        ]
-
-        expanded_docs = list(expand_document_metadata(documents, metadata_fields, raglite_config))
-        insert_documents(expanded_docs)
+    Yields
+    ------
+    Document
+        Documents with expanded ``metadata_``.
     """
     if not documents:
         return
@@ -217,11 +171,9 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
     )
 
     # Build dynamic Pydantic model for metadata validation and add field specs to system prompt.
-    for field_spec in metadata_fields:
-        key = field_spec.key
-        field_type = field_spec.field_type
-        prompt = field_spec.prompt
-        source = field_spec.source
+    for field_name, declared_type in metadata_fields.items():
+        field_type, prompt = _unwrap_annotated(declared_type)
+        prompt = prompt or f"Extract '{field_name}'"
 
         # Determine if the field is single or multi-value,
         # and if it has any literal constraints.
@@ -245,9 +197,9 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
 
         # Build Pydantic field.
         if is_multi_value:  # Multi-value field (literal or free-text)
-            fields[key] = (field_type, Field(default_factory=list))
+            fields[field_name] = (field_type, Field(default_factory=list))
         elif values:  # Single-value literal field
-            fields[key] = (field_type, Field(default=values[0]))
+            fields[field_name] = (field_type, Field(default=values[0]))
         else:  # Single-value free-text fields: str, int, float, bool
             type_default_map = {
                 str: "",
@@ -256,14 +208,14 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
                 bool: False,
             }
             if field_type in type_default_map:
-                fields[key] = (field_type, Field(default=type_default_map[field_type]))
+                fields[field_name] = (field_type, Field(default=type_default_map[field_type]))
             else:
-                msg = f"Unsupported field type for key '{key}': {field_type!r}"
+                msg = f"Unsupported field type for key '{field_name}': {field_type!r}"
                 raise ValueError(msg)
 
         # Build system prompt for this field.
         source_label = "Content" if source == "content" else f"Metadata field '{source}'"
-        field_prompt = f"**{key}**: {prompt}\n"
+        field_prompt = f"**{field_name}**: {prompt}\n"
         field_prompt += f"  - Source: {source_label}\n"
         if values:  # Literal fields (single or multi-value)
             values_str = ", ".join(f'"{val}"' for val in values)
