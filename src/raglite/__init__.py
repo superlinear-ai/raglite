@@ -25,7 +25,6 @@ __all__ = [
     "Document",
     "insert_documents",
     # Extract
-    "MetadataField",
     "expand_document_metadata",
     # Search
     "hybrid_search",
