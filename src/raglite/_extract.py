@@ -112,7 +112,7 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
     documents: list[Document],
     metadata_fields: dict[str, Any],
     config: RAGLiteConfig,
-    content_char_limit: int | None = None,
+    max_context_size: int | None = None,
     source: str = "content",
     **kwargs: Any,
 ) -> Iterator[Document]:
@@ -143,8 +143,8 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
          }
     config
         RAGLite configuration.
-    content_char_limit
-        If set, only the first ``content_char_limit`` characters of each
+    max_context_size
+        If set, only the first ``max_context_size`` characters of each
         document's content are sent to the LLM.
     source
         One of ``"content"`` (default) or the name of an existing metadata
@@ -266,8 +266,8 @@ def expand_document_metadata(  # noqa: C901, PLR0912, PLR0915
     all_messages = []
     for doc in documents:
         source_text = doc.content or ""
-        if content_char_limit is not None and len(source_text) > content_char_limit:
-            source_text = source_text[:content_char_limit]
+        if max_context_size is not None and len(source_text) > max_context_size:
+            source_text = source_text[:max_context_size]
         user_prompt = "Metadata:\n" + json.dumps(dict(doc.metadata_)) + "\nContent:\n" + source_text
         all_messages.append(
             [
