@@ -12,12 +12,13 @@ from litellm import (  # type: ignore[attr-defined]
     stream_chunk_builder,
     supports_function_calling,
 )
+from sqlmodel import Session, select
 
 from raglite._config import RAGLiteConfig
-from raglite._database import Chunk, ChunkSpan
+from raglite._database import Chunk, ChunkSpan, Metadata, create_database_engine
 from raglite._litellm import get_context_size
 from raglite._search import retrieve_chunk_spans
-from raglite._typing import MetadataFilter
+from raglite._typing import MetadataFilter, MetadataValue
 
 # The default RAG instruction template follows Anthropic's best practices [1].
 # [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
@@ -36,10 +37,33 @@ Instead, you MUST treat the context as if its contents are entirely part of your
 {user_prompt}
 """.strip()
 
+SELF_QUERY_PROMPT = """
+---
+You extract metadata filters from a user query.
+Output rules (follow exactly):
+- Return a single JSON object with every field from the available metadata as a key.
+- For each field:
+    - Only set a value if the user query explicitly and unambiguously mentions it, using exactly one value from the allowed list for that field.
+    - If the value is not explicitly mentioned in the query, use "{no_match}" (without quotes in the JSON).
+- Do NOT infer, guess, or include values that are only implied, suggested, or make sense contextually. Only use values that are directly and clearly stated in the user query.
+- Do not invent values. Only use values from the allowed lists.
+- Output ONLY the JSON object, with no extra text before or after.
+---
+
+</available_metadata>
+{metadata_dict}
+</available_metadata>
+
+User query: "{query}"
+""".strip()
+
+NO_MATCH = "<<no_match>>"
+
 
 def retrieve_context(
     query: str,
     *,
+    self_query: bool = False,
     num_chunks: int = 10,
     metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig | None = None,
@@ -47,6 +71,13 @@ def retrieve_context(
     """Retrieve context for RAG."""
     # Call the search method.
     config = config or RAGLiteConfig()
+    # If self_query is enabled, extract metadata filters from the query.
+    if self_query:
+        self_query_filter = _self_query(query, config=config)
+        if metadata_filter is not None:
+            metadata_filter = {**self_query_filter, **metadata_filter}
+        else:
+            metadata_filter = self_query_filter
     results = config.search_method(
         query, num_results=num_chunks, metadata_filter=metadata_filter, config=config
     )
@@ -171,6 +202,65 @@ def _run_tools(
             error_message = f"Unknown function `{tool_call.function.name}`."
             raise ValueError(error_message)
     return tool_messages
+
+
+def _self_query(
+    query: str,
+    *,
+    self_query_prompt: str = SELF_QUERY_PROMPT,
+    no_match: str = NO_MATCH,
+    config: RAGLiteConfig | None = None,
+) -> MetadataFilter:
+    """Extract metadata filters from a natural language query."""
+    config = config or RAGLiteConfig()
+    # Retrieve the available metadata from the database.
+    with Session(create_database_engine(config)) as session:
+        metadata_records = session.exec(select(Metadata)).all()
+    if not metadata_records:
+        return {}
+    # Generate response format JSON schema
+    available_metadata: dict[str, list[MetadataValue]] = {}
+    properties: dict[str, dict[str, list[MetadataValue]]] = {}
+    for record in metadata_records:
+        properties[record.name] = {"enum": [*record.values, no_match]}
+        available_metadata[record.name] = record.values
+    response_format = {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "metadata_filter",
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": properties,
+                "required": list(properties.keys()),
+            },
+            "strict": True,
+        },
+    }
+    # Format the prompt with the user's query and available metadata
+    formatted_prompt = self_query_prompt.format(
+        metadata_dict=json.dumps(available_metadata, indent=2),
+        query=query,
+        no_match=no_match,
+    )
+    # Call the LLM to extract metadata filters
+    try:
+        response = completion(
+            model=config.llm,
+            messages=[
+                {"role": "user", "content": formatted_prompt},
+            ],
+            response_format=response_format,
+            temperature=0,
+        )
+        metadata_filter = response["choices"][0]["message"]["content"]
+        metadata_filter = json.loads(metadata_filter)
+        # Remove any key-value pairs where the value is equal to no_match
+        metadata_filter = {k: v for k, v in metadata_filter.items() if v != no_match}
+    except (json.JSONDecodeError, KeyError):
+        return {}
+    else:
+        return metadata_filter
 
 
 def rag(

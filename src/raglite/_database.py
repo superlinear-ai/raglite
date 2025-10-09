@@ -41,6 +41,7 @@ from raglite._typing import (
     FloatMatrix,
     FloatVector,
     IndexId,
+    MetadataValue,
     PickledObject,
 )
 
@@ -436,6 +437,15 @@ class IndexMetadata(SQLModel, table=True):
     def get(id_: str = "default", *, config: RAGLiteConfig | None = None) -> dict[str, Any]:
         metadata = IndexMetadata._get(id_, config=config) or {}
         return metadata
+
+
+class Metadata(SQLModel, table=True):
+    """A table for metadata values, linked to field names."""
+
+    __tablename__ = "metadata"
+
+    name: str = Field(..., primary_key=True)
+    values: list[MetadataValue] = Field(default_factory=list, sa_column=Column(JSON))
 
 
 class Eval(SQLModel, table=True):
