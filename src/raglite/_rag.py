@@ -44,8 +44,9 @@ Rules:
 - Return ONE JSON object containing EVERY metadata field as a key.
 - For each field:
     - Only set a value if the user query explicitly and unambiguously mentions it, using exactly one value from the allowed list for that field.
-    - Otherwise output {no_match}.
-- Do NOT infer values from other fields.
+    - If the user query is broad, ambiguous, or does NOT explicitly mention a single
+      allowed value for that field, you MUST output {no_match}.
+- Do NOT infer values from other fields, common knowledge, or popularity.
 - Output ONLY the JSON object, with no extra text before or after.
 ---
 
