@@ -40,13 +40,12 @@ Instead, you MUST treat the context as if its contents are entirely part of your
 SELF_QUERY_PROMPT = """
 ---
 You extract metadata filters from a user query.
-Output rules (follow exactly):
-- Return a single JSON object with every field from the available metadata as a key.
+Rules:
+- Return ONE JSON object containing EVERY metadata field as a key.
 - For each field:
     - Only set a value if the user query explicitly and unambiguously mentions it, using exactly one value from the allowed list for that field.
-    - If the value is not explicitly mentioned in the query, use "{no_match}" (without quotes in the JSON).
-- Do NOT infer, guess, or include values that are only implied, suggested, or make sense contextually. Only use values that are directly and clearly stated in the user query.
-- Do not invent values. Only use values from the allowed lists.
+    - Otherwise output {no_match}.
+- Do NOT infer values from other fields.
 - Output ONLY the JSON object, with no extra text before or after.
 ---
 
