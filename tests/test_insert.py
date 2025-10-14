@@ -6,7 +6,8 @@ from sqlmodel import Session, select
 from tqdm import tqdm
 
 from raglite._config import RAGLiteConfig
-from raglite._database import Chunk, Document, Metadata, create_database_engine
+from raglite._database import Chunk, Document, create_database_engine
+from raglite._insert import _get_database_metadata
 from raglite._markdown import document_to_markdown
 
 
@@ -44,7 +45,7 @@ def test_insert(raglite_test_config: RAGLiteConfig) -> None:
         doc = doc.replace("\n", "").strip()
         assert restored_document == doc, "Restored document does not match the original input."
         # Verify that the document metadata matches.
-        metadata = session.exec(select(Metadata)).all()
+        metadata = _get_database_metadata(session)
         assert len(metadata) > 0, "No metadata found for the document"
         # Check that the metadata values match the original document metadata.
         for meta in metadata:
