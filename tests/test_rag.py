@@ -79,10 +79,11 @@ def test_self_query(raglite_test_config: RAGLiteConfig) -> None:
 
 def test_retrieve_context_self_query(raglite_test_config: RAGLiteConfig) -> None:
     """Test retrieve_context with self_query functionality."""
+    from dataclasses import replace
+
+    new_config = replace(raglite_test_config, self_query=True)
     query = "What does Albert Einstein's paper say about time dilation?"
-    chunk_spans = retrieve_context(
-        query=query, self_query=True, num_chunks=5, config=raglite_test_config
-    )
+    chunk_spans = retrieve_context(query=query, num_chunks=5, config=new_config)
     assert all(isinstance(chunk_span, ChunkSpan) for chunk_span in chunk_spans)
     for chunk_span in chunk_spans:
         assert chunk_span.document.metadata_.get("type") == "Paper", (

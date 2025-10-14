@@ -53,7 +53,6 @@ Rules:
 def retrieve_context(
     query: str,
     *,
-    self_query: bool = False,
     num_chunks: int = 10,
     metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig | None = None,
@@ -62,7 +61,7 @@ def retrieve_context(
     # Call the search method.
     config = config or RAGLiteConfig()
     # If self_query is enabled, extract metadata filters from the query.
-    if self_query:
+    if config.self_query:
         self_query_filter = _self_query(query, config=config)
         metadata_filter = {**self_query_filter, **(metadata_filter or {})}
     results = config.search_method(
@@ -170,6 +169,8 @@ def _run_tools(
         if tool_call.function.name == "search_knowledge_base":
             kwargs = json.loads(tool_call.function.arguments)
             kwargs["config"] = config
+            if config.self_query:
+                kwargs["metadata_filter"] = _self_query(**kwargs)
             chunk_spans = retrieve_context(**kwargs)
             tool_messages.append(
                 {
