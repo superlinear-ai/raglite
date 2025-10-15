@@ -3,7 +3,8 @@
 import json
 from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Any, ClassVar, Literal
-from venv import logger
+import logging
+logger = logging.getLogger(__name__)
 
 import numpy as np
 from litellm import (  # type: ignore[attr-defined]
