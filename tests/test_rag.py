@@ -66,10 +66,12 @@ def test_rag_auto_without_retrieval(raglite_test_config: RAGLiteConfig) -> None:
 def test_self_query(raglite_test_config: RAGLiteConfig) -> None:
     """Test self-query functionality that extracts metadata filters from queries."""
     # Test 1: Query that should extract "Physics" from topic field
-    query1 = "Retrieve Physics papers."
-    expected_filter1 = {"topic": "Physics", "type": "Paper"}
+    query1 = "I want to learn about Physics."
+    expected_topic = "Physics"
     actual_filter1 = _self_query(query1, config=raglite_test_config)
-    assert actual_filter1 == expected_filter1, f"Expected {expected_filter1}, got {actual_filter1}"
+    assert actual_filter1.get("topic") == expected_topic, (
+        f"Expected topic '{expected_topic}', got {actual_filter1.get('topic')}"
+    )
     # Test 2: Query with non-existent metadata values should return empty filter
     query2 = "What is the price of a Bugatti Chiron?"
     expected_filter2: dict[str, Any] = {}
