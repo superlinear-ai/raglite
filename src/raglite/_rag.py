@@ -1,10 +1,9 @@
 """Retrieval-augmented generation."""
 
 import json
+import logging
 from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Any, ClassVar, Literal
-import logging
-logger = logging.getLogger(__name__)
 
 import numpy as np
 from litellm import (  # type: ignore[attr-defined]
@@ -24,6 +23,7 @@ from raglite._litellm import get_context_size
 from raglite._search import retrieve_chunk_spans
 from raglite._typing import MetadataFilter
 
+logger = logging.getLogger(__name__)
 # The default RAG instruction template follows Anthropic's best practices [1].
 # [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
 RAG_INSTRUCTION_TEMPLATE = """
@@ -222,7 +222,7 @@ def _self_query(
             temperature=0,
         )
     except ValueError as e:
-        logger.debug(f"Failed to extract metadata filter: {e}")
+        logger.debug("Failed to extract metadata filter: %s", e)
         return {}
     else:
         metadata_filter = result.model_dump()
