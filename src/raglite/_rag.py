@@ -170,8 +170,6 @@ def _run_tools(
         if tool_call.function.name == "search_knowledge_base":
             kwargs = json.loads(tool_call.function.arguments)
             kwargs["config"] = config
-            if config.self_query:
-                kwargs["metadata_filter"] = _self_query(**kwargs)
             chunk_spans = retrieve_context(**kwargs)
             tool_messages.append(
                 {
