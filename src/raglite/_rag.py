@@ -1,9 +1,8 @@
 """Retrieval-augmented generation."""
 
 import json
-import logging
 from collections.abc import AsyncIterator, Callable, Iterator
-from typing import Any, ClassVar, Literal
+from typing import Any
 
 import numpy as np
 from litellm import (  # type: ignore[attr-defined]
@@ -13,17 +12,13 @@ from litellm import (  # type: ignore[attr-defined]
     stream_chunk_builder,
     supports_function_calling,
 )
-from pydantic import BaseModel, create_model
 
 from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, ChunkSpan
-from raglite._extract import extract_with_llm
-from raglite._insert import _get_database_metadata
 from raglite._litellm import get_context_size
 from raglite._search import retrieve_chunk_spans
 from raglite._typing import MetadataFilter
 
-logger = logging.getLogger(__name__)
 # The default RAG instruction template follows Anthropic's best practices [1].
 # [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
 RAG_INSTRUCTION_TEMPLATE = """
@@ -41,15 +36,6 @@ Instead, you MUST treat the context as if its contents are entirely part of your
 {user_prompt}
 """.strip()
 
-SELF_QUERY_PROMPT = """
-You extract metadata filters from user queries to help search a knowledge base.
-
-Rules:
-- Only populate a field when the query explicitly and unambiguously mentions a specific allowed value for that field
-- If the query is general, ambiguous, or doesn't mention a field, leave it as None
-- Do not infer values from common knowledge, popularity, or context from other fields
-""".strip()
-
 
 def retrieve_context(
     query: str,
@@ -61,10 +47,6 @@ def retrieve_context(
     """Retrieve context for RAG."""
     # Call the search method.
     config = config or RAGLiteConfig()
-    # If self_query is enabled, extract metadata filters from the query.
-    if config.self_query:
-        self_query_filter = _self_query(query, config=config)
-        metadata_filter = {**self_query_filter, **(metadata_filter or {})}
     results = config.search_method(
         query, num_results=num_chunks, metadata_filter=metadata_filter, config=config
     )
@@ -189,42 +171,6 @@ def _run_tools(
             error_message = f"Unknown function `{tool_call.function.name}`."
             raise ValueError(error_message)
     return tool_messages
-
-
-def _self_query(
-    query: str,
-    *,
-    system_prompt: str = SELF_QUERY_PROMPT,
-    config: RAGLiteConfig | None = None,
-) -> MetadataFilter:
-    """Extract metadata filters from a natural language query."""
-    config = config or RAGLiteConfig()
-    # Retrieve the available metadata from the database.
-    metadata_records = _get_database_metadata(config=config)
-    if not metadata_records:
-        return {}
-    # Create dynamic Pydantic model for the metadata filter
-    field_definitions: dict[str, Any] = {}
-    field_definitions["system_prompt"] = (ClassVar[str], system_prompt)
-    for record in metadata_records:
-        field_definitions[record.name] = (Literal[tuple(record.values)] | None, None)
-    metadata_filter_model = create_model(
-        "MetadataFilterModel", **field_definitions, __base__=BaseModel
-    )
-    # Call extract_with_llm
-    try:
-        result = extract_with_llm(
-            return_type=metadata_filter_model,
-            user_prompt=query,
-            config=config,
-            temperature=0,
-        )
-    except ValueError as e:
-        logger.debug("Failed to extract metadata filter: %s", e)
-        return {}
-    else:
-        metadata_filter = result.model_dump()
-        return {k: v for k, v in metadata_filter.items() if v is not None}
 
 
 def rag(

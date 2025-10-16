@@ -2,14 +2,16 @@
 
 import contextlib
 import json
+import logging
 import re
 import string
 from collections import defaultdict
 from itertools import groupby
-from typing import Any
+from typing import Any, ClassVar, Literal
 
 import numpy as np
 from langdetect import LangDetectException, detect
+from pydantic import BaseModel, create_model
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import joinedload
 from sqlmodel import Session, and_, col, func, or_, select, text
@@ -23,7 +25,11 @@ from raglite._database import (
     create_database_engine,
 )
 from raglite._embed import embed_strings
+from raglite._extract import extract_with_llm
+from raglite._insert import _get_database_metadata
 from raglite._typing import BasicSearchMethod, ChunkId, FloatVector, MetadataFilter
+
+logger = logging.getLogger(__name__)
 
 
 def vector_search(
@@ -37,6 +43,10 @@ def vector_search(
     """Search chunks using ANN vector search."""
     # Read the config.
     config = config or RAGLiteConfig()
+    # If self_query is enabled, extract metadata filters from the query.
+    if config.self_query and isinstance(query, str):
+        self_query_filter = _self_query(query, config=config)
+        metadata_filter = {**self_query_filter, **(metadata_filter or {})}
     # Embed the query.
     query_embedding = (
         embed_strings([query], config=config)[0, :] if isinstance(query, str) else np.ravel(query)
@@ -150,6 +160,10 @@ def keyword_search(
     """Search chunks using BM25 keyword search."""
     # Read the config.
     config = config or RAGLiteConfig()
+    # If self_query is enabled, extract metadata filters from the query.
+    if config.self_query and isinstance(query, str):
+        self_query_filter = _self_query(query, config=config)
+        metadata_filter = {**self_query_filter, **(metadata_filter or {})}
     # Connect to the database.
     with Session(create_database_engine(config)) as session:
         dialect = session.get_bind().dialect.name
@@ -412,3 +426,49 @@ def search_and_rerank_chunk_spans(  # noqa: PLR0913
     chunks = rerank_chunks(query, chunk_ids, config=config)[:num_results]
     chunk_spans = retrieve_chunk_spans(chunks, neighbors=neighbors, config=config)
     return chunk_spans
+
+
+SELF_QUERY_PROMPT = """
+You extract metadata filters from user queries to help search a knowledge base.
+
+Rules:
+- Only populate a field when the query explicitly and unambiguously mentions a specific allowed value for that field
+- If the query is general, ambiguous, or doesn't mention a field, leave it as None
+- Do not infer values from common knowledge, popularity, or context from other fields
+""".strip()
+
+
+def _self_query(
+    query: str,
+    *,
+    system_prompt: str = SELF_QUERY_PROMPT,
+    config: RAGLiteConfig | None = None,
+) -> MetadataFilter:
+    """Extract metadata filters from a natural language query."""
+    config = config or RAGLiteConfig()
+    # Retrieve the available metadata from the database.
+    metadata_records = _get_database_metadata(config=config)
+    if not metadata_records:
+        return {}
+    # Create dynamic Pydantic model for the metadata filter
+    field_definitions: dict[str, Any] = {}
+    field_definitions["system_prompt"] = (ClassVar[str], system_prompt)
+    for record in metadata_records:
+        field_definitions[record.name] = (Literal[tuple(record.values)] | None, None)
+    metadata_filter_model = create_model(
+        "MetadataFilterModel", **field_definitions, __base__=BaseModel
+    )
+    # Call extract_with_llm
+    try:
+        result = extract_with_llm(
+            return_type=metadata_filter_model,
+            user_prompt=query,
+            config=config,
+            temperature=0,
+        )
+    except ValueError as e:
+        logger.debug("Failed to extract metadata filter: %s", e)
+        return {}
+    else:
+        metadata_filter = result.model_dump()
+        return {k: v for k, v in metadata_filter.items() if v is not None}
