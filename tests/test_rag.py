@@ -1,7 +1,6 @@
 """Test RAGLite's RAG functionality."""
 
 import json
-from typing import Any
 
 from raglite import (
     RAGLiteConfig,
@@ -9,7 +8,7 @@ from raglite import (
     retrieve_context,
 )
 from raglite._database import ChunkSpan
-from raglite._rag import _self_query, rag
+from raglite._rag import rag
 
 
 def test_rag_manual(raglite_test_config: RAGLiteConfig) -> None:
@@ -61,22 +60,6 @@ def test_rag_auto_without_retrieval(raglite_test_config: RAGLiteConfig) -> None:
     # Verify that no RAG context was retrieved.
     assert [message["role"] for message in messages] == ["user", "assistant"]
     assert not chunk_spans
-
-
-def test_self_query(raglite_test_config: RAGLiteConfig) -> None:
-    """Test self-query functionality that extracts metadata filters from queries."""
-    # Test 1: Query that should extract "Physics" from topic field
-    query1 = "I want to learn about Physics."
-    expected_topic = "Physics"
-    actual_filter1 = _self_query(query1, config=raglite_test_config)
-    assert actual_filter1.get("topic") == expected_topic, (
-        f"Expected topic '{expected_topic}', got {actual_filter1.get('topic')}"
-    )
-    # Test 2: Query with non-existent metadata values should return empty filter
-    query2 = "What is the price of a Bugatti Chiron?"
-    expected_filter2: dict[str, Any] = {}
-    actual_filter2 = _self_query(query2, config=raglite_test_config)
-    assert actual_filter2 == expected_filter2, f"Expected {expected_filter2}, got {actual_filter2}"
 
 
 def test_retrieve_context_self_query(raglite_test_config: RAGLiteConfig) -> None:

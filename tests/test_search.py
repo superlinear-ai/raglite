@@ -1,5 +1,7 @@
 """Test RAGLite's search functionality."""
 
+from typing import Any
+
 import pytest
 
 from raglite import (
@@ -12,6 +14,7 @@ from raglite import (
     vector_search,
 )
 from raglite._database import Chunk, ChunkSpan
+from raglite._search import _self_query
 from raglite._typing import BasicSearchMethod
 
 
@@ -122,3 +125,19 @@ def test_search_metadata_filter(
     assert len(chunk_ids_empty) == len(scores_empty) == 0, (
         "Expected no results when filtering for Mathematics papers"
     )
+
+
+def test_self_query(raglite_test_config: RAGLiteConfig) -> None:
+    """Test self-query functionality that extracts metadata filters from queries."""
+    # Test 1: Query that should extract "Physics" from topic field
+    query1 = "I want to learn about Physics."
+    expected_topic = "Physics"
+    actual_filter1 = _self_query(query1, config=raglite_test_config)
+    assert actual_filter1.get("topic") == expected_topic, (
+        f"Expected topic '{expected_topic}', got {actual_filter1.get('topic')}"
+    )
+    # Test 2: Query with non-existent metadata values should return empty filter
+    query2 = "What is the price of a Bugatti Chiron?"
+    expected_filter2: dict[str, Any] = {}
+    actual_filter2 = _self_query(query2, config=raglite_test_config)
+    assert actual_filter2 == expected_filter2, f"Expected {expected_filter2}, got {actual_filter2}"
