@@ -1,8 +1,10 @@
 """Search and retrieve chunks."""
 
 import contextlib
+import functools
 import json
 import logging
+import operator
 import re
 import string
 from collections import defaultdict
@@ -11,7 +13,7 @@ from typing import Any, ClassVar, Literal
 
 import numpy as np
 from langdetect import LangDetectException, detect
-from pydantic import BaseModel, create_model
+from pydantic import BaseModel, Field, create_model
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import joinedload
 from sqlmodel import Session, and_, col, func, or_, select, text
@@ -27,7 +29,7 @@ from raglite._database import (
 from raglite._embed import embed_strings
 from raglite._extract import extract_with_llm
 from raglite._insert import _get_database_metadata
-from raglite._typing import BasicSearchMethod, ChunkId, FloatVector, MetadataFilter
+from raglite._typing import BasicSearchMethod, ChunkId, FloatVector, MetadataFilter, MetadataValue
 
 logger = logging.getLogger(__name__)
 
@@ -454,7 +456,22 @@ def _self_query(
     field_definitions: dict[str, Any] = {}
     field_definitions["system_prompt"] = (ClassVar[str], system_prompt)
     for record in metadata_records:
-        field_definitions[record.name] = (Literal[tuple(record.values)] | None, None)
+        scalar_values = [v for v in record.values if not isinstance(v, list)]
+        has_list_values = any(isinstance(v, list) for v in record.values)
+
+        type_parts: list[Any] = []
+        if scalar_values:
+            type_parts.append(Literal[tuple(scalar_values)])
+        if has_list_values:
+            type_parts.append(list[MetadataValue])
+
+        final_type = functools.reduce(operator.or_, type_parts)
+
+        description = f"Allowed values are: {json.dumps(record.values)}"
+        field_definitions[record.name] = (
+            final_type | None,
+            Field(default=None, description=description),
+        )
     metadata_filter_model = create_model(
         "MetadataFilterModel", **field_definitions, __base__=BaseModel
     )
