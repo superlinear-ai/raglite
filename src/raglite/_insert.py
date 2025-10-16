@@ -47,7 +47,10 @@ def _aggregate_metadata_from_documents(
                 continue
             if key not in metadata:
                 metadata[key] = set()
-            metadata[key].add(value)
+            if isinstance(value, list):
+                metadata[key].update(value)
+            else:
+                metadata[key].add(value)
     return metadata
 
 
