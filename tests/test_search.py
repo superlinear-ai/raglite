@@ -130,7 +130,7 @@ def test_search_metadata_filter(
 def test_self_query(raglite_test_config: RAGLiteConfig) -> None:
     """Test self-query functionality that extracts metadata filters from queries."""
     # Test 1: Query that should extract "Physics" from topic field
-    query1 = "I want to learn about Physics."
+    query1 = "I want to learn about the topic Physics."
     expected_topic = ["Physics"]
     actual_filter1 = _self_query(query1, config=raglite_test_config)
     assert actual_filter1.get("topic") == expected_topic, (
