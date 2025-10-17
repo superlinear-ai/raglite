@@ -71,9 +71,9 @@ def test_retrieve_context_self_query(raglite_test_config: RAGLiteConfig) -> None
     chunk_spans = retrieve_context(query=query, num_chunks=5, config=new_config)
     assert all(isinstance(chunk_span, ChunkSpan) for chunk_span in chunk_spans)
     for chunk_span in chunk_spans:
-        assert chunk_span.document.metadata_.get("type") == "Paper", (
+        assert chunk_span.document.metadata_.get("type") == ["Paper"], (
             f"Expected type='Paper', got {chunk_span.document.metadata_.get('type')}"
         )
-        assert chunk_span.document.metadata_.get("author") == "Albert Einstein", (
+        assert chunk_span.document.metadata_.get("author") == ["Albert Einstein"], (
             f"Expected author='Albert Einstein', got {chunk_span.document.metadata_.get('author')}"
         )

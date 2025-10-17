@@ -41,11 +41,19 @@ from raglite._typing import (
     FloatMatrix,
     FloatVector,
     IndexId,
+    MetadataFilter,
     MetadataValue,
     PickledObject,
 )
 
 MetadataJSON = JSON().with_variant(JSONB(), "postgresql")
+
+
+def _adapt_metadata(metadata: Any) -> MetadataFilter:
+    """Adapt metadata to the format expected by the database."""
+    if not metadata:
+        return {}
+    return {k: v if isinstance(v, list) else [v] for k, v in metadata.items()}
 
 
 def hash_bytes(data: bytes, max_len: int = 16) -> str:
@@ -113,7 +121,8 @@ class Document(SQLModel, table=True):
         Document
             A document.
         """
-        # Extract metadata.
+        # Ensure all metadata values from kwargs are lists
+        processed_kwargs = _adapt_metadata(kwargs)
         metadata = {
             "filename": doc_path.name,
             "uri": id,
@@ -121,7 +130,7 @@ class Document(SQLModel, table=True):
             "size": doc_path.stat().st_size,
             "created": doc_path.stat().st_ctime,
             "modified": doc_path.stat().st_mtime,
-            **kwargs,
+            **processed_kwargs,
         }
         # Create the document instance.
         return Document(
@@ -165,13 +174,14 @@ class Document(SQLModel, table=True):
         first_line = content.strip().split("\n", 1)[0].strip()
         if len(first_line) > 80:  # noqa: PLR2004
             first_line = f"{first_line[:80]}..."
-        # Extract metadata.
+        # Ensure all metadata values from kwargs are lists
+        processed_kwargs = _adapt_metadata(kwargs)
         metadata = {
             "filename": filename or first_line,
             "uri": id,
             "url": url,
             "size": len(content.encode()),
-            **kwargs,
+            **processed_kwargs,
         }
         # Create the document instance.
         return Document(
@@ -208,13 +218,15 @@ class Chunk(SQLModel, table=True):
         document: Document, index: int, body: str, headings: str = "", **kwargs: Any
     ) -> "Chunk":
         """Create a chunk from Markdown."""
+        # Ensure all metadata values from kwargs are lists
+        processed_kwargs = _adapt_metadata(kwargs)
         return Chunk(
             id=hash_bytes(f"{document.id}-{index}".encode()),
             document_id=document.id,
             index=index,
             headings=Chunk.truncate_headings(headings, body),
             body=body,
-            metadata_={"filename": document.filename, "url": document.url, **kwargs},
+            metadata_={"filename": document.filename, "url": document.url, **processed_kwargs},
         )
 
     @staticmethod
@@ -477,6 +489,8 @@ class Eval(SQLModel, table=True):
         """Create a chunk from Markdown."""
         document_id = contexts[0].document_id
         chunk_ids = [context.id for context in contexts]
+        # Ensure all metadata values from kwargs are lists
+        processed_kwargs = _adapt_metadata(kwargs)
         return Eval(
             id=hash_bytes(f"{document_id}-{chunk_ids}-{question}".encode()),
             document_id=document_id,
@@ -484,7 +498,7 @@ class Eval(SQLModel, table=True):
             question=question,
             contexts=[str(context) for context in contexts],
             ground_truth=ground_truth,
-            metadata_=kwargs,
+            metadata_=processed_kwargs,
         )
 
 

@@ -52,6 +52,7 @@ def test_insert(raglite_test_config: RAGLiteConfig) -> None:
             assert meta.name in document.metadata_, (
                 f"Metadata {meta.name} not found in document metadata"
             )
-            assert document.metadata_[meta.name] in meta.values, (
-                f"Metadata value {document.metadata_[meta.name]} for {meta.name} not found in metadata values {meta.values}"
-            )
+            for value in document.metadata_[meta.name]:
+                assert value in meta.values, (
+                    f"Metadata value '{value}' for '{meta.name}' not found in database metadata"
+                )
