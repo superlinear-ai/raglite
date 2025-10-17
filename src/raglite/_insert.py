@@ -5,7 +5,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import nullcontext
 from functools import partial
 from pathlib import Path
-from typing import cast
 
 from filelock import FileLock
 from sqlalchemy import text
@@ -15,12 +14,18 @@ from sqlmodel import Session, col, select
 from tqdm.auto import tqdm
 
 from raglite._config import RAGLiteConfig
-from raglite._database import Chunk, ChunkEmbedding, Document, Metadata, create_database_engine
+from raglite._database import (
+    Chunk,
+    ChunkEmbedding,
+    Document,
+    Metadata,
+    create_database_engine,
+)
 from raglite._embed import embed_strings, embed_strings_without_late_chunking, embedding_type
 from raglite._split_chunklets import split_chunklets
 from raglite._split_chunks import split_chunks
 from raglite._split_sentences import split_sentences
-from raglite._typing import HashableMetadataValue, MetadataValue
+from raglite._typing import MetadataValue
 
 METADATA_EXCLUDED_FIELDS = ["filename", "uri", "url", "size", "created", "modified"]
 
@@ -39,9 +44,9 @@ def _get_database_metadata(
 def _aggregate_metadata_from_documents(
     documents: list[Document],
     metadata_excluded_fields: list[str] = METADATA_EXCLUDED_FIELDS,
-) -> dict[str, set[HashableMetadataValue]]:
+) -> dict[str, set[MetadataValue]]:
     """Aggregate metadata values from all documents."""
-    metadata: dict[str, set[HashableMetadataValue]] = {}
+    metadata: dict[str, set[MetadataValue]] = {}
     for doc in documents:
         for key, value in doc.metadata_.items():
             if key in metadata_excluded_fields:
@@ -49,9 +54,7 @@ def _aggregate_metadata_from_documents(
             if key not in metadata:
                 metadata[key] = set()
             if isinstance(value, list):
-                metadata[key].add(tuple(value))  # Store the list as tuple
-                for item in value:
-                    metadata[key].add((item,))  # Also add individual items as single-element tuples
+                metadata[key].update(value)
             else:
                 metadata[key].add(value)
     return metadata
@@ -71,23 +74,14 @@ def _update_metadata_from_documents(
         # Update
         if key in existing_metadata:
             result = existing_metadata[key]
-            existing_values_as_tuples: set[HashableMetadataValue] = {
-                cast("HashableMetadataValue", tuple(v)) if isinstance(v, list) else v
-                for v in result.values
-            }
-            values_to_add = values - existing_values_as_tuples
+            values_to_add = set(values) - set(result.values)
             if values_to_add:
-                new_values: list[MetadataValue] = [
-                    cast("MetadataValue", list(v)) if isinstance(v, tuple) else v
-                    for v in values_to_add
-                ]
-                result.values.extend(new_values)
+                result.values.extend(values_to_add)
                 flag_modified(result, "values")  # Notify SQLAlchemy of the change
                 session.add(result)
         # Add
         else:
-            values_as_lists = [list(v) if isinstance(v, tuple) else v for v in values]
-            session.add(Metadata(name=key, values=values_as_lists))
+            session.add(Metadata(name=key, values=list(values)))
 
 
 def _create_chunk_records(

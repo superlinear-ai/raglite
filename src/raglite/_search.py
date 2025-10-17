@@ -1,15 +1,13 @@
 """Search and retrieve chunks."""
 
 import contextlib
-import functools
 import json
 import logging
-import operator
 import re
 import string
 from collections import defaultdict
 from itertools import groupby
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar
 
 import numpy as np
 from langdetect import LangDetectException, detect
@@ -24,6 +22,7 @@ from raglite._database import (
     ChunkEmbedding,
     ChunkSpan,
     IndexMetadata,
+    _adapt_metadata,
     create_database_engine,
 )
 from raglite._embed import embed_strings
@@ -45,6 +44,8 @@ def vector_search(
     """Search chunks using ANN vector search."""
     # Read the config.
     config = config or RAGLiteConfig()
+    # Normalize metadata filter values to lists.
+    metadata_filter = _adapt_metadata(metadata_filter)
     # If self_query is enabled, extract metadata filters from the query.
     if config.self_query and isinstance(query, str):
         self_query_filter = _self_query(query, config=config)
@@ -162,6 +163,8 @@ def keyword_search(
     """Search chunks using BM25 keyword search."""
     # Read the config.
     config = config or RAGLiteConfig()
+    # Normalize metadata filter values to lists.
+    metadata_filter = _adapt_metadata(metadata_filter)
     # If self_query is enabled, extract metadata filters from the query.
     if config.self_query and isinstance(query, str):
         self_query_filter = _self_query(query, config=config)
@@ -456,20 +459,9 @@ def _self_query(
     field_definitions: dict[str, Any] = {}
     field_definitions["system_prompt"] = (ClassVar[str], system_prompt)
     for record in metadata_records:
-        scalar_values = [v for v in record.values if not isinstance(v, list)]
-        has_list_values = any(isinstance(v, list) for v in record.values)
-
-        type_parts: list[Any] = []
-        if scalar_values:
-            type_parts.append(Literal[tuple(scalar_values)])
-        if has_list_values:
-            type_parts.append(list[MetadataValue])
-
-        final_type = functools.reduce(operator.or_, type_parts)
-
         description = f"Allowed values are: {json.dumps(record.values)}"
         field_definitions[record.name] = (
-            final_type | None,
+            list[MetadataValue] | None,
             Field(default=None, description=description),
         )
     metadata_filter_model = create_model(
@@ -487,5 +479,5 @@ def _self_query(
         logger.debug("Failed to extract metadata filter: %s", e)
         return {}
     else:
-        metadata_filter = result.model_dump()
-        return {k: v for k, v in metadata_filter.items() if v is not None}
+        metadata_filter = result.model_dump(exclude_none=True)
+        return metadata_filter

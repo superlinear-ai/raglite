@@ -15,7 +15,7 @@ from raglite import (
 )
 from raglite._database import Chunk, ChunkSpan
 from raglite._search import _self_query
-from raglite._typing import BasicSearchMethod
+from raglite._typing import BasicSearchMethod, MetadataFilter
 
 
 @pytest.fixture(
@@ -91,7 +91,7 @@ def test_search_metadata_filter(
     """Test searching with metadata filtering that should return results."""
     query = "What does it mean for two events to be simultaneous?"
     num_results = 5
-    metadata_filter = {"type": "Paper", "topic": "Physics"}
+    metadata_filter: MetadataFilter = {"type": "Paper", "topic": "Physics"}
 
     # Verify basic properties
     chunk_ids, scores = search_method(
@@ -115,7 +115,7 @@ def test_search_metadata_filter(
         )
 
     # Test filtering for a different topic that should return no results
-    metadata_filter_empty = {"type": "Paper", "topic": "Mathematics"}
+    metadata_filter_empty: MetadataFilter = {"type": "Paper", "topic": "Mathematics"}
     chunk_ids_empty, scores_empty = search_method(
         query,
         num_results=num_results,
@@ -131,7 +131,7 @@ def test_self_query(raglite_test_config: RAGLiteConfig) -> None:
     """Test self-query functionality that extracts metadata filters from queries."""
     # Test 1: Query that should extract "Physics" from topic field
     query1 = "I want to learn about Physics."
-    expected_topic = "Physics"
+    expected_topic = ["Physics"]
     actual_filter1 = _self_query(query1, config=raglite_test_config)
     assert actual_filter1.get("topic") == expected_topic, (
         f"Expected topic '{expected_topic}', got {actual_filter1.get('topic')}"
