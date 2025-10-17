@@ -107,10 +107,10 @@ def test_search_metadata_filter(
     chunks = retrieve_chunks(chunk_ids, config=raglite_test_config)
     assert all(isinstance(chunk, Chunk) for chunk in chunks)
     for chunk in chunks:
-        assert chunk.metadata_.get("type") == "Paper", (
+        assert chunk.metadata_.get("type") == ["Paper"], (
             f"Expected type='Paper', got {chunk.metadata_.get('type')}"
         )
-        assert chunk.metadata_.get("topic") == "Physics", (
+        assert chunk.metadata_.get("topic") == ["Physics"], (
             f"Expected topic='Physics', got {chunk.metadata_.get('topic')}"
         )
 
