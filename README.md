@@ -166,6 +166,25 @@ documents = [
 insert_documents(documents, config=my_config)
 ```
 
+You may also want to expand the document metadata before insertion:
+
+```python
+from typing import Annotated
+from pydantic import Field
+from raglite import expand_document_metadata
+
+# Expand the documents' metadata.
+metadata_fields = {
+    "title": Annotated[str, Field(..., description="Document title.")],
+    "author": Annotated[str, Field(..., description="Primary author.")],
+    "topics": Annotated[list[Literal["A", "B", "C"]], Field(..., description="Key themes.")],
+}
+documents = list(expand_document_metadata(documents, metadata_fields, config=my_config))
+
+# Insert documents given their text/plain or text/markdown content
+insert_documents(documents, config=my_config)
+```
+
 ### 3. Retrieval-Augmented Generation (RAG)
 
 #### 3.1 Adaptive RAG
