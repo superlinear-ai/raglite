@@ -294,7 +294,7 @@ def evaluate(
         lc_llm = ChatLiteLLM(model=config.llm)
     embedder = RAGLiteRagasEmbeddings(config=config)
     # Evaluate the answered evals with Ragas.
-    evaluation_df = ragas_evaluate(
+    evaluation_df = ragas_evaluate(  # type: ignore[union-attr]
         dataset=Dataset.from_pandas(answered_evals_df),
         llm=lc_llm,
         embeddings=embedder,

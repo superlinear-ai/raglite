@@ -54,36 +54,6 @@ class SearchMethod(Protocol):
     ) -> tuple[list[ChunkId], list[float]] | list["Chunk"] | list["ChunkSpan"]: ...
 
 
-class DocumentMetadataFunction(Protocol):
-    """Function that processes document content and existing metadata and returns new metadata tags.
-
-    Args:
-        content: The full document content as string
-        metadata: Document metadata dictionary
-
-    Returns
-    -------
-        Dictionary of metadata tags to add to the document
-    """
-
-    def __call__(self, content: str | None, metadata: dict[str, str] | None) -> dict[str, str]: ...
-
-
-class ChunkMetadataFunction(Protocol):
-    """Function that processes chunk content and existing metadata and returns new metadata tags.
-
-    Args:
-        content: The chunk content as string
-        metadata: Chunk metadata dictionary
-
-    Returns
-    -------
-        Dictionary of metadata tags to add to the chunk
-    """
-
-    def __call__(self, content: str | None, metadata: dict[str, str] | None) -> dict[str, str]: ...
-
-
 class NumpyArray(TypeDecorator[np.ndarray[Any, np.dtype[np.floating[Any]]]]):
     """A NumPy array column type for SQLAlchemy."""
 
