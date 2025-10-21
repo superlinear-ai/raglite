@@ -1,8 +1,8 @@
 """Retrieval-augmented generation."""
 
 import json
+import logging
 import re
-import warnings
 from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Any
 
@@ -20,6 +20,8 @@ from raglite._database import Chunk, ChunkSpan
 from raglite._litellm import get_context_size
 from raglite._search import retrieve_chunk_spans
 from raglite._typing import MetadataFilter
+
+logger = logging.getLogger(__name__)
 
 # The default RAG instruction template follows Anthropic's best practices [1].
 # [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
@@ -94,10 +96,11 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
     if first_message == 0:
         # It means even last message is too long, so we need to trim it.
         trimmed_message, num_removed, num_kept = _trim_message_to_max_tokens(messages, max_tokens)
-        warnings.warn(
-            f"Context trimmed: removed {num_removed}, kept {num_kept} chunk(s) to fit token limit.\n"
+        logger.warning(
+            "Context trimmed: removed %d, kept %d chunk(s) to fit token limit. "
             "Consider reducing the number of retrieved chunks or using a model with bigger context window.",
-            stacklevel=1,
+            num_removed,
+            num_kept,
         )
         return [trimmed_message]
     return messages[first_message:]
