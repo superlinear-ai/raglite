@@ -2,8 +2,9 @@
 
 import json
 import logging
-import re
+import warnings
 from collections.abc import AsyncIterator, Callable, Iterator
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -62,7 +63,21 @@ def retrieve_context(
         chunk_spans = retrieve_chunk_spans(results, config=config)  # type: ignore[arg-type]
     elif all(isinstance(result, ChunkSpan) for result in results):
         chunk_spans = results  # type: ignore[assignment]
+    chunk_spans = limit_chunkspans(chunk_spans, config)
     return chunk_spans
+
+
+def limit_chunkspans(chunk_spans: list[ChunkSpan], config: RAGLiteConfig) -> list[ChunkSpan]:
+    max_tokens = get_context_size(config) // config._num_queries - 300 // config._num_queries  # noqa: SLF001
+    cum_tokens = np.cumsum([len(chunk_span.to_json()) // 3 for chunk_span in chunk_spans])
+    first_chunk = np.searchsorted(cum_tokens, max_tokens)
+    if first_chunk < len(chunk_spans):
+        logger.warning(
+            "Retrieved chunks exceed context window. "
+            "Truncating to %d chunk(s). Consider reducing the number of retrieved chunks or using a model with bigger context window.",
+            first_chunk // len(chunk_spans),
+        )
+    return chunk_spans[:first_chunk]
 
 
 def add_context(
@@ -93,62 +108,16 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
     """Left clip a messages array to avoid hitting the context limit."""
     cum_tokens = np.cumsum([len(message.get("content") or "") // 3 for message in messages][::-1])
     first_message = -np.searchsorted(cum_tokens, max_tokens)
-    if first_message == 0:
-        # It means even last message is too long, so we need to trim it.
-        trimmed_message, num_removed, num_kept = _trim_message_to_max_tokens(messages, max_tokens)
-        logger.warning(
-            "Context trimmed: removed %d, kept %d chunk(s) to fit token limit. "
-            "Consider reducing the number of retrieved chunks or using a model with bigger context window.",
-            num_removed,
-            num_kept,
+    if first_message == 0 and cum_tokens[-1] > max_tokens:
+        warnings.warn(
+            (
+                f"Context window of {max_tokens} tokens exceeded even after clipping all previous messages."
+                "Consider using a model with a bigger context window or reducing the number of retrieved chunks."
+            ),
+            stacklevel=2,
         )
-        return [trimmed_message]
+        return []
     return messages[first_message:]
-
-
-def _trim_message_to_max_tokens(
-    messages: list[dict[str, str]], max_tokens: int
-) -> tuple[dict[str, str], int, int]:
-    """Trim the context in the last message to fit within the maximum token limit.
-
-    Removes ChunkSpans (delimited by <document> tags) from the end of the context section
-    in the last message until the total token count fits within `max_tokens`.
-
-    Returns
-    -------
-    new_message : dict[str, str]
-        The trimmed message dictionary.
-    num_removed : int
-        Number of chunks removed from the context.
-    num_kept : int
-        Number of chunks remaining in the context.
-    """
-    message_content = messages[-1].get("content", "")
-    message_role = messages[-1].get("role", "user")
-    # Find the context
-    context_match = re.search(r"(<context>)(.*?)(</context>)", message_content, re.DOTALL)
-    if not context_match:
-        return {"role": message_role, "content": message_content}, 0, 0
-    _, context_content, _ = context_match.groups()
-    # Find ChunkSpans (delimited by <document> tags)
-    doc_pattern = re.compile(r"(<document.*?>.*?</document>)", re.DOTALL)
-    docs = doc_pattern.findall(context_content)
-    total_docs = len(docs)
-    # Remove ChunkSpans from the end until it fits
-    for i in range(total_docs, -1, -1):
-        new_context = "".join(docs[:i])
-        new_content = (
-            message_content[: context_match.start(2)]
-            + new_context
-            + message_content[context_match.end(2) :]
-        )
-        if (len(new_content) // 3) <= max_tokens:
-            return {"role": message_role, "content": new_content}, total_docs - i, i
-    # If none fit, remove all
-    new_content = (
-        message_content[: context_match.start(2)] + "" + message_content[context_match.end(2) :]
-    )
-    return {"role": message_role, "content": new_content}, total_docs, 0
 
 
 def _get_tools(
@@ -206,6 +175,7 @@ def _run_tools(
     config: RAGLiteConfig,
 ) -> list[dict[str, Any]]:
     """Run tools to search the knowledge base for RAG context."""
+    config = replace(config, _num_queries=len(tool_calls))
     tool_messages: list[dict[str, Any]] = []
     for tool_call in tool_calls:
         if tool_call.function.name == "search_knowledge_base":
