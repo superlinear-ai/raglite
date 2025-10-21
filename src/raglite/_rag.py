@@ -1,6 +1,8 @@
 """Retrieval-augmented generation."""
 
 import json
+import re
+import warnings
 from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Any
 
@@ -89,7 +91,61 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
     """Left clip a messages array to avoid hitting the context limit."""
     cum_tokens = np.cumsum([len(message.get("content") or "") // 3 for message in messages][::-1])
     first_message = -np.searchsorted(cum_tokens, max_tokens)
+    if first_message == 0:
+        # It means even last message is too long, so we need to trim it.
+        trimmed_message, num_removed, num_kept = _trim_message_to_max_tokens(messages, max_tokens)
+        warnings.warn(
+            f"Context trimmed: removed {num_removed}, kept {num_kept} chunk(s) to fit token limit.\n"
+            "Consider reducing the number of retrieved chunks or using a model with bigger context window.",
+            stacklevel=1,
+        )
+        return [trimmed_message]
     return messages[first_message:]
+
+
+def _trim_message_to_max_tokens(
+    messages: list[dict[str, str]], max_tokens: int
+) -> tuple[dict[str, str], int, int]:
+    """Trim the context in the last message to fit within the maximum token limit.
+
+    Removes ChunkSpans (delimited by <document> tags) from the end of the context section
+    in the last message until the total token count fits within `max_tokens`.
+
+    Returns
+    -------
+    new_message : dict[str, str]
+        The trimmed message dictionary.
+    num_removed : int
+        Number of chunks removed from the context.
+    num_kept : int
+        Number of chunks remaining in the context.
+    """
+    message_content = messages[-1].get("content", "")
+    message_role = messages[-1].get("role", "user")
+    # Find the context
+    context_match = re.search(r"(<context>)(.*?)(</context>)", message_content, re.DOTALL)
+    if not context_match:
+        return {"role": message_role, "content": message_content}, 0, 0
+    _, context_content, _ = context_match.groups()
+    # Find ChunkSpans (delimited by <document> tags)
+    doc_pattern = re.compile(r"(<document.*?>.*?</document>)", re.DOTALL)
+    docs = doc_pattern.findall(context_content)
+    total_docs = len(docs)
+    # Remove ChunkSpans from the end until it fits
+    for i in range(total_docs, -1, -1):
+        new_context = "".join(docs[:i])
+        new_content = (
+            message_content[: context_match.start(2)]
+            + new_context
+            + message_content[context_match.end(2) :]
+        )
+        if (len(new_content) // 3) <= max_tokens:
+            return {"role": message_role, "content": new_content}, total_docs - i, i
+    # If none fit, remove all
+    new_content = (
+        message_content[: context_match.start(2)] + "" + message_content[context_match.end(2) :]
+    )
+    return {"role": message_role, "content": new_content}, total_docs, 0
 
 
 def _get_tools(
