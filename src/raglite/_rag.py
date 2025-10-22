@@ -178,20 +178,21 @@ def _run_tools(
     max_workers: int | None = None,
 ) -> list[dict[str, Any]]:
     """Run tools to search the knowledge base for RAG context."""
-    tool_messages: list[dict[str, Any]] = []
+    tool_messages: list[dict[str, Any]] = [None] * len(tool_calls)  # type: ignore[list-item]
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
             executor.submit(partial(_run_tool, tool_call, on_retrieval, config))
             for tool_call in tool_calls
         ]
+        future_to_index = {future: i for i, future in enumerate(futures)}
         for future in as_completed(futures):
             try:
                 message = future.result()
             except Exception as e:
                 executor.shutdown(cancel_futures=True)  # Cancel remaining work.
-                error_message = f"Error processing document: {e}"
+                error_message = f"Error executing tool: {e}"
                 raise ValueError(error_message) from e
-            tool_messages.append(message)
+            tool_messages[future_to_index[future]] = message
     return tool_messages
 
 
