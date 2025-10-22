@@ -86,6 +86,14 @@ class Document(SQLModel, table=True):
     def content(self, value: str | None) -> None:
         self._content = value
 
+    @property
+    def front_matter(self) -> str:
+        """Return this document's metadata formatted as YAML front matter."""
+        metadata_lines = "\n".join(
+            f"{key}: {value}" for key, value in self.metadata_.items() if value is not None
+        )
+        return f"---\n{metadata_lines}\n---" if metadata_lines else ""
+
     @staticmethod
     def from_path(
         doc_path: Path,
@@ -180,6 +188,9 @@ class Document(SQLModel, table=True):
             metadata_=metadata,
             content=content,
         )
+
+    def __repr__(self) -> str:
+        return f"Document(id={self.id!r}, filename={self.filename!r})"
 
 
 class Chunk(SQLModel, table=True):
