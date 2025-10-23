@@ -40,7 +40,7 @@ Instead, you MUST treat the context as if its contents are entirely part of your
 {user_prompt}
 """.strip()
 
-CONTEXT_BUFFER = 150
+CONTEXT_BUFFER = 150  # Take into account the extra tokens used by the model for instructions, special tokens, user query, etc.
 
 
 def retrieve_context(
@@ -122,10 +122,15 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
     """Left clip a messages array to avoid hitting the context limit."""
     cum_tokens = np.cumsum([len(message.get("content") or "") // 3 for message in messages][::-1])
     first_message = -np.searchsorted(cum_tokens, max_tokens)
-    if first_message == 0:
+    index = next(
+        (-i for i, m in enumerate(reversed(messages), 1) if m.get("role") == "user"), None
+    )  # Last user message index
+    if first_message == 0 or (
+        index is not None and index < first_message
+    ):  # No message fits or clips last user message (user query)
         warnings.warn(
             (
-                f"Context window of {max_tokens} tokens exceeded even after clipping all previous messages."
+                f"Context window of {max_tokens} tokens exceeded."
                 "Consider using a model with a bigger context window or reducing the number of retrieved chunks."
             ),
             stacklevel=2,
