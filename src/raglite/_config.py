@@ -80,4 +80,3 @@ class RAGLiteConfig:
     # Search config: you can pick any search method that returns (list[ChunkId], list[float]),
     # list[Chunk], or list[ChunkSpan].
     search_method: SearchMethod = field(default=_vector_search, compare=False)
-    _num_queries: int = 1

@@ -4,7 +4,6 @@ import json
 import logging
 import warnings
 from collections.abc import AsyncIterator, Callable, Iterator
-from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -63,27 +62,37 @@ def retrieve_context(
         chunk_spans = retrieve_chunk_spans(results, config=config)  # type: ignore[arg-type]
     elif all(isinstance(result, ChunkSpan) for result in results):
         chunk_spans = results  # type: ignore[assignment]
-    chunk_spans = limit_chunkspans(chunk_spans, config)
     return chunk_spans
 
 
-def limit_chunkspans(chunk_spans: list[ChunkSpan], config: RAGLiteConfig) -> list[ChunkSpan]:
-    max_tokens = get_context_size(config) // config._num_queries - 300 // config._num_queries  # noqa: SLF001
-    cum_tokens = np.cumsum([len(chunk_span.to_json()) // 3 for chunk_span in chunk_spans])
-    first_chunk = np.searchsorted(cum_tokens, max_tokens)
-    if first_chunk < len(chunk_spans):
+def _limit_chunkspans(
+    tool_chunk_spans: dict[str, list[ChunkSpan]],
+    config: RAGLiteConfig,
+) -> dict[str, list[ChunkSpan]]:
+    max_tokens = get_context_size(config)
+    total_chunk_spans = sum(len(spans) for spans in tool_chunk_spans.values())
+    for tool_id, chunk_spans in tool_chunk_spans.items():
+        # Each tool gets a proportional amount of tokens to the number of chunks it retrieved.
+        tool_max_tokens = max_tokens * len(chunk_spans) // total_chunk_spans
+        cum_tokens = np.cumsum([len(chunk_span.to_xml()) // 3 for chunk_span in chunk_spans])
+        first_chunk = np.searchsorted(cum_tokens, tool_max_tokens)
+        tool_chunk_spans[tool_id] = chunk_spans[:first_chunk]
+    new_total_chunk_spans = sum(len(spans) for spans in tool_chunk_spans.values())
+    if new_total_chunk_spans < total_chunk_spans:
         logger.warning(
-            "Retrieved chunks exceed context window. "
-            "Truncating to %d chunk(s). Consider reducing the number of retrieved chunks or using a model with bigger context window.",
-            first_chunk // len(chunk_spans),
+            "RAG context was limited to %d out of %d chunks due to context window size. "
+            "Consider using a model with a bigger context window or reducing the number of retrieved chunks.",
+            new_total_chunk_spans,
+            total_chunk_spans,
         )
-    return chunk_spans[:first_chunk]
+    return tool_chunk_spans
 
 
 def add_context(
     user_prompt: str,
     context: list[ChunkSpan],
     *,
+    config: RAGLiteConfig | None = None,
     rag_instruction_template: str = RAG_INSTRUCTION_TEMPLATE,
 ) -> dict[str, str]:
     """Convert a user prompt to a RAG instruction.
@@ -92,11 +101,13 @@ def add_context(
 
     [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
     """
+    config = config or RAGLiteConfig()
+    limited_context = _limit_chunkspans({"temp": context}, config)["temp"]
     message = {
         "role": "user",
         "content": rag_instruction_template.format(
             context="\n".join(
-                chunk_span.to_xml(index=i + 1) for i, chunk_span in enumerate(context)
+                chunk_span.to_xml(index=i + 1) for i, chunk_span in enumerate(limited_context)
             ),
             user_prompt=user_prompt.strip(),
         ),
@@ -108,7 +119,7 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
     """Left clip a messages array to avoid hitting the context limit."""
     cum_tokens = np.cumsum([len(message.get("content") or "") // 3 for message in messages][::-1])
     first_message = -np.searchsorted(cum_tokens, max_tokens)
-    if first_message == 0 and cum_tokens[-1] > max_tokens:
+    if first_message == 0:
         warnings.warn(
             (
                 f"Context window of {max_tokens} tokens exceeded even after clipping all previous messages."
@@ -175,30 +186,31 @@ def _run_tools(
     config: RAGLiteConfig,
 ) -> list[dict[str, Any]]:
     """Run tools to search the knowledge base for RAG context."""
-    config = replace(config, _num_queries=len(tool_calls))
+    tool_chunk_spans: dict[str, list[ChunkSpan]] = {}
     tool_messages: list[dict[str, Any]] = []
     for tool_call in tool_calls:
         if tool_call.function.name == "search_knowledge_base":
             kwargs = json.loads(tool_call.function.arguments)
             kwargs["config"] = config
-            chunk_spans = retrieve_context(**kwargs)
-            tool_messages.append(
-                {
-                    "role": "tool",
-                    "content": '{{"documents": [{elements}]}}'.format(
-                        elements=", ".join(
-                            chunk_span.to_json(index=i + 1)
-                            for i, chunk_span in enumerate(chunk_spans)
-                        )
-                    ),
-                    "tool_call_id": tool_call.id,
-                }
-            )
-            if chunk_spans and callable(on_retrieval):
-                on_retrieval(chunk_spans)
+            tool_chunk_spans[tool_call.id] = retrieve_context(**kwargs)
         else:
             error_message = f"Unknown function `{tool_call.function.name}`."
             raise ValueError(error_message)
+    tool_chunk_spans = _limit_chunkspans(tool_chunk_spans, config)
+    for tool_id, chunk_spans in tool_chunk_spans.items():
+        tool_messages.append(
+            {
+                "role": "tool",
+                "content": '{{"documents": [{elements}]}}'.format(
+                    elements=", ".join(
+                        chunk_span.to_json(index=i + 1) for i, chunk_span in enumerate(chunk_spans)
+                    )
+                ),
+                "tool_call_id": tool_id,
+            }
+        )
+        if chunk_spans and callable(on_retrieval):
+            on_retrieval(chunk_spans)
     return tool_messages
 
 
