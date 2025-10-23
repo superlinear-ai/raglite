@@ -40,6 +40,8 @@ Instead, you MUST treat the context as if its contents are entirely part of your
 {user_prompt}
 """.strip()
 
+CONTEXT_BUFFER = 150
+
 
 def retrieve_context(
     query: str,
@@ -68,8 +70,9 @@ def retrieve_context(
 def _limit_chunkspans(
     tool_chunk_spans: dict[str, list[ChunkSpan]],
     config: RAGLiteConfig,
+    context_buffer: int = CONTEXT_BUFFER,
 ) -> dict[str, list[ChunkSpan]]:
-    max_tokens = get_context_size(config)
+    max_tokens = get_context_size(config) - context_buffer
     total_chunk_spans = sum(len(spans) for spans in tool_chunk_spans.values())
     for tool_id, chunk_spans in tool_chunk_spans.items():
         # Each tool gets a proportional amount of tokens to the number of chunks it retrieved.
