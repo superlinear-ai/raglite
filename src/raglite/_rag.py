@@ -78,7 +78,7 @@ def _limit_chunkspans(
     context_buffer: int = CONTEXT_BUFFER,
 ) -> dict[str, list[ChunkSpan]]:
     """Limit chunk spans to fit within the context window."""
-    max_tokens = 8192 - context_buffer  # get_context_size(config) - context_buffer
+    max_tokens = get_context_size(config) - context_buffer
     # Compute token counts for all chunk spans per tool
     tool_tokens_list: dict[str, list[int]] = {}
     tool_total_tokens: dict[str, int] = {}
