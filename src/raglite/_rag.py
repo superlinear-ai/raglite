@@ -67,9 +67,9 @@ def retrieve_context(
     return chunk_spans
 
 
-def _count_tokens(item: Any) -> int:
+def _count_tokens(item: str) -> int:
     """Estimate the number of tokens in an item."""
-    return len(json.dumps(item)) // 3
+    return len(item) // 3
 
 
 def _limit_chunkspans(
@@ -77,15 +77,36 @@ def _limit_chunkspans(
     config: RAGLiteConfig,
     context_buffer: int = CONTEXT_BUFFER,
 ) -> dict[str, list[ChunkSpan]]:
-    max_tokens = get_context_size(config) - context_buffer
-    total_chunk_spans = sum(len(spans) for spans in tool_chunk_spans.values())
+    """Limit chunk spans to fit within the context window."""
+    max_tokens = 8192 - context_buffer  # get_context_size(config) - context_buffer
+    # Compute token counts for all chunk spans per tool
+    tool_tokens_list: dict[str, list[int]] = {}
+    tool_total_tokens: dict[str, int] = {}
+    total_tokens = 0
     for tool_id, chunk_spans in tool_chunk_spans.items():
-        # Each tool gets a proportional amount of tokens to the number of chunks it retrieved.
-        tool_max_tokens = max_tokens * len(chunk_spans) // total_chunk_spans
-        cum_tokens = np.cumsum([_count_tokens(chunk_span.to_xml()) for chunk_span in chunk_spans])
-        first_chunk = np.searchsorted(cum_tokens, tool_max_tokens)
-        tool_chunk_spans[tool_id] = chunk_spans[:first_chunk]
-    new_total_chunk_spans = sum(len(spans) for spans in tool_chunk_spans.values())
+        tokens_list = [_count_tokens(chunk_span.to_xml()) for chunk_span in chunk_spans]
+        tool_tokens_list[tool_id] = tokens_list
+        tool_total = sum(tokens_list)
+        tool_total_tokens[tool_id] = tool_total
+        total_tokens += tool_total
+    # Early exit if we're already under the limit
+    if total_tokens <= max_tokens:
+        return tool_chunk_spans
+    # Allocate tokens proportionally and truncate
+    total_chunk_spans = sum(len(spans) for spans in tool_chunk_spans.values())
+    limited_tool_chunk_spans: dict[str, list[ChunkSpan]] = {}
+    for tool_id, chunk_spans in tool_chunk_spans.items():
+        if not chunk_spans:
+            limited_tool_chunk_spans[tool_id] = []
+            continue
+        # Proportional allocation
+        tool_max_tokens = max_tokens * tool_total_tokens[tool_id] // total_tokens
+        # Find cutoff point using cumulative sum
+        cum_tokens = np.cumsum(tool_tokens_list[tool_id])
+        cutoff_idx = np.searchsorted(cum_tokens, tool_max_tokens, side="right")
+        limited_tool_chunk_spans[tool_id] = chunk_spans[:cutoff_idx]
+    # Log warning if chunks were dropped
+    new_total_chunk_spans = sum(len(spans) for spans in limited_tool_chunk_spans.values())
     if new_total_chunk_spans < total_chunk_spans:
         logger.warning(
             "RAG context was limited to %d out of %d chunks due to context window size. "
@@ -93,7 +114,7 @@ def _limit_chunkspans(
             new_total_chunk_spans,
             total_chunk_spans,
         )
-    return tool_chunk_spans
+    return limited_tool_chunk_spans
 
 
 def add_context(
@@ -125,7 +146,7 @@ def add_context(
 
 def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str]]:
     """Left clip a messages array to avoid hitting the context limit."""
-    cum_tokens = np.cumsum([_count_tokens(message) for message in messages][::-1])
+    cum_tokens = np.cumsum([_count_tokens(json.dumps(message)) for message in messages][::-1])
     first_message = -np.searchsorted(cum_tokens, max_tokens)
     index = next(
         (-i for i, m in enumerate(reversed(messages), 1) if m.get("role") == "user"), None
@@ -141,7 +162,7 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
             stacklevel=2,
         )
         # Return only the last user message if it fits.
-        if index is not None and _count_tokens(messages[index]) <= max_tokens:
+        if index is not None and _count_tokens(json.dumps(messages[index])) <= max_tokens:
             return [messages[index]]
         return []
     return messages[first_message:]
