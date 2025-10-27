@@ -40,8 +40,6 @@ Instead, you MUST treat the context as if its contents are entirely part of your
 {user_prompt}
 """.strip()
 
-CONTEXT_BUFFER = 200  # Take into account the extra tokens used by the model for instructions, special tokens, user query, etc.
-
 
 def retrieve_context(
     query: str,
@@ -72,19 +70,43 @@ def _count_tokens(item: str) -> int:
     return len(item) // 3
 
 
+def _get_last_message_idx(messages: list[dict[str, str]], role: str) -> int | None:
+    """Get the index of the last message with a specified role."""
+    return next(
+        (-i for i, m in enumerate(reversed(messages), 1) if m.get("role") == role),
+        None,
+    )  # Last message index
+
+
 def _limit_chunkspans(
     tool_chunk_spans: dict[str, list[ChunkSpan]],
     config: RAGLiteConfig,
-    context_buffer: int = CONTEXT_BUFFER,
+    *,
+    messages: list[dict[str, str]] | None = None,
+    user_prompt: str | None = None,
+    template: str = RAG_INSTRUCTION_TEMPLATE,
 ) -> dict[str, list[ChunkSpan]]:
     """Limit chunk spans to fit within the context window."""
-    max_tokens = get_context_size(config) - context_buffer
+    # Calculate already used tokens (buffer)
+    buffer = 0
+    # Triggered when using tool calls
+    if messages:
+        # Count tokens in the last user and system messages
+        for role in ("user", "system"):
+            idx = _get_last_message_idx(messages, role)
+            if idx is not None:
+                buffer += _count_tokens(json.dumps(messages[idx]))
+    # Triggered when using add_context
+    elif user_prompt:
+        buffer = _count_tokens(template.format(context="", user_prompt=user_prompt))
+    # Determine max tokens available for context
+    max_tokens = get_context_size(config) - buffer
     # Compute token counts for all chunk spans per tool
     tool_tokens_list: dict[str, list[int]] = {}
     tool_total_tokens: dict[str, int] = {}
     total_tokens = 0
     for tool_id, chunk_spans in tool_chunk_spans.items():
-        tokens_list = [_count_tokens(chunk_span.content) for chunk_span in chunk_spans]
+        tokens_list = [_count_tokens(chunk_span.to_xml()) for chunk_span in chunk_spans]
         tool_tokens_list[tool_id] = tokens_list
         tool_total = sum(tokens_list)
         tool_total_tokens[tool_id] = tool_total
@@ -120,8 +142,8 @@ def _limit_chunkspans(
 def add_context(
     user_prompt: str,
     context: list[ChunkSpan],
+    config: RAGLiteConfig,
     *,
-    config: RAGLiteConfig | None = None,
     rag_instruction_template: str = RAG_INSTRUCTION_TEMPLATE,
 ) -> dict[str, str]:
     """Convert a user prompt to a RAG instruction.
@@ -130,8 +152,7 @@ def add_context(
 
     [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
     """
-    config = config or RAGLiteConfig()
-    limited_context = _limit_chunkspans({"temp": context}, config)["temp"]
+    limited_context = _limit_chunkspans({"temp": context}, config, user_prompt=user_prompt)["temp"]
     message = {
         "role": "user",
         "content": rag_instruction_template.format(
@@ -148,11 +169,9 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
     """Left clip a messages array to avoid hitting the context limit."""
     cum_tokens = np.cumsum([_count_tokens(json.dumps(message)) for message in messages][::-1])
     first_message = -np.searchsorted(cum_tokens, max_tokens)
-    index = next(
-        (-i for i, m in enumerate(reversed(messages), 1) if m.get("role") == "user"), None
-    )  # Last user message index
+    idx = _get_last_message_idx(messages, "user")
     if first_message == 0 or (
-        index is not None and index < first_message
+        idx is not None and idx < first_message
     ):  # No message fits or last user message (user query) would be clipped
         warnings.warn(
             (
@@ -162,8 +181,8 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
             stacklevel=2,
         )
         # Return only the last user message if it fits.
-        if index is not None and _count_tokens(json.dumps(messages[index])) <= max_tokens:
-            return [messages[index]]
+        if idx is not None and _count_tokens(json.dumps(messages[idx])) <= max_tokens:
+            return [messages[idx]]
         return []
     return messages[first_message:]
 
@@ -221,6 +240,8 @@ def _run_tools(
     tool_calls: list[ChatCompletionMessageToolCall],
     on_retrieval: Callable[[list[ChunkSpan]], None] | None,
     config: RAGLiteConfig,
+    *,
+    messages: list[dict[str, str]] | None,
 ) -> list[dict[str, Any]]:
     """Run tools to search the knowledge base for RAG context."""
     tool_chunk_spans: dict[str, list[ChunkSpan]] = {}
@@ -233,7 +254,7 @@ def _run_tools(
         else:
             error_message = f"Unknown function `{tool_call.function.name}`."
             raise ValueError(error_message)
-    tool_chunk_spans = _limit_chunkspans(tool_chunk_spans, config)
+    tool_chunk_spans = _limit_chunkspans(tool_chunk_spans, config, messages=messages)
     for tool_id, chunk_spans in tool_chunk_spans.items():
         tool_messages.append(
             {
@@ -280,7 +301,7 @@ def rag(
         # Add the tool call request to the message array.
         messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
         # Run the tool calls to retrieve the RAG context and append the output to the message array.
-        messages.extend(_run_tools(tool_calls, on_retrieval, config))
+        messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
         # Stream the assistant response.
         chunks = []
         stream = completion(model=config.llm, messages=_clip(messages, max_tokens), stream=True)
@@ -323,7 +344,7 @@ async def async_rag(
         messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
         # Run the tool calls to retrieve the RAG context and append the output to the message array.
         # TODO: Make this async.
-        messages.extend(_run_tools(tool_calls, on_retrieval, config))
+        messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
         # Asynchronously stream the assistant response.
         chunks = []
         async_stream = await acompletion(
