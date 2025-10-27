@@ -84,7 +84,7 @@ def _limit_chunkspans(
     tool_total_tokens: dict[str, int] = {}
     total_tokens = 0
     for tool_id, chunk_spans in tool_chunk_spans.items():
-        tokens_list = [_count_tokens(chunk_span.to_xml()) for chunk_span in chunk_spans]
+        tokens_list = [_count_tokens(chunk_span.content) for chunk_span in chunk_spans]
         tool_tokens_list[tool_id] = tokens_list
         tool_total = sum(tokens_list)
         tool_total_tokens[tool_id] = tool_total
