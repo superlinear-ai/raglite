@@ -91,8 +91,8 @@ def _limit_chunkspans(
     buffer = 0
     # Triggered when using tool calls
     if messages:
-        # Count tokens in the last user and system messages
-        for role in ("user", "system"):
+        # Count tokens in the last user, system and tool call messages
+        for role in ("user", "system", "assistant"):
             idx = _get_last_message_idx(messages, role)
             if idx is not None:
                 buffer += _count_tokens(json.dumps(messages[idx]))
