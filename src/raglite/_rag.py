@@ -152,6 +152,7 @@ def add_context(
 
     [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
     """
+    # Limit context to fit within the context window.
     limited_context = _limit_chunkspans({"temp": context}, config, user_prompt=user_prompt)["temp"]
     message = {
         "role": "user",
