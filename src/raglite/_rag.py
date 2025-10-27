@@ -188,11 +188,11 @@ def _run_tools(
         for future in as_completed(futures):
             try:
                 message = future.result()
-            except Exception as e:
+                tool_messages[future_to_index[future]] = message
+            except Exception as e:  # noqa: PERF203
                 executor.shutdown(cancel_futures=True)  # Cancel remaining work.
                 error_message = f"Error executing tool: {e}"
                 raise ValueError(error_message) from e
-            tool_messages[future_to_index[future]] = message
     return tool_messages
 
 
