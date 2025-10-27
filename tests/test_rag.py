@@ -16,7 +16,7 @@ def test_rag_manual(raglite_test_config: RAGLiteConfig) -> None:
     # Answer a question with manual RAG.
     user_prompt = "How does Einstein define 'simultaneous events' in his special relativity paper?"
     chunk_spans = retrieve_context(query=user_prompt, config=raglite_test_config)
-    messages = [add_context(user_prompt, context=chunk_spans)]
+    messages = [add_context(user_prompt, context=chunk_spans, config=raglite_test_config)]
     stream = rag(messages, config=raglite_test_config)
     answer = ""
     for update in stream:

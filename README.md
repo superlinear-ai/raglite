@@ -230,7 +230,7 @@ chunk_spans = retrieve_context(query=user_prompt, num_chunks=5, config=my_config
 
 # Append a RAG instruction based on the user prompt and context to the message history
 messages = []  # Or start with an existing message history
-messages.append(add_context(user_prompt=user_prompt, context=chunk_spans))
+messages.append(add_context(user_prompt=user_prompt, context=chunk_spans, config=my_config))
 
 # Stream the RAG response and append it to the message history
 stream = rag(messages, config=my_config)
@@ -285,7 +285,7 @@ chunk_spans = retrieve_chunk_spans(chunks_reranked, config=my_config)
 from raglite import add_context
 
 messages = []  # Or start with an existing message history
-messages.append(add_context(user_prompt=user_prompt, context=chunk_spans))
+messages.append(add_context(user_prompt=user_prompt, context=chunk_spans, config=my_config))
 
 # Stream the RAG response and append it to the message history
 from raglite import rag
