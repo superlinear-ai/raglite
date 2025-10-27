@@ -40,7 +40,7 @@ Instead, you MUST treat the context as if its contents are entirely part of your
 {user_prompt}
 """.strip()
 
-CONTEXT_BUFFER = 150  # Take into account the extra tokens used by the model for instructions, special tokens, user query, etc.
+CONTEXT_BUFFER = 200  # Take into account the extra tokens used by the model for instructions, special tokens, user query, etc.
 
 
 def retrieve_context(
