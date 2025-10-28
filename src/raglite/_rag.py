@@ -168,12 +168,11 @@ def add_context(
 
 def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str]]:
     """Left clip a messages array to avoid hitting the context limit."""
-    cum_tokens = np.cumsum([_count_tokens(json.dumps(message)) for message in messages][::-1])
+    token_counts = [_count_tokens(json.dumps(message)) for message in messages]
+    cum_tokens = np.cumsum(token_counts[::-1])
     first_message = -np.searchsorted(cum_tokens, max_tokens)
-    idx = _get_last_message_idx(messages, "user")
-    if first_message == 0 or (
-        idx is not None and idx < first_message
-    ):  # No message fits or last user message (user query) would be clipped
+    idx_user = _get_last_message_idx(messages, "user")
+    if first_message == 0 or (idx_user is not None and idx_user < first_message):
         warnings.warn(
             (
                 f"Context window of {max_tokens} tokens exceeded."
@@ -181,9 +180,18 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
             ),
             stacklevel=2,
         )
-        # Return only the last user message if it fits.
-        if idx is not None and _count_tokens(json.dumps(messages[idx])) <= max_tokens:
-            return [messages[idx]]
+        # Try to include both last system and user messages if they fit together.
+        # If not, include just user if it fits, else return empty.
+        idx_system = _get_last_message_idx(messages, "system")
+        if (
+            idx_user is not None
+            and idx_system is not None
+            and idx_system < idx_user
+            and token_counts[idx_user] + token_counts[idx_system] <= max_tokens
+        ):
+            return [messages[idx_system], messages[idx_user]]
+        if idx_user is not None and token_counts[idx_user] <= max_tokens:
+            return [messages[idx_user]]
         return []
     return messages[first_message:]
 
