@@ -468,7 +468,9 @@ class Metadata(SQLModel, table=True):
     __tablename__ = "metadata"
 
     name: str = Field(..., primary_key=True)
-    values: list[MetadataValue] = Field(default_factory=list, sa_column=Column(JSON))
+    values: list[MetadataValue] = Field(
+        default_factory=list, sa_column=Column("metadata", MetadataJSON)
+    )
 
 
 class Eval(SQLModel, table=True):

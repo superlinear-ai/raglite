@@ -459,7 +459,7 @@ def _self_query(
     field_definitions: dict[str, Any] = {}
     field_definitions["system_prompt"] = (ClassVar[str], system_prompt)
     for record in metadata_records:
-        description = f"Allowed values are: {json.dumps(record.values)}"
+        description = f"Allowed values are: {json.dumps(record.values, ensure_ascii=False)}"
         field_definitions[record.name] = (
             list[MetadataValue] | None,
             Field(default=None, description=description),
