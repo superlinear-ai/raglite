@@ -3,7 +3,7 @@
 import json
 import logging
 import warnings
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -72,10 +72,56 @@ def _count_tokens(item: str) -> int:
 
 def _get_last_message_idx(messages: list[dict[str, str]], role: str) -> int | None:
     """Get the index of the last message with a specified role."""
-    return next(
-        (-i for i, m in enumerate(reversed(messages), 1) if m.get("role") == role),
-        None,
-    )  # Last message index
+    # Find the last index of a message with the specified role
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i].get("role") == role:
+            return i
+    return None
+
+
+def _calculate_buffer_tokens(
+    messages: list[dict[str, str]] | None,
+    roles: list[str],
+    user_prompt: str | None,
+    template: str,
+) -> int:
+    """Calculate the number of tokens used by other messages."""
+    # Calculate already used tokens (buffer)
+    buffer = 0
+    # Triggered when using tool calls
+    if messages:
+        # Count tokens in the last user, system and tool call messages
+        for role in roles:
+            idx = _get_last_message_idx(messages, role)
+            if idx is not None:
+                buffer += _count_tokens(json.dumps(messages[idx]))
+        return buffer
+    # Triggered when using add_context
+    if user_prompt:
+        return _count_tokens(template.format(context="", user_prompt=user_prompt))
+    return 0
+
+
+def _cutoff_idx(token_counts: list[int], max_tokens: int, *, reverse: bool = False) -> int:
+    """Find the cutoff index in token counts to fit within max tokens."""
+    counts = token_counts[::-1] if reverse else token_counts
+    cum_tokens = np.cumsum(counts)
+    cutoff_idx = int(np.searchsorted(cum_tokens, max_tokens, side="right"))
+    return len(token_counts) - cutoff_idx if reverse else cutoff_idx
+
+
+def _get_token_counts(items: Sequence[str | ChunkSpan | Mapping[str, str]]) -> list[int]:
+    """Compute token counts for a list of items."""
+    return [
+        _count_tokens(item.to_xml())
+        if isinstance(item, ChunkSpan)
+        else _count_tokens(json.dumps(item, ensure_ascii=False))
+        if isinstance(item, dict)
+        else _count_tokens(item)
+        if isinstance(item, str)
+        else 0
+        for item in items
+    ]
 
 
 def _limit_chunkspans(
@@ -88,17 +134,9 @@ def _limit_chunkspans(
 ) -> dict[str, list[ChunkSpan]]:
     """Limit chunk spans to fit within the context window."""
     # Calculate already used tokens (buffer)
-    buffer = 0
-    # Triggered when using tool calls
-    if messages:
-        # Count tokens in the last user, system and tool call messages
-        for role in ("user", "system", "assistant"):
-            idx = _get_last_message_idx(messages, role)
-            if idx is not None:
-                buffer += _count_tokens(json.dumps(messages[idx]))
-    # Triggered when using add_context
-    elif user_prompt:
-        buffer = _count_tokens(template.format(context="", user_prompt=user_prompt))
+    buffer = _calculate_buffer_tokens(
+        messages, ["user", "system", "assistant"], user_prompt, template
+    )
     # Determine max tokens available for context
     max_tokens = get_context_size(config) - buffer
     # Compute token counts for all chunk spans per tool
@@ -106,7 +144,7 @@ def _limit_chunkspans(
     tool_total_tokens: dict[str, int] = {}
     total_tokens = 0
     for tool_id, chunk_spans in tool_chunk_spans.items():
-        tokens_list = [_count_tokens(chunk_span.to_xml()) for chunk_span in chunk_spans]
+        tokens_list = _get_token_counts(chunk_spans)
         tool_tokens_list[tool_id] = tokens_list
         tool_total = sum(tokens_list)
         tool_total_tokens[tool_id] = tool_total
@@ -124,8 +162,7 @@ def _limit_chunkspans(
         # Proportional allocation
         tool_max_tokens = max_tokens * tool_total_tokens[tool_id] // total_tokens
         # Find cutoff point using cumulative sum
-        cum_tokens = np.cumsum(tool_tokens_list[tool_id])
-        cutoff_idx = np.searchsorted(cum_tokens, tool_max_tokens, side="right")
+        cutoff_idx = _cutoff_idx(tool_tokens_list[tool_id], tool_max_tokens)
         limited_tool_chunk_spans[tool_id] = chunk_spans[:cutoff_idx]
     # Log warning if chunks were dropped
     new_total_chunk_spans = sum(len(spans) for spans in limited_tool_chunk_spans.values())
@@ -168,11 +205,10 @@ def add_context(
 
 def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str]]:
     """Left clip a messages array to avoid hitting the context limit."""
-    token_counts = [_count_tokens(json.dumps(message)) for message in messages]
-    cum_tokens = np.cumsum(token_counts[::-1])
-    first_message = -np.searchsorted(cum_tokens, max_tokens)
+    token_counts = _get_token_counts(messages)
+    cutoff_idx = _cutoff_idx(token_counts, max_tokens, reverse=True)
     idx_user = _get_last_message_idx(messages, "user")
-    if first_message == 0 or (idx_user is not None and idx_user < first_message):
+    if cutoff_idx == 0 or (idx_user is not None and idx_user < cutoff_idx):
         warnings.warn(
             (
                 f"Context window of {max_tokens} tokens exceeded."
@@ -193,7 +229,7 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
         if idx_user is not None and token_counts[idx_user] <= max_tokens:
             return [messages[idx_user]]
         return []
-    return messages[first_message:]
+    return messages[cutoff_idx:]
 
 
 def _get_tools(
