@@ -480,4 +480,20 @@ def _self_query(
         return {}
     else:
         metadata_filter = result.model_dump(exclude_none=True)
+        metadata_filter = _fix_hex_bytes(
+            metadata_filter
+        )  # Fix hex byte escape sequences. LLM may return these.
         return metadata_filter
+
+
+def _fix_hex_bytes(d: dict[str, list[Any]]) -> dict[str, list[Any]]:
+    """Fix hex byte escape sequences in all string values inside lists of a dictionary."""
+
+    def fix_str(s: str) -> str:
+        return re.sub(
+            "\x00([0-9a-fA-F]{2})",
+            lambda m: bytes([int(m.group(1), 16)]).decode("latin-1"),
+            s,
+        )
+
+    return {k: [fix_str(v) if isinstance(v, str) else v for v in lst] for k, lst in d.items()}
