@@ -1,5 +1,6 @@
 """Index documents."""
 
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import nullcontext
 from functools import partial
@@ -89,7 +90,7 @@ def _create_chunk_records(
     return document, chunk_records, chunk_embedding_records_list
 
 
-def insert_documents(  # noqa: C901
+def insert_documents(  # noqa: C901, PLR0912
     documents: list[Document],
     *,
     max_workers: int | None = None,
@@ -110,6 +111,10 @@ def insert_documents(  # noqa: C901
     -------
         None
     """
+    # Heuristic based on cpu count, amount of documents, and a cap of 4.
+    if max_workers is None:
+        max_workers = min(os.cpu_count() or 1, len(documents), 4)
+
     # Verify that all documents have content.
     if not all(isinstance(doc.content, str) for doc in documents):
         error_message = "Some or all documents have missing `document.content`."
