@@ -90,6 +90,10 @@ def _create_chunk_records(
     return document, chunk_records, chunk_embedding_records_list
 
 
+# Cap the number of worker threads to avoid excessive resource usage.
+MAX_DEFAULT_WORKERS = 4  # Prevents oversubscription and high memory usage.
+
+
 def insert_documents(  # noqa: C901, PLR0912
     documents: list[Document],
     *,
@@ -113,7 +117,7 @@ def insert_documents(  # noqa: C901, PLR0912
     """
     # Heuristic based on cpu count, amount of documents, and a cap of 4.
     if max_workers is None:
-        max_workers = min(os.cpu_count() or 1, len(documents), 4)
+        max_workers = min(os.cpu_count() or 1, len(documents), MAX_DEFAULT_WORKERS)
 
     # Verify that all documents have content.
     if not all(isinstance(doc.content, str) for doc in documents):
