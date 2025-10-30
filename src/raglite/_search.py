@@ -481,9 +481,9 @@ def _self_query(
         return {}
     else:
         metadata_filter = result.model_dump(exclude_none=True)
-        metadata_filter = _clean_metadata(
-            metadata_filter
-        )  # Fix hex byte escape sequences. LLM may return these.
+        # Clean and normalize LLM output to remove invalid escapes, control chars,
+        # and malformed Unicode before querying.
+        metadata_filter = _clean_metadata(metadata_filter)
         return metadata_filter
 
 
