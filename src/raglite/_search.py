@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import string
+import unicodedata
 from collections import defaultdict
 from itertools import groupby
 from typing import Any, ClassVar
@@ -480,20 +481,27 @@ def _self_query(
         return {}
     else:
         metadata_filter = result.model_dump(exclude_none=True)
-        metadata_filter = _fix_hex_bytes(
+        metadata_filter = _clean_metadata(
             metadata_filter
         )  # Fix hex byte escape sequences. LLM may return these.
         return metadata_filter
 
 
-def _fix_hex_bytes(d: dict[str, list[Any]]) -> dict[str, list[Any]]:
-    """Fix hex byte escape sequences in all string values inside lists of a dictionary."""
+# Match ASCII control characters (0x00-0x1F and 0x7F)
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1F\x7F]")
 
-    def fix_str(s: str) -> str:
-        return re.sub(
-            "\x00([0-9a-fA-F]{2})",
-            lambda m: bytes([int(m.group(1), 16)]).decode("latin-1"),
-            s,
-        )
 
-    return {k: [fix_str(v) if isinstance(v, str) else v for v in lst] for k, lst in d.items()}
+def _clean_text(s: str) -> str:
+    # Decode \uXXXX → Unicode (e.g. \u00f3 → ó)
+    s = re.sub(r"\\u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), s)
+    # Decode \xHH → Latin-1 byte (e.g. \xF3 → ó)
+    s = re.sub(r"\\x([0-9a-fA-F]{2})", lambda m: bytes([int(m.group(1), 16)]).decode("latin-1"), s)
+    # Remove control chars (incl. NUL) that break Postgres
+    s = _CONTROL_CHARS_RE.sub("", s)
+    # Normalize Unicode to composed form (NFC)
+    return unicodedata.normalize("NFC", s)
+
+
+def _clean_metadata(d: dict[str, list[Any]]) -> dict[str, list[Any]]:
+    # Apply sanitizer to all string values in metadata dict
+    return {k: [_clean_text(v) if isinstance(v, str) else v for v in lst] for k, lst in d.items()}
