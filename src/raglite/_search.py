@@ -7,7 +7,7 @@ import re
 import string
 from collections import defaultdict
 from itertools import groupby
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar
 
 import numpy as np
 from langdetect import LangDetectException, detect
@@ -499,4 +499,4 @@ def _self_query(
                     for value_id in value_ids
                     if value_id in field_ids_mapping[field]
                 ]
-        return cast("MetadataFilter", metadata_filter)
+        return metadata_filter
