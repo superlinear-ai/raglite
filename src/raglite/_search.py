@@ -434,12 +434,23 @@ def search_and_rerank_chunk_spans(  # noqa: PLR0913
 
 
 SELF_QUERY_PROMPT = """
-You extract metadata filters from user queries to help search a knowledge base.
+You are an assistant that extracts metadata filters from user queries to help search a knowledge base.
 
-Rules:
-- Only populate a field when the query explicitly and unambiguously mentions a specific allowed value for that field
-- If the query is general, ambiguous, or doesn't mention a field, leave it as None
-- Do not infer values from common knowledge, popularity, or context from other fields
+Instructions:
+1. For each metadata field, only populate it if the query explicitly and unambiguously mentions a specific allowed value.
+2. If the query is general, ambiguous, or does not mention a field, set it to None.
+3. Do NOT infer values from common knowledge or context.
+4. For each field, return ONLY the numeric ID(s) from the allowed options below. Do NOT return labels or text.
+5. Output your answer as a JSON object with field names as keys and lists of IDs or None as values.
+
+Example:
+Allowed options:
+- category: {0: "Technology", 1: "Health", 2: "Finance"}
+- region: {0: "Europe", 1: "Asia", 2: "Americas"}
+
+Query: "Show me the latest news in Technology from Asia."
+Output:
+{"category": [0], "region": [1]}
 """.strip()
 
 
