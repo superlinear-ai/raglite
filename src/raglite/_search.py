@@ -456,12 +456,23 @@ def _self_query(
     if not metadata_records:
         return {}
     # Create dynamic Pydantic model for the metadata filter
+    field_ids_mapping: dict[str, dict[int, MetadataValue]] = {}
     field_definitions: dict[str, Any] = {}
     field_definitions["system_prompt"] = (ClassVar[str], system_prompt)
+    # Note:
+    # The LLM tends to return escaped Unicode or hexadecimal strings when asked to output
+    # labels directly. By assigning each allowed metadata value a numeric ID and asking
+    # the model to return only IDs, we avoid encoding issues and reliably map results
+    # back to their actual metadata values afterward.
     for record in metadata_records:
-        description = f"Allowed values are: {json.dumps(record.values)}"  # Use ensure_ascii=True, to force the llm to use unicode and decode it later.
+        field_ids_mapping[record.name] = dict(enumerate(record.values))
+        # Store the mapping in
+        description = (
+            "Return ONLY IDs from this set (use IDs, not labels). "
+            f"Allowed options: {field_ids_mapping[record.name]}"
+        )
         field_definitions[record.name] = (
-            list[MetadataValue] | None,
+            list[int] | None,
             Field(default=None, description=description),
         )
     metadata_filter_model = create_model(
@@ -471,9 +482,7 @@ def _self_query(
     try:
         result = extract_with_llm(
             return_type=metadata_filter_model,
-            user_prompt=json.dumps(
-                query
-            ),  # Use ensure_ascii=True to encode Unicode for consistent LLM matching
+            user_prompt=query,
             config=config,
             temperature=0,
         )
@@ -482,7 +491,12 @@ def _self_query(
         return {}
     else:
         metadata_filter = result.model_dump(exclude_none=True)
-        metadata_filter = json.loads(
-            json.dumps(metadata_filter)
-        )  # Normalize and decode any escaped Unicode sequences.
+        # Convert from field IDs to actual metadata values.
+        for field, value_ids in metadata_filter.items():
+            if field in field_ids_mapping:
+                metadata_filter[field] = [
+                    field_ids_mapping[field].get(value_id)
+                    for value_id in value_ids
+                    if value_id in field_ids_mapping[field]
+                ]
         return cast("MetadataFilter", metadata_filter)
