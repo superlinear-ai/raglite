@@ -208,7 +208,7 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
     token_counts = _get_token_counts(messages)
     cutoff_idx = _cutoff_idx(token_counts, max_tokens, reverse=True)
     idx_user = _get_last_message_idx(messages, "user")
-    if cutoff_idx == 0 or (idx_user is not None and idx_user < cutoff_idx):
+    if cutoff_idx == len(messages) or (idx_user is not None and idx_user < cutoff_idx):
         warnings.warn(
             (
                 f"Context window of {max_tokens} tokens exceeded."
