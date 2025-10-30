@@ -7,7 +7,7 @@ import re
 import string
 from collections import defaultdict
 from itertools import groupby
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 import numpy as np
 from langdetect import LangDetectException, detect
@@ -459,7 +459,7 @@ def _self_query(
     field_definitions: dict[str, Any] = {}
     field_definitions["system_prompt"] = (ClassVar[str], system_prompt)
     for record in metadata_records:
-        description = f"Allowed values are: {json.dumps(record.values, ensure_ascii=False)}"
+        description = f"Allowed values are: {json.dumps(record.values)}"  # ensure_ascii=True, to force the llm to use unicode and decode it later.
         field_definitions[record.name] = (
             list[MetadataValue] | None,
             Field(default=None, description=description),
@@ -480,4 +480,7 @@ def _self_query(
         return {}
     else:
         metadata_filter = result.model_dump(exclude_none=True)
-        return metadata_filter
+        metadata_filter = json.loads(
+            json.dumps(metadata_filter)
+        )  # Normalize and decode any escaped Unicode sequences.
+        return cast("MetadataFilter", metadata_filter)
