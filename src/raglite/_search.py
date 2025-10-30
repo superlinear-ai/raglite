@@ -459,7 +459,7 @@ def _self_query(
     field_definitions: dict[str, Any] = {}
     field_definitions["system_prompt"] = (ClassVar[str], system_prompt)
     for record in metadata_records:
-        description = f"Allowed values are: {json.dumps(record.values)}"  # ensure_ascii=True, to force the llm to use unicode and decode it later.
+        description = f"Allowed values are: {json.dumps(record.values)}"  # Use ensure_ascii=True, to force the llm to use unicode and decode it later.
         field_definitions[record.name] = (
             list[MetadataValue] | None,
             Field(default=None, description=description),
@@ -471,7 +471,9 @@ def _self_query(
     try:
         result = extract_with_llm(
             return_type=metadata_filter_model,
-            user_prompt=query,
+            user_prompt=json.dumps(
+                query
+            ),  # Use ensure_ascii=True to encode Unicode for consistent LLM matching
             config=config,
             temperature=0,
         )
