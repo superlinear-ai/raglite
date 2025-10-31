@@ -72,7 +72,6 @@ def _count_tokens(item: str) -> int:
 
 def _get_last_message_idx(messages: list[dict[str, str]], role: str) -> int | None:
     """Get the index of the last message with a specified role."""
-    # Find the last index of a message with the specified role
     for i in range(len(messages) - 1, -1, -1):
         if messages[i].get("role") == role:
             return i
@@ -90,7 +89,7 @@ def _calculate_buffer_tokens(
     buffer = 0
     # Triggered when using tool calls
     if messages:
-        # Count tokens in the last user, system and tool call messages
+        # Count used tokens by the last message of each role
         for role in roles:
             idx = _get_last_message_idx(messages, role)
             if idx is not None:
@@ -161,9 +160,11 @@ def _limit_chunkspans(
             continue
         # Proportional allocation
         tool_max_tokens = max_tokens * tool_total_tokens[tool_id] // total_tokens
-        # Find cutoff point using cumulative sum
+        # Find cutoff point
         cutoff_idx = _cutoff_idx(tool_tokens_list[tool_id], tool_max_tokens)
-        limited_tool_chunk_spans[tool_id] = chunk_spans[:cutoff_idx]
+        limited_tool_chunk_spans[tool_id] = chunk_spans[
+            :cutoff_idx
+        ]  # Keep only up to cutoff (ChunkSpans are ordered in descending relevance)
     # Log warning if chunks were dropped
     new_total_chunk_spans = sum(len(spans) for spans in limited_tool_chunk_spans.values())
     if new_total_chunk_spans < total_chunk_spans:
