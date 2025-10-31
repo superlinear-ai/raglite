@@ -142,31 +142,34 @@ def _limit_chunkspans(
     tool_tokens_list: dict[str, list[int]] = {}
     tool_total_tokens: dict[str, int] = {}
     total_tokens = 0
+    total_chunk_spans = 0
     for tool_id, chunk_spans in tool_chunk_spans.items():
         tokens_list = _get_token_counts(chunk_spans)
         tool_tokens_list[tool_id] = tokens_list
         tool_total = sum(tokens_list)
         tool_total_tokens[tool_id] = tool_total
         total_tokens += tool_total
+        total_chunk_spans += len(chunk_spans)
     # Early exit if we're already under the limit
     if total_tokens <= max_tokens:
         return tool_chunk_spans
     # Allocate tokens proportionally and truncate
-    total_chunk_spans = sum(len(spans) for spans in tool_chunk_spans.values())
+    new_total_chunk_spans = 0
+    scale_ratio = max_tokens / total_tokens
     limited_tool_chunk_spans: dict[str, list[ChunkSpan]] = {}
     for tool_id, chunk_spans in tool_chunk_spans.items():
         if not chunk_spans:
             limited_tool_chunk_spans[tool_id] = []
             continue
         # Proportional allocation
-        tool_max_tokens = max_tokens * tool_total_tokens[tool_id] // total_tokens
+        tool_max_tokens = int(scale_ratio * tool_total_tokens[tool_id])
         # Find cutoff point
         cutoff_idx = _cutoff_idx(tool_tokens_list[tool_id], tool_max_tokens)
         limited_tool_chunk_spans[tool_id] = chunk_spans[
             :cutoff_idx
         ]  # Keep only up to cutoff (ChunkSpans are ordered in descending relevance)
+        new_total_chunk_spans += cutoff_idx
     # Log warning if chunks were dropped
-    new_total_chunk_spans = sum(len(spans) for spans in limited_tool_chunk_spans.values())
     if new_total_chunk_spans < total_chunk_spans:
         logger.warning(
             "RAG context was limited to %d out of %d chunks due to context window size. "
