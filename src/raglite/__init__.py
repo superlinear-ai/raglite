@@ -2,6 +2,7 @@
 
 from raglite._config import RAGLiteConfig
 from raglite._database import Document
+from raglite._delete import delete_documents, delete_documents_by_metadata
 from raglite._eval import answer_evals, evaluate, insert_evals
 from raglite._extract import expand_document_metadata
 from raglite._insert import insert_documents
@@ -24,6 +25,9 @@ __all__ = [
     # Insert
     "Document",
     "insert_documents",
+    # Delete
+    "delete_documents",
+    "delete_documents_by_metadata",
     # Extract
     "expand_document_metadata",
     # Search
