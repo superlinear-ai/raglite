@@ -136,6 +136,17 @@ my_config = RAGLiteConfig(
 )
 ```
 
+Self-query is also supported, allowing the LLM to automatically generate and apply metadata filters to refine search results based on the user's input. To enable self-query, set `self_query=True` in your `RAGLiteConfig`:
+
+```python
+my_config = RAGLiteConfig(
+    db_url="duckdb:///raglite.db",
+    llm="gpt-4o-mini",
+    embedder="text-embedding-3-large",
+    self_query=True,  # Enable self-query
+)
+```
+
 ### 2. Inserting documents
 
 > [!TIP]
