@@ -17,7 +17,7 @@ from raglite._typing import FloatVector
 @cache
 def _load_sat() -> tuple[SaT, dict[str, Any]]:
     """Load a Segment any Text (SaT) model."""
-    sat = SaT("sat-3l-sm")  # This model makes the best trade-off between speed and accuracy.
+    sat = SaT("sat-1l-sm")  # This model makes the best trade-off between speed and accuracy.
     sat_kwargs = {"stride": 128, "block_size": 256, "weighting": "hat"}
     return sat, sat_kwargs
 
