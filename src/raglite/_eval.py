@@ -212,7 +212,7 @@ def answer_evals(
     contexts: list[list[str]] = []
     for eval_ in tqdm(evals, desc="Answering evals", unit="eval", dynamic_ncols=True):
         chunk_spans = retrieve_context(query=eval_.question, config=config)
-        messages = [add_context(user_prompt=eval_.question, context=chunk_spans)]
+        messages = [add_context(user_prompt=eval_.question, context=chunk_spans, config=config)]
         response = rag(messages, config=config)
         answer = "".join(response)
         answers.append(answer)

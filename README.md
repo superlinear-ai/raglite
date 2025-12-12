@@ -136,6 +136,17 @@ my_config = RAGLiteConfig(
 )
 ```
 
+Self-query is also supported, allowing the LLM to automatically generate and apply metadata filters to refine search results based on the user's input. To enable self-query, set `self_query=True` in your `RAGLiteConfig`:
+
+```python
+my_config = RAGLiteConfig(
+    db_url="duckdb:///raglite.db",
+    llm="gpt-4o-mini",
+    embedder="text-embedding-3-large",
+    self_query=True,  # Enable self-query
+)
+```
+
 ### 2. Inserting documents
 
 > [!TIP]
@@ -161,10 +172,13 @@ content = """
 It is known that Maxwell...
 """
 documents = [
-    Document.from_text(content)
+    Document.from_text(content, author="Einstein", topic="physics", year=1905)
 ]
 insert_documents(documents, config=my_config)
 ```
+
+> [!TIP]
+> 📝 Documents can include metadata by passing keyword arguments to `Document.from_text()` or `Document.from_path()`. This metadata can later be used for filtering during retrieval.
 
 You may also want to expand the document metadata before insertion:
 
@@ -226,11 +240,16 @@ my_config = replace(my_config, search_method=vector_search)  # Or `hybrid_search
 
 # Retrieve relevant chunk spans with the configured search method
 user_prompt = "How is intelligence measured?"
-chunk_spans = retrieve_context(query=user_prompt, num_chunks=5, config=my_config)
+chunk_spans = retrieve_context(
+    query=user_prompt, 
+    num_chunks=5, 
+    metadata_filter={"author": "Einstein"},  # Optional: filter by metadata
+    config=my_config
+)
 
 # Append a RAG instruction based on the user prompt and context to the message history
 messages = []  # Or start with an existing message history
-messages.append(add_context(user_prompt=user_prompt, context=chunk_spans))
+messages.append(add_context(user_prompt=user_prompt, context=chunk_spans, config=my_config))
 
 # Stream the RAG response and append it to the message history
 stream = rag(messages, config=my_config)
@@ -263,7 +282,9 @@ from raglite import hybrid_search, keyword_search, vector_search
 user_prompt = "How is intelligence measured?"
 chunk_ids_vector, _ = vector_search(user_prompt, num_results=20, config=my_config)
 chunk_ids_keyword, _ = keyword_search(user_prompt, num_results=20, config=my_config)
-chunk_ids_hybrid, _ = hybrid_search(user_prompt, num_results=20, config=my_config)
+chunk_ids_hybrid, _ = hybrid_search(
+    user_prompt, num_results=20, metadata_filter={"topic": "physics"}, config=my_config
+)  # Filter results to only include chunks from documents with topic="physics" (works with any search method)
 
 # Retrieve chunks
 from raglite import retrieve_chunks
@@ -285,7 +306,7 @@ chunk_spans = retrieve_chunk_spans(chunks_reranked, config=my_config)
 from raglite import add_context
 
 messages = []  # Or start with an existing message history
-messages.append(add_context(user_prompt=user_prompt, context=chunk_spans))
+messages.append(add_context(user_prompt=user_prompt, context=chunk_spans, config=my_config))
 
 # Stream the RAG response and append it to the message history
 from raglite import rag

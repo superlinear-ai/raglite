@@ -1,5 +1,6 @@
 """Index documents."""
 
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import nullcontext
 from functools import partial
@@ -8,15 +9,79 @@ from pathlib import Path
 from filelock import FileLock
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
+from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import Session, col, select
 from tqdm.auto import tqdm
 
 from raglite._config import RAGLiteConfig
-from raglite._database import Chunk, ChunkEmbedding, Document, create_database_engine
+from raglite._database import (
+    Chunk,
+    ChunkEmbedding,
+    Document,
+    Metadata,
+    create_database_engine,
+)
 from raglite._embed import embed_strings, embed_strings_without_late_chunking, embedding_type
 from raglite._split_chunklets import split_chunklets
 from raglite._split_chunks import split_chunks
 from raglite._split_sentences import split_sentences
+from raglite._typing import MetadataValue
+
+METADATA_EXCLUDED_FIELDS = ["filename", "uri", "url", "size", "created", "modified"]
+
+
+def _get_database_metadata(
+    session: Session | None = None,
+    config: RAGLiteConfig | None = None,
+) -> Sequence[Metadata]:
+    """Fetch all metadata records from the database."""
+    if session:
+        return session.exec(select(Metadata)).all()
+    with Session(create_database_engine(config or RAGLiteConfig())) as new_session:
+        return new_session.exec(select(Metadata)).all()
+
+
+def _aggregate_metadata_from_documents(
+    documents: list[Document],
+    metadata_excluded_fields: list[str] = METADATA_EXCLUDED_FIELDS,
+) -> dict[str, set[MetadataValue]]:
+    """Aggregate metadata values from all documents."""
+    metadata: dict[str, set[MetadataValue]] = {}
+    for doc in documents:
+        for key, value in doc.metadata_.items():
+            if key in metadata_excluded_fields:
+                continue
+            if key not in metadata:
+                metadata[key] = set()
+            if isinstance(value, list):
+                metadata[key].update(value)
+            else:
+                metadata[key].add(value)
+    return metadata
+
+
+def _update_metadata_from_documents(
+    session: Session,
+    documents: list[Document],
+) -> None:
+    """Update or add metadata records."""
+    if not documents:
+        return
+    metadata = _aggregate_metadata_from_documents(documents=documents)
+    existing_metadata = {record.name: record for record in _get_database_metadata(session=session)}
+    # Update or add metadata records.
+    for key, values in metadata.items():
+        # Update
+        if key in existing_metadata:
+            result = existing_metadata[key]
+            values_to_add = set(values) - set(result.values)
+            if values_to_add:
+                result.values.extend(values_to_add)
+                flag_modified(result, "values")  # Notify SQLAlchemy of the change
+                session.add(result)
+        # Add
+        else:
+            session.add(Metadata(name=key, values=list(values)))
 
 
 def _create_chunk_records(
@@ -171,6 +236,8 @@ def insert_documents(  # noqa: C901
                 session.expunge_all()  # Release memory of flushed changes.
                 num_unflushed_embeddings = 0
             pbar.update()
+        # Update metadata table.
+        _update_metadata_from_documents(documents=documents, session=session)
         session.commit()
         if engine.dialect.name == "duckdb":
             # DuckDB does not automatically update its keyword search index [1], so we do it
