@@ -4,6 +4,7 @@ import json
 import logging
 import warnings
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 import numpy as np
@@ -285,26 +286,63 @@ def _get_tools(
     return tools, tool_choice
 
 
+def _run_tool(
+    tool_call: ChatCompletionMessageToolCall,
+    config: RAGLiteConfig,
+) -> tuple[str, list[ChunkSpan]]:
+    """
+    Run a single tool to search the knowledge base.
+
+    Returns the tool_id and the raw chunk_spans (before formatting/limiting).
+    """
+    if tool_call.function.name == "search_knowledge_base":
+        kwargs = json.loads(tool_call.function.arguments)
+        kwargs["config"] = config
+        chunk_spans = retrieve_context(**kwargs)
+        # Return ID and data so the main function can aggregate and limit them
+        return tool_call.id, chunk_spans
+    error_message = f"Unknown function {tool_call.function.name}."
+    raise ValueError(error_message)
+
+
 def _run_tools(
     tool_calls: list[ChatCompletionMessageToolCall],
     on_retrieval: Callable[[list[ChunkSpan]], None] | None,
     config: RAGLiteConfig,
     *,
     messages: list[dict[str, str]] | None,
+    max_workers: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Run tools to search the knowledge base for RAG context."""
+    """Run tools in parallel, limit the total context, then format messages."""
     tool_chunk_spans: dict[str, list[ChunkSpan]] = {}
-    tool_messages: list[dict[str, Any]] = []
-    for tool_call in tool_calls:
-        if tool_call.function.name == "search_knowledge_base":
-            kwargs = json.loads(tool_call.function.arguments)
-            kwargs["config"] = config
-            tool_chunk_spans[tool_call.id] = retrieve_context(**kwargs)
-        else:
-            error_message = f"Unknown function `{tool_call.function.name}`."
-            raise ValueError(error_message)
+
+    # 1. Parallel Execution
+    # We use the _run_tool helper to fetch data concurrently
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(_run_tool, tool_call, config) for tool_call in tool_calls]
+
+        # Collect results as they finish
+        try:
+            for future in as_completed(futures):
+                tool_id, spans = future.result()
+                tool_chunk_spans[tool_id] = spans
+        except Exception as e:
+            executor.shutdown(cancel_futures=True)
+            error_message = f"Error executing tool: {e}"
+            raise ValueError(error_message) from e
+
+    # 2. Limit Context (Global limiting across all tools)
     tool_chunk_spans = _limit_chunkspans(tool_chunk_spans, config, messages=messages)
-    for tool_id, chunk_spans in tool_chunk_spans.items():
+
+    # 3. Formatting & Callbacks
+    tool_messages: list[dict[str, Any]] = []
+
+    # Iterate over the original tool_calls list to maintain the correct order
+    for tool_call in tool_calls:
+        tool_id = tool_call.id
+        chunk_spans = tool_chunk_spans.get(tool_id, [])
+
+        # Create the final message structure
         tool_messages.append(
             {
                 "role": "tool",
@@ -316,8 +354,11 @@ def _run_tools(
                 "tool_call_id": tool_id,
             }
         )
+
+        # Trigger callback now that the spans are final and limited
         if chunk_spans and callable(on_retrieval):
             on_retrieval(chunk_spans)
+
     return tool_messages
 
 
