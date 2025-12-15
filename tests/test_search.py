@@ -1,5 +1,7 @@
 """Test RAGLite's search functionality."""
 
+from typing import Any
+
 import pytest
 
 from raglite import (
@@ -12,7 +14,8 @@ from raglite import (
     vector_search,
 )
 from raglite._database import Chunk, ChunkSpan
-from raglite._typing import BasicSearchMethod
+from raglite._search import _self_query
+from raglite._typing import BasicSearchMethod, MetadataFilter
 
 
 @pytest.fixture(
@@ -88,7 +91,7 @@ def test_search_metadata_filter(
     """Test searching with metadata filtering that should return results."""
     query = "What does it mean for two events to be simultaneous?"
     num_results = 5
-    metadata_filter = {"type": "Paper", "topic": "Physics"}
+    metadata_filter: MetadataFilter = {"type": "Paper", "topic": "Physics"}
 
     # Verify basic properties
     chunk_ids, scores = search_method(
@@ -104,15 +107,15 @@ def test_search_metadata_filter(
     chunks = retrieve_chunks(chunk_ids, config=raglite_test_config)
     assert all(isinstance(chunk, Chunk) for chunk in chunks)
     for chunk in chunks:
-        assert chunk.metadata_.get("type") == "Paper", (
+        assert chunk.metadata_.get("type") == ["Paper"], (
             f"Expected type='Paper', got {chunk.metadata_.get('type')}"
         )
-        assert chunk.metadata_.get("topic") == "Physics", (
+        assert chunk.metadata_.get("topic") == ["Physics"], (
             f"Expected topic='Physics', got {chunk.metadata_.get('topic')}"
         )
 
     # Test filtering for a different topic that should return no results
-    metadata_filter_empty = {"type": "Paper", "topic": "Mathematics"}
+    metadata_filter_empty: MetadataFilter = {"type": "Paper", "topic": "Mathematics"}
     chunk_ids_empty, scores_empty = search_method(
         query,
         num_results=num_results,
@@ -122,3 +125,19 @@ def test_search_metadata_filter(
     assert len(chunk_ids_empty) == len(scores_empty) == 0, (
         "Expected no results when filtering for Mathematics papers"
     )
+
+
+def test_self_query(raglite_test_config: RAGLiteConfig) -> None:
+    """Test self-query functionality that extracts metadata filters from queries."""
+    # Test 1: Query that should extract "Physics" from topic field
+    query1 = "I want to learn about the topic Physics."
+    expected_topic = ["Physics"]
+    actual_filter1 = _self_query(query1, config=raglite_test_config)
+    assert actual_filter1.get("topic") == expected_topic, (
+        f"Expected topic '{expected_topic}', got {actual_filter1.get('topic')}"
+    )
+    # Test 2: Query with non-existent metadata values should return empty filter
+    query2 = "What is the price of a Bugatti Chiron?"
+    expected_filter2: dict[str, Any] = {}
+    actual_filter2 = _self_query(query2, config=raglite_test_config)
+    assert actual_filter2 == expected_filter2, f"Expected {expected_filter2}, got {actual_filter2}"

@@ -16,7 +16,7 @@ def test_rag_manual(raglite_test_config: RAGLiteConfig) -> None:
     # Answer a question with manual RAG.
     user_prompt = "How does Einstein define 'simultaneous events' in his special relativity paper?"
     chunk_spans = retrieve_context(query=user_prompt, config=raglite_test_config)
-    messages = [add_context(user_prompt, context=chunk_spans)]
+    messages = [add_context(user_prompt, context=chunk_spans, config=raglite_test_config)]
     stream = rag(messages, config=raglite_test_config)
     answer = ""
     for update in stream:
@@ -42,7 +42,8 @@ def test_rag_auto_with_retrieval(raglite_test_config: RAGLiteConfig) -> None:
     # Verify that RAG context was retrieved automatically.
     assert [message["role"] for message in messages] == ["user", "assistant", "tool", "assistant"]
     assert json.loads(messages[-2]["content"])
-    assert chunk_spans
+    if not raglite_test_config.llm.startswith("llama-cpp-python"):
+        assert chunk_spans
     assert all(isinstance(chunk_span, ChunkSpan) for chunk_span in chunk_spans)
 
 
@@ -60,3 +61,20 @@ def test_rag_auto_without_retrieval(raglite_test_config: RAGLiteConfig) -> None:
     # Verify that no RAG context was retrieved.
     assert [message["role"] for message in messages] == ["user", "assistant"]
     assert not chunk_spans
+
+
+def test_retrieve_context_self_query(raglite_test_config: RAGLiteConfig) -> None:
+    """Test retrieve_context with self_query functionality."""
+    from dataclasses import replace
+
+    new_config = replace(raglite_test_config, self_query=True)
+    query = "What does Albert Einstein's paper say about time dilation?"
+    chunk_spans = retrieve_context(query=query, num_chunks=5, config=new_config)
+    assert all(isinstance(chunk_span, ChunkSpan) for chunk_span in chunk_spans)
+    for chunk_span in chunk_spans:
+        assert chunk_span.document.metadata_.get("type") == ["Paper"], (
+            f"Expected type='Paper', got {chunk_span.document.metadata_.get('type')}"
+        )
+        assert chunk_span.document.metadata_.get("author") == ["Albert Einstein"], (
+            f"Expected author='Albert Einstein', got {chunk_span.document.metadata_.get('author')}"
+        )

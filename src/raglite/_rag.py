@@ -1,7 +1,9 @@
 """Retrieval-augmented generation."""
 
 import json
-from collections.abc import AsyncIterator, Callable, Iterator
+import logging
+import warnings
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -18,6 +20,8 @@ from raglite._database import Chunk, ChunkSpan
 from raglite._litellm import get_context_size
 from raglite._search import retrieve_chunk_spans
 from raglite._typing import MetadataFilter
+
+logger = logging.getLogger(__name__)
 
 # The default RAG instruction template follows Anthropic's best practices [1].
 # [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
@@ -61,9 +65,125 @@ def retrieve_context(
     return chunk_spans
 
 
+def _count_tokens(item: str) -> int:
+    """Estimate the number of tokens in an item."""
+    return len(item) // 3
+
+
+def _get_last_message_idx(messages: list[dict[str, str]], role: str) -> int | None:
+    """Get the index of the last message with a specified role."""
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i].get("role") == role:
+            return i
+    return None
+
+
+def _calculate_buffer_tokens(
+    messages: list[dict[str, str]] | None,
+    roles: list[str],
+    user_prompt: str | None,
+    template: str,
+) -> int:
+    """Calculate the number of tokens used by other messages."""
+    # Calculate already used tokens (buffer)
+    buffer = 0
+    # Triggered when using tool calls
+    if messages:
+        # Count used tokens by the last message of each role
+        for role in roles:
+            idx = _get_last_message_idx(messages, role)
+            if idx is not None:
+                buffer += _count_tokens(json.dumps(messages[idx]))
+        return buffer
+    # Triggered when using add_context
+    if user_prompt:
+        return _count_tokens(template.format(context="", user_prompt=user_prompt))
+    return 0
+
+
+def _cutoff_idx(token_counts: list[int], max_tokens: int, *, reverse: bool = False) -> int:
+    """Find the cutoff index in token counts to fit within max tokens."""
+    counts = token_counts[::-1] if reverse else token_counts
+    cum_tokens = np.cumsum(counts)
+    cutoff_idx = int(np.searchsorted(cum_tokens, max_tokens, side="right"))
+    return len(token_counts) - cutoff_idx if reverse else cutoff_idx
+
+
+def _get_token_counts(items: Sequence[str | ChunkSpan | Mapping[str, str]]) -> list[int]:
+    """Compute token counts for a list of items."""
+    return [
+        _count_tokens(item.to_xml())
+        if isinstance(item, ChunkSpan)
+        else _count_tokens(json.dumps(item, ensure_ascii=False))
+        if isinstance(item, dict)
+        else _count_tokens(item)
+        if isinstance(item, str)
+        else 0
+        for item in items
+    ]
+
+
+def _limit_chunkspans(
+    tool_chunk_spans: dict[str, list[ChunkSpan]],
+    config: RAGLiteConfig,
+    *,
+    messages: list[dict[str, str]] | None = None,
+    user_prompt: str | None = None,
+    template: str = RAG_INSTRUCTION_TEMPLATE,
+) -> dict[str, list[ChunkSpan]]:
+    """Limit chunk spans to fit within the context window."""
+    # Calculate already used tokens (buffer)
+    buffer = _calculate_buffer_tokens(
+        messages, ["user", "system", "assistant"], user_prompt, template
+    )
+    # Determine max tokens available for context
+    max_tokens = get_context_size(config) - buffer
+    # Compute token counts for all chunk spans per tool
+    tool_tokens_list: dict[str, list[int]] = {}
+    tool_total_tokens: dict[str, int] = {}
+    total_tokens = 0
+    total_chunk_spans = 0
+    for tool_id, chunk_spans in tool_chunk_spans.items():
+        tokens_list = _get_token_counts(chunk_spans)
+        tool_tokens_list[tool_id] = tokens_list
+        tool_total = sum(tokens_list)
+        tool_total_tokens[tool_id] = tool_total
+        total_tokens += tool_total
+        total_chunk_spans += len(chunk_spans)
+    # Early exit if we're already under the limit
+    if total_tokens <= max_tokens:
+        return tool_chunk_spans
+    # Allocate tokens proportionally and truncate
+    new_total_chunk_spans = 0
+    scale_ratio = max_tokens / total_tokens
+    limited_tool_chunk_spans: dict[str, list[ChunkSpan]] = {}
+    for tool_id, chunk_spans in tool_chunk_spans.items():
+        if not chunk_spans:
+            limited_tool_chunk_spans[tool_id] = []
+            continue
+        # Proportional allocation
+        tool_max_tokens = int(scale_ratio * tool_total_tokens[tool_id])
+        # Find cutoff point
+        cutoff_idx = _cutoff_idx(tool_tokens_list[tool_id], tool_max_tokens)
+        limited_tool_chunk_spans[tool_id] = chunk_spans[
+            :cutoff_idx
+        ]  # Keep only up to cutoff (ChunkSpans are ordered in descending relevance)
+        new_total_chunk_spans += cutoff_idx
+    # Log warning if chunks were dropped
+    if new_total_chunk_spans < total_chunk_spans:
+        logger.warning(
+            "RAG context was limited to %d out of %d chunks due to context window size. "
+            "Consider using a model with a bigger context window or reducing the number of retrieved chunks.",
+            new_total_chunk_spans,
+            total_chunk_spans,
+        )
+    return limited_tool_chunk_spans
+
+
 def add_context(
     user_prompt: str,
     context: list[ChunkSpan],
+    config: RAGLiteConfig,
     *,
     rag_instruction_template: str = RAG_INSTRUCTION_TEMPLATE,
 ) -> dict[str, str]:
@@ -73,11 +193,13 @@ def add_context(
 
     [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
     """
+    # Limit context to fit within the context window.
+    limited_context = _limit_chunkspans({"temp": context}, config, user_prompt=user_prompt)["temp"]
     message = {
         "role": "user",
         "content": rag_instruction_template.format(
             context="\n".join(
-                chunk_span.to_xml(index=i + 1) for i, chunk_span in enumerate(context)
+                chunk_span.to_xml(index=i + 1) for i, chunk_span in enumerate(limited_context)
             ),
             user_prompt=user_prompt.strip(),
         ),
@@ -87,9 +209,31 @@ def add_context(
 
 def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str]]:
     """Left clip a messages array to avoid hitting the context limit."""
-    cum_tokens = np.cumsum([len(message.get("content") or "") // 3 for message in messages][::-1])
-    first_message = -np.searchsorted(cum_tokens, max_tokens)
-    return messages[first_message:]
+    token_counts = _get_token_counts(messages)
+    cutoff_idx = _cutoff_idx(token_counts, max_tokens, reverse=True)
+    idx_user = _get_last_message_idx(messages, "user")
+    if cutoff_idx == len(messages) or (idx_user is not None and idx_user < cutoff_idx):
+        warnings.warn(
+            (
+                f"Context window of {max_tokens} tokens exceeded."
+                "Consider using a model with a bigger context window or reducing the number of retrieved chunks."
+            ),
+            stacklevel=2,
+        )
+        # Try to include both last system and user messages if they fit together.
+        # If not, include just user if it fits, else return empty.
+        idx_system = _get_last_message_idx(messages, "system")
+        if (
+            idx_user is not None
+            and idx_system is not None
+            and idx_system < idx_user
+            and token_counts[idx_user] + token_counts[idx_system] <= max_tokens
+        ):
+            return [messages[idx_system], messages[idx_user]]
+        if idx_user is not None and token_counts[idx_user] <= max_tokens:
+            return [messages[idx_user]]
+        return []
+    return messages[cutoff_idx:]
 
 
 def _get_tools(
@@ -145,31 +289,35 @@ def _run_tools(
     tool_calls: list[ChatCompletionMessageToolCall],
     on_retrieval: Callable[[list[ChunkSpan]], None] | None,
     config: RAGLiteConfig,
+    *,
+    messages: list[dict[str, str]] | None,
 ) -> list[dict[str, Any]]:
     """Run tools to search the knowledge base for RAG context."""
+    tool_chunk_spans: dict[str, list[ChunkSpan]] = {}
     tool_messages: list[dict[str, Any]] = []
     for tool_call in tool_calls:
         if tool_call.function.name == "search_knowledge_base":
             kwargs = json.loads(tool_call.function.arguments)
             kwargs["config"] = config
-            chunk_spans = retrieve_context(**kwargs)
-            tool_messages.append(
-                {
-                    "role": "tool",
-                    "content": '{{"documents": [{elements}]}}'.format(
-                        elements=", ".join(
-                            chunk_span.to_json(index=i + 1)
-                            for i, chunk_span in enumerate(chunk_spans)
-                        )
-                    ),
-                    "tool_call_id": tool_call.id,
-                }
-            )
-            if chunk_spans and callable(on_retrieval):
-                on_retrieval(chunk_spans)
+            tool_chunk_spans[tool_call.id] = retrieve_context(**kwargs)
         else:
             error_message = f"Unknown function `{tool_call.function.name}`."
             raise ValueError(error_message)
+    tool_chunk_spans = _limit_chunkspans(tool_chunk_spans, config, messages=messages)
+    for tool_id, chunk_spans in tool_chunk_spans.items():
+        tool_messages.append(
+            {
+                "role": "tool",
+                "content": '{{"documents": [{elements}]}}'.format(
+                    elements=", ".join(
+                        chunk_span.to_json(index=i + 1) for i, chunk_span in enumerate(chunk_spans)
+                    )
+                ),
+                "tool_call_id": tool_id,
+            }
+        )
+        if chunk_spans and callable(on_retrieval):
+            on_retrieval(chunk_spans)
     return tool_messages
 
 
@@ -202,7 +350,7 @@ def rag(
         # Add the tool call request to the message array.
         messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
         # Run the tool calls to retrieve the RAG context and append the output to the message array.
-        messages.extend(_run_tools(tool_calls, on_retrieval, config))
+        messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
         # Stream the assistant response.
         chunks = []
         stream = completion(model=config.llm, messages=_clip(messages, max_tokens), stream=True)
@@ -245,7 +393,7 @@ async def async_rag(
         messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
         # Run the tool calls to retrieve the RAG context and append the output to the message array.
         # TODO: Make this async.
-        messages.extend(_run_tools(tool_calls, on_retrieval, config))
+        messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
         # Asynchronously stream the assistant response.
         chunks = []
         async_stream = await acompletion(
