@@ -125,7 +125,7 @@ def _get_token_counts(items: Sequence[str | ChunkSpan | Mapping[str, str]]) -> l
 
 
 def _limit_chunkspans(
-    tool_chunk_spans: tuple[str, list[ChunkSpan]],
+    tool_chunk_spans: dict[str, list[ChunkSpan]],
     config: RAGLiteConfig,
     *,
     messages: list[dict[str, str]] | None = None,
@@ -319,10 +319,7 @@ def _run_tools(
     # 1. Parallel Execution
     # We use the _run_tool helper to fetch data concurrently
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [
-            executor.submit(_run_tool, tool_call, config)
-            for tool_call in tool_calls
-        ]
+        futures = [executor.submit(_run_tool, tool_call, config) for tool_call in tool_calls]
 
         # Collect results as they finish
         try:
