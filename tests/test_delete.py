@@ -16,7 +16,7 @@ from raglite._insert import _get_database_metadata, insert_documents
 def test_delete(raglite_test_config: RAGLiteConfig) -> None:
     """Test document deletion."""
     content1 = """# ON THE ELECTRODYNAMICS OF MOVING BODIES## By A. EINSTEIN  June 30, 1905It is known that Maxwell..."""
-    document1 = Document.from_text(content1, author="Test Author", type="A")
+    document1 = Document.from_text(content1, author="Test Author", classification="A")
     doc1_id = document1.id
     insert_documents([document1], config=raglite_test_config)
 
@@ -50,7 +50,9 @@ def test_delete(raglite_test_config: RAGLiteConfig) -> None:
         existing_metadata = {
             record.name: record for record in _get_database_metadata(session=session)
         }
-        assert "type" not in existing_metadata, "Metadata field 'type' was not deleted"
+        assert "classification" not in existing_metadata, (
+            "Metadata field 'classification' was not deleted"
+        )
         assert "Test Author" not in existing_metadata["author"].values, (
             "Metadata field 'author' was not deleted"
         )
@@ -59,10 +61,12 @@ def test_delete(raglite_test_config: RAGLiteConfig) -> None:
 def test_delete_by_metadata(raglite_test_config: RAGLiteConfig) -> None:
     """Test document deletion by metadata."""
     content1 = """# ON THE ELECTRODYNAMICS OF MOVING BODIES## By A. EINSTEIN  June 30, 1905It is known that Maxwell..."""
-    document1 = Document.from_text(content1, metadata="A")
+    document1 = Document.from_text(content1, classification="A")
     insert_documents([document1], config=raglite_test_config)
-    document2 = Document.from_text(content1 + " diff", metadata="A")
+    document2 = Document.from_text(content1 + " diff", classification="A")
     insert_documents([document2], config=raglite_test_config)
 
-    deleted_count = delete_documents_by_metadata({"metadata": "A"}, config=raglite_test_config)
+    deleted_count = delete_documents_by_metadata(
+        {"classification": "A"}, config=raglite_test_config
+    )
     assert deleted_count == 2, f"Expected 2 documents to be deleted, but got {deleted_count}"  # noqa: PLR2004
