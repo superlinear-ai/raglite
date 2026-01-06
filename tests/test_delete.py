@@ -10,13 +10,13 @@ from raglite._database import (
     create_database_engine,
 )
 from raglite._delete import delete_documents, delete_documents_by_metadata
-from raglite._insert import insert_documents
+from raglite._insert import _get_database_metadata, insert_documents
 
 
 def test_delete(raglite_test_config: RAGLiteConfig) -> None:
     """Test document deletion."""
     content1 = """# ON THE ELECTRODYNAMICS OF MOVING BODIES## By A. EINSTEIN  June 30, 1905It is known that Maxwell..."""
-    document1 = Document.from_text(content1)
+    document1 = Document.from_text(content1, author="Test Author", type="A")
     doc1_id = document1.id
     insert_documents([document1], config=raglite_test_config)
 
@@ -47,6 +47,13 @@ def test_delete(raglite_test_config: RAGLiteConfig) -> None:
             ).first()
             is None
         ), "Chunk embeddings were not deleted"
+        existing_metadata = {
+            record.name: record for record in _get_database_metadata(session=session)
+        }
+        assert "type" not in existing_metadata, "Metadata field 'type' was not deleted"
+        assert "Test Author" not in existing_metadata["author"].values, (
+            "Metadata field 'author' was not deleted"
+        )
 
 
 def test_delete_by_metadata(raglite_test_config: RAGLiteConfig) -> None:

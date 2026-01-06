@@ -22,7 +22,8 @@ from raglite._database import (
     _adapt_metadata,
     create_database_engine,
 )
-from raglite._typing import DocumentId, MetadataValue
+from raglite._insert import _aggregate_metadata_from_documents
+from raglite._typing import DocumentId
 
 
 def _rebuild_indexes(session: Session, engine: Engine) -> None:
@@ -85,43 +86,41 @@ def _get_documents_with_metadata(
 
 
 def _update_metadata_table(
-    document: Document,
     session: Session,
+    documents_to_delete: list[Document],
+    all_document_ids_to_delete: set[DocumentId],
     dialect: Literal["postgresql", "duckdb"],
-    deleted_metadata: set[tuple[str, MetadataValue]],
 ) -> None:
-    for name, values in document.metadata_.items():
-        for value in values:
-            if (name, value) not in deleted_metadata:
-                metadata_document_ids = _get_documents_with_metadata({name: value}, session)
-                if len(metadata_document_ids) <= 1:
-                    if dialect == "postgresql":
-                        metadata_record = session.get(Metadata, name)
-                        if metadata_record and value in metadata_record.values:
-                            metadata_record.values.remove(value)
-                            if not metadata_record.values:
-                                session.delete(metadata_record)
-                            else:
-                                session.add(metadata_record)
-                    else:
-                        metadata_record = session.exec(
-                            select(Metadata).where(col(Metadata.name) == name)
-                        ).first()
-                        if metadata_record:
-                            new_values = list(set(metadata_record.values) - {value})
-                            if not new_values:
-                                # If no values left for this name, delete the row
-                                session.execute(delete(Metadata).where(col(Metadata.name) == name))
-                            else:
-                                # Update the row with the filtered list
-                                session.execute(
-                                    update(Metadata)
-                                    .where(col(Metadata.name) == name)
-                                    .values(values=new_values)
-                                )
-                            session.commit()
+    """Update metadata table."""
+    touched_metadata = _aggregate_metadata_from_documents(documents_to_delete)
 
-                    deleted_metadata.add((name, value))
+    for name, values in touched_metadata.items():
+        for value in values:
+            matching_doc_ids = set(_get_documents_with_metadata({name: value}, session))
+            if matching_doc_ids.issubset(all_document_ids_to_delete):
+                if dialect == "postgresql":
+                    metadata_record = session.get(Metadata, name)
+                    if metadata_record and value in metadata_record.values:
+                        metadata_record.values.remove(value)
+                        if not metadata_record.values:
+                            session.delete(metadata_record)
+                        else:
+                            session.add(metadata_record)
+                else:
+                    metadata_record = session.exec(
+                        select(Metadata).where(col(Metadata.name) == name)
+                    ).first()
+                    if metadata_record:
+                        new_values = list(set(metadata_record.values) - {value})
+                        if not new_values:
+                            session.execute(delete(Metadata).where(col(Metadata.name) == name))
+                        else:
+                            session.execute(
+                                update(Metadata)
+                                .where(col(Metadata.name) == name)
+                                .values(values=new_values)
+                            )
+                        session.commit()
 
 
 def delete_documents(
@@ -157,9 +156,12 @@ def delete_documents(
 
     # Create database engine and session
     engine = create_database_engine(config := config or RAGLiteConfig())
+    dialect: Literal["postgresql", "duckdb"] = (
+        "postgresql" if engine.dialect.name == "postgresql" else "duckdb"
+    )
 
     # For DuckDB databases, acquire a lock on the database
-    if engine.dialect.name == "duckdb":
+    if dialect == "duckdb":
         db_url = make_url(config.db_url) if isinstance(config.db_url, str) else config.db_url
         db_lock = (
             FileLock(Path(db_url.database).with_suffix(".lock"))
@@ -169,17 +171,19 @@ def delete_documents(
     else:
         db_lock = nullcontext()
 
-    deleted_metadata: set[tuple[str, MetadataValue]] = set()
     # Delete documents and perform cleanup
     with db_lock, Session(engine) as session:
-        if engine.dialect.name == "postgresql":
+        statement = select(Document).where(col(Document.id).in_(document_ids))
+        documents_to_delete = list(session.exec(statement).all())
+        # Update metadata table
+        _update_metadata_table(session, documents_to_delete, set(document_ids), dialect)
+        if dialect == "postgresql":
             # PostgreSQL: Use ORM cascade delete for atomic transactions
             # PostgreSQL supports deferred constraint checking, so this works atomically
             deleted_count = 0
             for document_id in document_ids:
                 document = session.get(Document, document_id)
                 if document is not None:
-                    _update_metadata_table(document, session, "postgresql", deleted_metadata)
                     session.delete(document)  # Cascade handles children
                     deleted_count += 1
             _invalidate_query_adapter(session)
@@ -211,12 +215,6 @@ def delete_documents(
             # Delete evals
             session.execute(delete(Eval).where(col(Eval.document_id).in_(document_ids)))
             session.commit()
-
-            # Delete metadata
-            for document_id in document_ids:
-                document = session.exec(select(Document).where(Document.id == document_id)).first()
-                if document is not None:
-                    _update_metadata_table(document, session, "duckdb", deleted_metadata)
 
             # Delete documents and count
             result = session.execute(
