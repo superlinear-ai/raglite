@@ -1,11 +1,13 @@
 """Delete documents from the database."""
 
+import json
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from filelock import FileLock
-from sqlalchemy import delete, text
+from sqlalchemy import delete, func, text, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine, make_url
 from sqlmodel import Session, col, select
 
@@ -16,10 +18,11 @@ from raglite._database import (
     Document,
     Eval,
     IndexMetadata,
+    Metadata,
     _adapt_metadata,
     create_database_engine,
 )
-from raglite._typing import DocumentId
+from raglite._typing import DocumentId, MetadataValue
 
 
 def _rebuild_indexes(session: Session, engine: Engine) -> None:
@@ -59,6 +62,66 @@ def _invalidate_query_adapter(session: Session) -> None:
 
     # Clear the LRU cache for IndexMetadata._get()
     IndexMetadata._get.cache_clear()  # noqa: SLF001
+
+
+def _get_documents_with_metadata(
+    metadata_filter: dict[str, Any], session: Session
+) -> list[DocumentId]:
+    """Count documents matching a metadata filter."""
+    metadata_filter = _adapt_metadata(metadata_filter)
+
+    # Determine the filter condition based on the database engine
+    if session.get_bind().dialect.name == "postgresql":
+        condition = col(Document.metadata_).cast(JSONB).op("@>")(metadata_filter)  # type: ignore[attr-defined]
+    else:
+        condition = func.json_contains(
+            col(Document.metadata_), func.json(json.dumps(metadata_filter))
+        )
+
+    # Count on the primary key
+    statement = select(Document.id).where(condition)
+
+    return list(session.exec(statement).all())
+
+
+def _update_metadata_table(
+    document: Document,
+    session: Session,
+    dialect: Literal["postgresql", "duckdb"],
+    deleted_metadata: set[tuple[str, MetadataValue]],
+) -> None:
+    for name, values in document.metadata_.items():
+        for value in values:
+            if (name, value) not in deleted_metadata:
+                metadata_document_ids = _get_documents_with_metadata({name: value}, session)
+                if len(metadata_document_ids) <= 1:
+                    if dialect == "postgresql":
+                        metadata_record = session.get(Metadata, name)
+                        if metadata_record and value in metadata_record.values:
+                            metadata_record.values.remove(value)
+                            if not metadata_record.values:
+                                session.delete(metadata_record)
+                            else:
+                                session.add(metadata_record)
+                    else:
+                        metadata_record = session.exec(
+                            select(Metadata).where(col(Metadata.name) == name)
+                        ).first()
+                        if metadata_record:
+                            new_values = list(set(metadata_record.values) - {value})
+                            if not new_values:
+                                # If no values left for this name, delete the row
+                                session.execute(delete(Metadata).where(col(Metadata.name) == name))
+                            else:
+                                # Update the row with the filtered list
+                                session.execute(
+                                    update(Metadata)
+                                    .where(col(Metadata.name) == name)
+                                    .values(values=new_values)
+                                )
+                            session.commit()
+
+                    deleted_metadata.add((name, value))
 
 
 def delete_documents(
@@ -106,6 +169,7 @@ def delete_documents(
     else:
         db_lock = nullcontext()
 
+    deleted_metadata: set[tuple[str, MetadataValue]] = set()
     # Delete documents and perform cleanup
     with db_lock, Session(engine) as session:
         if engine.dialect.name == "postgresql":
@@ -115,9 +179,9 @@ def delete_documents(
             for document_id in document_ids:
                 document = session.get(Document, document_id)
                 if document is not None:
+                    _update_metadata_table(document, session, "postgresql", deleted_metadata)
                     session.delete(document)  # Cascade handles children
                     deleted_count += 1
-
             _invalidate_query_adapter(session)
             session.commit()
         else:
@@ -147,6 +211,12 @@ def delete_documents(
             # Delete evals
             session.execute(delete(Eval).where(col(Eval.document_id).in_(document_ids)))
             session.commit()
+
+            # Delete metadata
+            for document_id in document_ids:
+                document = session.exec(select(Document).where(Document.id == document_id)).first()
+                if document is not None:
+                    _update_metadata_table(document, session, "duckdb", deleted_metadata)
 
             # Delete documents and count
             result = session.execute(
@@ -208,26 +278,7 @@ def delete_documents_by_metadata(
     metadata_filter = _adapt_metadata(metadata_filter)
 
     with Session(engine) as session:
-        # Query all documents and filter in Python to match all metadata key-value pairs
-        # We filter in Python because metadata is stored as JSON and complex JSON queries
-        # are not portable across DuckDB and PostgreSQL
-        all_documents = session.exec(select(Document)).all()
-
-        # Filter documents where all metadata key-value pairs match
-        # Note: User-provided metadata may be nested under a 'metadata' key
-        document_ids = []
-        for doc in all_documents:
-            # Check both top-level and nested metadata
-            metadata_to_check = doc.metadata_
-            if "metadata" in doc.metadata_ and isinstance(doc.metadata_["metadata"], dict):
-                metadata_to_check = doc.metadata_["metadata"]
-
-            # Check if all filter key-value pairs match
-            if all(
-                key in metadata_to_check and metadata_to_check[key] == value
-                for key, value in metadata_filter.items()
-            ):
-                document_ids.append(doc.id)
+        document_ids = _get_documents_with_metadata(metadata_filter, session)
 
     # Use delete_documents to perform the actual deletion
     return delete_documents(document_ids, config=config)
