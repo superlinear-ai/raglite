@@ -2,7 +2,6 @@
 
 import json
 import logging
-import warnings
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
@@ -214,12 +213,10 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
     cutoff_idx = _cutoff_idx(token_counts, max_tokens, reverse=True)
     idx_user = _get_last_message_idx(messages, "user")
     if cutoff_idx == len(messages) or (idx_user is not None and idx_user < cutoff_idx):
-        warnings.warn(
-            (
-                f"Context window of {max_tokens} tokens exceeded."
-                "Consider using a model with a bigger context window or reducing the number of retrieved chunks."
-            ),
-            stacklevel=2,
+        logger.warning(
+            "Context window of %d tokens exceeded. "
+            "Consider using a model with a bigger context window or reducing the number of retrieved chunks.",
+            max_tokens,
         )
         # Try to include both last system and user messages if they fit together.
         # If not, include just user if it fits, else return empty.
