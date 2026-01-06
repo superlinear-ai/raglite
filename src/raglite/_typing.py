@@ -24,8 +24,8 @@ IndexId = str
 
 DistanceMetric = Literal["cosine", "dot", "l1", "l2"]
 
-MetadataValue = str | int | float | bool | list[str] | list[int] | list[float] | list[bool]
-MetadataFilter = Mapping[str, MetadataValue]
+MetadataValue = str | int | float | bool  # | list[str] | list[int] | list[float] | list[bool]
+MetadataFilter = Mapping[str, list[MetadataValue] | MetadataValue]
 
 FloatMatrix = np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]
 FloatVector = np.ndarray[tuple[int], np.dtype[np.floating[Any]]]

@@ -27,7 +27,7 @@ def create_mcp_server(server_name: str, *, config: RAGLiteConfig) -> FastMCP[Any
     def kb(query: Query) -> str:
         """Answer a question with information from the knowledge base."""
         chunk_spans = retrieve_context(query, config=config)
-        rag_instruction = add_context(query, chunk_spans)
+        rag_instruction = add_context(query, chunk_spans, config)
         return rag_instruction["content"]
 
     @mcp.tool()
