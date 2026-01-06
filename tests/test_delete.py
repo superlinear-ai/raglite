@@ -1,6 +1,6 @@
 """Test RAGLite's document deletion."""
 
-from sqlmodel import Session, SQLModel, select
+from sqlmodel import Session, SQLModel, col, select
 
 from raglite._config import RAGLiteConfig
 from raglite._database import (
@@ -21,30 +21,29 @@ def test_delete(raglite_test_config: RAGLiteConfig) -> None:
     insert_documents([document1], config=raglite_test_config)
 
     with Session(create_database_engine(raglite_test_config)) as session:
-        chunks_ids = session.execute(select(Chunk.id).where(Chunk.document_id == doc1_id)).all()
-        assert chunks_ids is not None, "Chunks were not found"
-        chunk_embeddings_ids = session.execute(
-            select(ChunkEmbedding.id).where(ChunkEmbedding.chunk_id.in_(chunks_ids))  # type: ignore[attr-defined]
+        chunk_ids = session.exec(
+            select(Chunk.id).where(col(Chunk.document_id).in_([doc1_id]))
         ).all()
-        assert chunk_embeddings_ids is not None, "Chunk embeddings were not found"
 
     deleted_count = delete_documents([doc1_id], config=raglite_test_config)
     assert deleted_count == 1, f"Expected 1 document to be deleted, but got {deleted_count}"
 
     with Session(create_database_engine(raglite_test_config)) as session:
-        assert session.execute(select(Document).where(Document.id == doc1_id)).first() is None, (
+        assert session.exec(select(Document).where(Document.id == doc1_id)).first() is None, (
             "Document was not deleted"
         )
         # Check that other tables are deleted
-        for table in SQLModel.metadata.tables.values():
+        for table_name, table in SQLModel.metadata.tables.items():
             if "document_id" in table.c:
                 assert (
-                    session.execute(select(table).where(table.c.document_id == doc1_id)).first()  # type: ignore[call-overload]
+                    session.exec(
+                        select(table.c.document_id).where(table.c.document_id == doc1_id)
+                    ).first()  # type: ignore[attr-defined]
                     is None
-                ), f"{table.name} was not deleted"
+                ), f"{table_name} still contains data for deleted document"
         assert (
-            session.execute(
-                select(ChunkEmbedding).where(ChunkEmbedding.chunk_id.in_(chunks_ids))  # type: ignore[attr-defined]
+            session.exec(
+                select(ChunkEmbedding).where(col(ChunkEmbedding.chunk_id).in_(chunk_ids))
             ).first()
             is None
         ), "Chunk embeddings were not deleted"
