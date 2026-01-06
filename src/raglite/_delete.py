@@ -9,6 +9,7 @@ from filelock import FileLock
 from sqlalchemy import delete, func, text, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import Session, col, select
 
 from raglite._config import RAGLiteConfig
@@ -106,6 +107,7 @@ def _update_metadata_table(
                             session.delete(metadata_record)
                         else:
                             session.add(metadata_record)
+                            flag_modified(metadata_record, "values")
                 else:
                     metadata_record = session.exec(
                         select(Metadata).where(col(Metadata.name) == name)
