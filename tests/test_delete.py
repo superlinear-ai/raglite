@@ -54,8 +54,9 @@ def test_delete_by_metadata(raglite_test_config: RAGLiteConfig) -> None:
     """Test document deletion by metadata."""
     content1 = """# ON THE ELECTRODYNAMICS OF MOVING BODIES## By A. EINSTEIN  June 30, 1905It is known that Maxwell..."""
     document1 = Document.from_text(content1, metadata="A")
+    insert_documents([document1], config=raglite_test_config)
     document2 = Document.from_text(content1 + " diff", metadata="A")
-    insert_documents([document1, document2], config=raglite_test_config)
+    insert_documents([document2], config=raglite_test_config)
 
     deleted_count = delete_documents_by_metadata({"metadata": "A"}, config=raglite_test_config)
     assert deleted_count == 2, f"Expected 2 documents to be deleted, but got {deleted_count}"  # noqa: PLR2004
