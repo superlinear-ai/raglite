@@ -16,6 +16,7 @@ from raglite._database import (
     Document,
     Eval,
     IndexMetadata,
+    _adapt_metadata,
     create_database_engine,
 )
 from raglite._typing import DocumentId
@@ -133,22 +134,22 @@ def delete_documents(
 
             # Delete chunk embeddings (deepest dependency)
             if chunk_ids:
-                session.exec(
+                session.execute(
                     delete(ChunkEmbedding).where(col(ChunkEmbedding.chunk_id).in_(chunk_ids))
                 )
                 session.commit()
 
             # Delete chunks
             if chunk_ids:
-                session.exec(delete(Chunk).where(col(Chunk.id).in_(chunk_ids)))
+                session.execute(delete(Chunk).where(col(Chunk.id).in_(chunk_ids)))
                 session.commit()
 
             # Delete evals
-            session.exec(delete(Eval).where(col(Eval.document_id).in_(document_ids)))
+            session.execute(delete(Eval).where(col(Eval.document_id).in_(document_ids)))
             session.commit()
 
             # Delete documents and count
-            result = session.exec(
+            result = session.execute(
                 delete(Document)
                 .where(col(Document.id).in_(document_ids))
                 .returning(col(Document.id))
@@ -202,6 +203,9 @@ def delete_documents_by_metadata(
 
     # Create database engine and session to query matching documents
     engine = create_database_engine(config := config or RAGLiteConfig())
+
+    # Normalize metadata filter values to lists to match stored metadata
+    metadata_filter = _adapt_metadata(metadata_filter)
 
     with Session(engine) as session:
         # Query all documents and filter in Python to match all metadata key-value pairs
