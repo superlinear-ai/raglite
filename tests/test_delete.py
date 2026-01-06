@@ -21,9 +21,9 @@ def test_delete(raglite_test_config: RAGLiteConfig) -> None:
     insert_documents([document1], config=raglite_test_config)
 
     with Session(create_database_engine(raglite_test_config)) as session:
-        chunks_ids = session.exec(select(Chunk.id).where(Chunk.document_id == doc1_id)).all()
+        chunks_ids = session.execute(select(Chunk.id).where(Chunk.document_id == doc1_id)).all()
         assert chunks_ids is not None, "Chunks were not found"
-        chunk_embeddings_ids = session.exec(
+        chunk_embeddings_ids = session.execute(
             select(ChunkEmbedding.id).where(ChunkEmbedding.chunk_id.in_(chunks_ids))  # type: ignore[attr-defined]
         ).all()
         assert chunk_embeddings_ids is not None, "Chunk embeddings were not found"
@@ -32,18 +32,18 @@ def test_delete(raglite_test_config: RAGLiteConfig) -> None:
     assert deleted_count == 1, f"Expected 1 document to be deleted, but got {deleted_count}"
 
     with Session(create_database_engine(raglite_test_config)) as session:
-        assert session.exec(select(Document).where(Document.id == doc1_id)).first() is None, (
+        assert session.execute(select(Document).where(Document.id == doc1_id)).first() is None, (
             "Document was not deleted"
         )
         # Check that other tables are deleted
         for table in SQLModel.metadata.tables.values():
             if "document_id" in table.c:
                 assert (
-                    session.exec(select(table).where(table.c.document_id == doc1_id)).first()  # type: ignore[call-overload]
+                    session.execute(select(table).where(table.c.document_id == doc1_id)).first()  # type: ignore[call-overload]
                     is None
                 ), f"{table.name} was not deleted"
         assert (
-            session.exec(
+            session.execute(
                 select(ChunkEmbedding).where(ChunkEmbedding.chunk_id.in_(chunks_ids))  # type: ignore[attr-defined]
             ).first()
             is None
