@@ -15,7 +15,7 @@ from raglite._insert import insert_documents
 
 def test_delete(raglite_test_config: RAGLiteConfig) -> None:
     """Test document deletion."""
-    content1 = "This is the first unique document for testing general deletion."
+    content1 = """# ON THE ELECTRODYNAMICS OF MOVING BODIES## By A. EINSTEIN  June 30, 1905It is known that Maxwell..."""
     document1 = Document.from_text(content1)
     doc1_id = document1.id
     insert_documents([document1], config=raglite_test_config)
@@ -52,7 +52,7 @@ def test_delete(raglite_test_config: RAGLiteConfig) -> None:
 
 def test_delete_by_metadata(raglite_test_config: RAGLiteConfig) -> None:
     """Test document deletion by metadata."""
-    content1 = "This is the first unique document for testing general deletion."
+    content1 = """# ON THE ELECTRODYNAMICS OF MOVING BODIES## By A. EINSTEIN  June 30, 1905It is known that Maxwell..."""
     document1 = Document.from_text(content1, metadata="A")
     document2 = Document.from_text(content1 + " diff", metadata="A")
     insert_documents([document1, document2], config=raglite_test_config)
