@@ -187,13 +187,12 @@ def delete_documents(
         if dialect == "postgresql":
             # PostgreSQL: Use ORM cascade delete for atomic transactions
             # PostgreSQL supports deferred constraint checking, so this works atomically
-            delete_statement = (
-                delete(Document)
-                .where(col(Document.id).in_(document_ids))
-                .returning(col(Document.id))
-            )
-            result = session.execute(delete_statement)
-            deleted_count = len(result.all())
+            deleted_count = 0
+            for document_id in document_ids:
+                document = session.get(Document, document_id)
+                if document is not None:
+                    session.delete(document)  # Cascade handles children
+                    deleted_count += 1
             _invalidate_query_adapter(session)
             session.commit()
         else:
