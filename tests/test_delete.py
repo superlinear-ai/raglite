@@ -20,7 +20,7 @@ def get_table_states(session: Session) -> dict[str, list[dict[str, Any]]]:
     for table_name, table in SQLModel.metadata.tables.items():
         stmt = table.select().order_by(*table.primary_key.columns)
         rows = session.execute(stmt).all()
-        row_dicts = [dict(row) for row in rows]
+        row_dicts = [row._asdict() for row in rows]
         for row in row_dicts:
             for k, v in row.items():
                 if isinstance(v, np.ndarray):
