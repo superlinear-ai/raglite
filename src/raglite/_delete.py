@@ -9,6 +9,7 @@ from filelock import FileLock
 from sqlalchemy import delete, func, text, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.orm import load_only
 from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import Session, col, select
 
@@ -175,10 +176,14 @@ def delete_documents(
 
     # Delete documents and perform cleanup
     with db_lock, Session(engine) as session:
-        statement = select(Document).where(col(Document.id).in_(document_ids))
-        documents_to_delete = list(session.exec(statement).all())
+        statement = (
+            select(Document)
+            .where(col(Document.id).in_(document_ids))
+            .options(load_only(Document.metadata_))  # type: ignore[arg-type]
+        )
+        documents_metadata = list(session.exec(statement).all())
         # Update metadata table
-        _update_metadata_table(session, documents_to_delete, set(document_ids), dialect)
+        _update_metadata_table(session, documents_metadata, set(document_ids), dialect)
         if dialect == "postgresql":
             # PostgreSQL: Use ORM cascade delete for atomic transactions
             # PostgreSQL supports deferred constraint checking, so this works atomically
