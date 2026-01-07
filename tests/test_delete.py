@@ -25,7 +25,7 @@ def test_delete(raglite_test_config: RAGLiteConfig) -> None:
             select(Chunk.id).where(col(Chunk.document_id).in_([doc1_id]))
         ).all()
 
-    deleted_count = delete_documents([doc1_id], config=raglite_test_config)
+    deleted_count = delete_documents([doc1_id, "fake_id"], config=raglite_test_config)
     assert deleted_count == 1, f"Expected 1 document to be deleted, but got {deleted_count}"
 
     with Session(create_database_engine(raglite_test_config)) as session:
@@ -55,6 +55,9 @@ def test_delete(raglite_test_config: RAGLiteConfig) -> None:
         }
         assert "classification" not in existing_metadata, (
             "Metadata field 'classification' was not deleted"  # classification row should be deleted
+        )
+        assert "author" in existing_metadata, (
+            "Author key should still exist for the Einstein fixture doc"
         )
         assert "Test Author" not in existing_metadata["author"].values, (
             "Metadata field 'author' was not deleted"  # row should remain with author: ['Albert Einstein']

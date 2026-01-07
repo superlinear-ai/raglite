@@ -70,7 +70,7 @@ def _invalidate_query_adapter(session: Session) -> None:
 def _get_documents_with_metadata(
     metadata_filter: dict[str, Any], session: Session
 ) -> list[DocumentId]:
-    """Count documents matching a metadata filter."""
+    """Get document IDs matching a metadata filter."""
     metadata_filter = _adapt_metadata(metadata_filter)
 
     # Determine the filter condition based on the database engine
@@ -81,7 +81,6 @@ def _get_documents_with_metadata(
             col(Document.metadata_), func.json(json.dumps(metadata_filter))
         )
 
-    # Count on the primary key
     statement = select(Document.id).where(condition)
 
     return list(session.exec(statement).all())
@@ -123,7 +122,8 @@ def _update_metadata_table(
                                 .where(col(Metadata.name) == name)
                                 .values(values=new_values)
                             )
-                        session.commit()
+    if dialect == "duckdb":
+        session.commit()
 
 
 def delete_documents(
@@ -179,16 +179,19 @@ def delete_documents(
         statement = (
             select(Document)
             .where(col(Document.id).in_(document_ids))
-            .options(load_only(Document.metadata_))  # type: ignore[arg-type]
+            .options(load_only(Document.id, Document.metadata_))  # type: ignore[arg-type]
         )
         documents_metadata = list(session.exec(statement).all())
+        existing_document_ids = {doc.id for doc in documents_metadata}
+        if not existing_document_ids:
+            return 0  # No documents found to delete
         # Update metadata table
-        _update_metadata_table(session, documents_metadata, set(document_ids), dialect)
+        _update_metadata_table(session, documents_metadata, existing_document_ids, dialect)
         if dialect == "postgresql":
             # PostgreSQL: Use ORM cascade delete for atomic transactions
             # PostgreSQL supports deferred constraint checking, so this works atomically
             deleted_count = 0
-            for document_id in document_ids:
+            for document_id in existing_document_ids:
                 document = session.get(Document, document_id)
                 if document is not None:
                     session.delete(document)  # Cascade handles children
@@ -204,7 +207,7 @@ def delete_documents(
 
             # Find all chunks for the documents to be deleted
             chunk_ids = session.exec(
-                select(Chunk.id).where(col(Chunk.document_id).in_(document_ids))
+                select(Chunk.id).where(col(Chunk.document_id).in_(existing_document_ids))
             ).all()
 
             # Delete chunk embeddings (deepest dependency)
@@ -220,13 +223,13 @@ def delete_documents(
                 session.commit()
 
             # Delete evals
-            session.execute(delete(Eval).where(col(Eval.document_id).in_(document_ids)))
+            session.execute(delete(Eval).where(col(Eval.document_id).in_(existing_document_ids)))
             session.commit()
 
             # Delete documents and count
             result = session.execute(
                 delete(Document)
-                .where(col(Document.id).in_(document_ids))
+                .where(col(Document.id).in_(existing_document_ids))
                 .returning(col(Document.id))
             )
             deleted_count = len(result.all())
