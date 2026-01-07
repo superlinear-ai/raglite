@@ -29,32 +29,35 @@ def test_delete(raglite_test_config: RAGLiteConfig) -> None:
     assert deleted_count == 1, f"Expected 1 document to be deleted, but got {deleted_count}"
 
     with Session(create_database_engine(raglite_test_config)) as session:
+        # Check that the document is deleted
         assert session.exec(select(Document).where(Document.id == doc1_id)).first() is None, (
             "Document was not deleted"
         )
-        # Check that other tables are deleted
+        # Check that tables with foreign keys to document have no entries for the deleted document
         for table_name, table in SQLModel.metadata.tables.items():
-            if "document_id" in table.c:
+            document_fks = [fk for fk in table.foreign_keys if fk.column.table.name == "document"]
+            for fk in document_fks:
+                col_to_check = table.c[fk.parent.name]
                 assert (
-                    session.exec(
-                        select(table.c.document_id).where(table.c.document_id == doc1_id)
-                    ).first()  # type: ignore[attr-defined]
+                    session.exec(select(col_to_check).where(col_to_check == doc1_id)).first()  # type: ignore[attr-defined]
                     is None
                 ), f"{table_name} still contains data for deleted document"
+        # Check that chunk embeddings are deleted
         assert (
             session.exec(
                 select(ChunkEmbedding).where(col(ChunkEmbedding.chunk_id).in_(chunk_ids))
             ).first()
             is None
         ), "Chunk embeddings were not deleted"
+        # Check that metadata fields are deleted
         existing_metadata = {
             record.name: record for record in _get_database_metadata(session=session)
         }
         assert "classification" not in existing_metadata, (
-            "Metadata field 'classification' was not deleted"
+            "Metadata field 'classification' was not deleted"  # classification row should be deleted
         )
         assert "Test Author" not in existing_metadata["author"].values, (
-            "Metadata field 'author' was not deleted"
+            "Metadata field 'author' was not deleted"  # row should remain with author: ['Albert Einstein']
         )
 
 
