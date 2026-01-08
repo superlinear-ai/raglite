@@ -126,10 +126,11 @@ def _update_metadata_table(
         session.commit()
 
 
-def delete_documents(
+def delete_documents(  # noqa: C901
     document_ids: list[DocumentId],
     *,
     config: RAGLiteConfig | None = None,
+    invalidate_query_adapter: bool = False,
 ) -> int:
     """Delete documents from the database and update the index.
 
@@ -147,6 +148,9 @@ def delete_documents(
         A list of document IDs to delete from the database.
     config
         The RAGLite config to use to delete the documents from the database.
+    invalidate_query_adapter
+        If True, invalidate the query adapter after deletion. This forces retraining
+        on the next query. Defaults to False.
 
     Returns
     -------
@@ -185,8 +189,10 @@ def delete_documents(
         existing_document_ids = {doc.id for doc in documents_metadata}
         if not existing_document_ids:
             return 0  # No documents found to delete
-        # Update metadata table
+
+        # Prune orphaned metadata values
         _update_metadata_table(session, documents_metadata, existing_document_ids, dialect)
+
         if dialect == "postgresql":
             # PostgreSQL: Use ORM cascade delete for atomic transactions
             # PostgreSQL supports deferred constraint checking, so this works atomically
@@ -196,7 +202,8 @@ def delete_documents(
                 if document is not None:
                     session.delete(document)  # Cascade handles children
                     deleted_count += 1
-            _invalidate_query_adapter(session)
+            if invalidate_query_adapter:
+                _invalidate_query_adapter(session)
             session.commit()
         else:
             # DuckDB: Use manual cascade with intermediate commits
@@ -235,13 +242,12 @@ def delete_documents(
             deleted_count = len(result.all())
             session.commit()
 
-            # Invalidate query adapter cache
-            _invalidate_query_adapter(session)
+            if invalidate_query_adapter:
+                _invalidate_query_adapter(session)
 
             # Rebuild indexes (DuckDB only)
             _rebuild_indexes(session, engine)
 
-            # Final commit
             session.commit()
 
     return deleted_count
@@ -251,6 +257,7 @@ def delete_documents_by_metadata(
     metadata_filter: dict[str, Any],
     *,
     config: RAGLiteConfig | None = None,
+    invalidate_query_adapter: bool = False,
 ) -> int:
     """Delete documents matching a metadata filter from the database and update the index.
 
@@ -261,6 +268,9 @@ def delete_documents_by_metadata(
         for a document to be deleted.
     config
         The RAGLite config to use to delete the documents from the database.
+    invalidate_query_adapter
+        If True, invalidate the query adapter after deletion. This forces retraining
+        on the next query. Defaults to False.
 
     Returns
     -------
@@ -289,4 +299,6 @@ def delete_documents_by_metadata(
         document_ids = _get_documents_with_metadata(metadata_filter, session)
 
     # Use delete_documents to perform the actual deletion
-    return delete_documents(document_ids, config=config)
+    return delete_documents(
+        document_ids, config=config, invalidate_query_adapter=invalidate_query_adapter
+    )
