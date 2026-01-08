@@ -298,9 +298,6 @@ def delete_documents_by_metadata(
     # Create database engine and session to query matching documents
     engine = create_database_engine(config := config or RAGLiteConfig())
 
-    # Normalize metadata filter values to lists to match stored metadata
-    metadata_filter = _adapt_metadata(metadata_filter)
-
     with Session(engine) as session:
         document_ids = _get_documents_with_metadata(metadata_filter, session)
 
