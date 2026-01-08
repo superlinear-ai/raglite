@@ -8,7 +8,7 @@ from typing import Any, Literal
 from filelock import FileLock
 from sqlalchemy import delete, func, text, update
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import load_only
 from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel import Session, col, select
@@ -26,28 +26,6 @@ from raglite._database import (
 )
 from raglite._insert import _aggregate_metadata_from_documents
 from raglite._typing import DocumentId
-
-
-def _rebuild_indexes(session: Session, engine: Engine) -> None:
-    """Rebuild search indexes after deletion (DuckDB only).
-
-    Parameters
-    ----------
-    session
-        Active database session.
-    engine
-        Database engine.
-    """
-    if engine.dialect.name == "duckdb":
-        # DuckDB does not automatically update its keyword search index, so we rebuild it
-        # manually after deletion. Additionally, we re-compact the HNSW index. Finally, we
-        # synchronize data in the write-ahead log (WAL) to the database data file with the
-        # CHECKPOINT statement.
-        session.execute(text("PRAGMA create_fts_index('chunk', 'id', 'body', overwrite = 1);"))
-        session.execute(text("PRAGMA hnsw_compact_index('vector_search_chunk_index');"))
-        session.commit()
-        session.execute(text("CHECKPOINT;"))
-    # PostgreSQL indexes update automatically, so no action needed
 
 
 def _invalidate_query_adapter(session: Session) -> None:
@@ -126,7 +104,81 @@ def _update_metadata_table(
         session.commit()
 
 
-def delete_documents(  # noqa: C901
+def _delete_documents_postgresql(
+    session: Session,
+    document_ids: set[DocumentId],
+    *,
+    invalidate_query_adapter: bool,
+) -> int:
+    """Delete documents using PostgreSQL's atomic cascade delete.
+
+    PostgreSQL supports deferred constraint checking, so all deletions happen
+    in a single atomic transaction.
+    """
+    deleted_count = 0
+    for document_id in document_ids:
+        document = session.get(Document, document_id)
+        if document is not None:
+            session.delete(document)  # Cascade handles children
+            deleted_count += 1
+    if invalidate_query_adapter:
+        _invalidate_query_adapter(session)
+    session.commit()
+    return deleted_count
+
+
+def _delete_documents_duckdb(
+    session: Session,
+    document_ids: set[DocumentId],
+    *,
+    invalidate_query_adapter: bool,
+) -> int:
+    """Delete documents in DuckDB using manual cascade with intermediate commits.
+
+    DuckDB checks FK constraints immediately, so we must commit after each step.
+    WARNING: This is NOT atomic - failures may leave partial deletions.
+
+    This is a known issue:
+    - https://github.com/duckdb/duckdb/issues/13819
+    - https://duckdb.org/docs/stable/sql/indexes#over-eager-constraint-checking-in-foreign-keys
+    """
+    # Find all chunks for the documents to be deleted
+    chunk_ids = session.exec(select(Chunk.id).where(col(Chunk.document_id).in_(document_ids))).all()
+
+    # Delete chunk embeddings (deepest dependency)
+    if chunk_ids:
+        session.execute(delete(ChunkEmbedding).where(col(ChunkEmbedding.chunk_id).in_(chunk_ids)))
+        session.commit()
+
+    # Delete chunks
+    if chunk_ids:
+        session.execute(delete(Chunk).where(col(Chunk.id).in_(chunk_ids)))
+        session.commit()
+
+    # Delete evals
+    session.execute(delete(Eval).where(col(Eval.document_id).in_(document_ids)))
+    session.commit()
+
+    # Delete documents and count
+    result = session.execute(
+        delete(Document).where(col(Document.id).in_(document_ids)).returning(col(Document.id))
+    )
+    deleted_count = len(result.all())
+    session.commit()
+
+    if invalidate_query_adapter:
+        _invalidate_query_adapter(session)
+
+    # Rebuild search indexes (DuckDB does not update these automatically)
+    session.execute(text("PRAGMA create_fts_index('chunk', 'id', 'body', overwrite = 1);"))
+    session.execute(text("PRAGMA hnsw_compact_index('vector_search_chunk_index');"))
+    session.commit()
+    session.execute(text("CHECKPOINT;"))
+
+    return deleted_count
+
+
+def delete_documents(
     document_ids: list[DocumentId],
     *,
     config: RAGLiteConfig | None = None,
@@ -194,61 +246,15 @@ def delete_documents(  # noqa: C901
         _update_metadata_table(session, documents_metadata, existing_document_ids, dialect)
 
         if dialect == "postgresql":
-            # PostgreSQL: Use ORM cascade delete for atomic transactions
-            # PostgreSQL supports deferred constraint checking, so this works atomically
-            deleted_count = 0
-            for document_id in existing_document_ids:
-                document = session.get(Document, document_id)
-                if document is not None:
-                    session.delete(document)  # Cascade handles children
-                    deleted_count += 1
-            if invalidate_query_adapter:
-                _invalidate_query_adapter(session)
-            session.commit()
-        else:
-            # DuckDB: Use manual cascade with intermediate commits
-            # DuckDB checks FK constraints immediately, so we must commit after each step
-            # This is a known issue: https://github.com/duckdb/duckdb/issues/13819
-            # Limitations: https://duckdb.org/docs/stable/sql/indexes#over-eager-constraint-checking-in-foreign-keys
-            # WARNING: This is NOT atomic - failures may leave partial deletions
-
-            # Find all chunks for the documents to be deleted
-            chunk_ids = session.exec(
-                select(Chunk.id).where(col(Chunk.document_id).in_(existing_document_ids))
-            ).all()
-
-            # Delete chunk embeddings (deepest dependency)
-            if chunk_ids:
-                session.execute(
-                    delete(ChunkEmbedding).where(col(ChunkEmbedding.chunk_id).in_(chunk_ids))
-                )
-                session.commit()
-
-            # Delete chunks
-            if chunk_ids:
-                session.execute(delete(Chunk).where(col(Chunk.id).in_(chunk_ids)))
-                session.commit()
-
-            # Delete evals
-            session.execute(delete(Eval).where(col(Eval.document_id).in_(existing_document_ids)))
-            session.commit()
-
-            # Delete documents and count
-            result = session.execute(
-                delete(Document)
-                .where(col(Document.id).in_(existing_document_ids))
-                .returning(col(Document.id))
+            deleted_count = _delete_documents_postgresql(
+                session, existing_document_ids, invalidate_query_adapter=invalidate_query_adapter
             )
-            deleted_count = len(result.all())
-            session.commit()
-
-            if invalidate_query_adapter:
-                _invalidate_query_adapter(session)
-
-            # Rebuild indexes (DuckDB only)
-            _rebuild_indexes(session, engine)
-
-            session.commit()
+        else:
+            deleted_count = _delete_documents_duckdb(
+                session,
+                existing_document_ids,
+                invalidate_query_adapter=invalidate_query_adapter,
+            )
 
     return deleted_count
 
