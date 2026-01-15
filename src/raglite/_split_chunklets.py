@@ -161,12 +161,16 @@ def split_chunklets(
                 cost_ji = b_cost + s_cost
             else:
                 # Custom cost functions: use array slicing (still benefits from early break).
+                assert boundary_cost is not None  # mypy requires this
+                assert statement_cost is not None  # mypy requires this
                 cost_ji = boundary_cost(boundary_probas[j:i])
                 cost_ji += statement_cost(np.sum(num_statements_arr[j:i]))
             # Compute the cost of partitioning sentences[:i] if we were to split at j.
             cost_0i = dp[j] + cost_ji
-            # If the cost is less than the current minimum, update the DP table and backpointer.
-            if cost_0i < dp[i]:
+            # If the cost is less than or equal to the current minimum, update the DP table and
+            # backpointer. Using <= ensures consistent tie-breaking with backward iteration
+            # (preferring smaller j values, matching the original forward iteration behavior).
+            if cost_0i <= dp[i]:
                 dp[i] = cost_0i
                 back[i] = j
     # Recover the optimal partitioning.
