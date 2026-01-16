@@ -130,7 +130,7 @@ warn_unused_ignores = false
 
 [tool.pytest.ini_options]  # https://docs.pytest.org/en/latest/reference/reference.html#ini-options-ref
 addopts = "--color=yes --doctest-modules --ignore=src/raglite/_chainlit.py --exitfirst --failed-first --strict-config --strict-markers --verbosity=2 --junitxml=reports/pytest.xml"
-filterwarnings = ["error", "ignore::DeprecationWarning", "ignore::pytest.PytestUnraisableExceptionWarning"]
+filterwarnings = ["error", "ignore::DeprecationWarning", "ignore::pytest.PytestUnraisableExceptionWarning", "ignore:The `local_dir_use_symlinks` argument is deprecated:UserWarning:huggingface_hub"]
 markers = ["slow: mark test as slow"]
 testpaths = ["src", "tests"]
 xfail_strict = true
