@@ -172,7 +172,7 @@ def embed_strings_without_late_chunking(
     config = config or RAGLiteConfig()
     batch_size = 96
     batch_range = (
-        partial(trange, desc="Embedding", unit="batch", dynamic_ncols=True)
+        partial(trange, desc="Embedding", unit="batch", dynamic_ncols=True, leave=False)
         if len(strings) > batch_size
         else range
     )
