@@ -123,20 +123,16 @@ def split_chunklets(
     # Precompute prefix sums for O(1) range queries.
     num_sentences = len(sentences)
     sentence_lengths = np.array([len(s) for s in sentences], dtype=np.int64)
-    prefix_char_len = np.zeros(num_sentences + 1, dtype=np.int64)
-    prefix_char_len[1:] = np.cumsum(sentence_lengths)
-    prefix_boundary = np.zeros(num_sentences + 1, dtype=np.float64)
-    prefix_boundary[1:] = np.cumsum(boundary_probas)
-    prefix_statements = np.zeros(num_sentences + 1, dtype=np.float64)
-    prefix_statements[1:] = np.cumsum(num_statements_arr)
+    prefix_char_len = np.concatenate(([0], np.cumsum(sentence_lengths)), dtype=np.int64)
     # Determine whether to use the optimized O(1) cost functions or custom functions.
     use_optimized = boundary_cost is None and statement_cost is None
     if not use_optimized:
         # Fall back to default lambdas if only one is provided.
-        if boundary_cost is None:
-            boundary_cost = lambda p: (1.0 - p[0]) + np.sum(p[1:])  # noqa: E731
-        if statement_cost is None:
-            statement_cost = lambda s: ((s - 3) ** 2 / np.sqrt(max(s, 1e-6)) / 2)  # noqa: E731
+        boundary_cost = boundary_cost or (lambda p: (1.0 - p[0]) + np.sum(p[1:]))
+        statement_cost = statement_cost or (lambda s: ((s - 3) ** 2 / np.sqrt(max(s, 1e-6)) / 2))
+    else:
+        prefix_boundary = np.concatenate(([0.0], np.cumsum(boundary_probas)), dtype=np.float64)
+        prefix_statements = np.concatenate(([0.0], np.cumsum(num_statements_arr)), dtype=np.float64)
     # Initialize a dynamic programming table and backpointers. The dynamic programming table dp[i]
     # is defined as the minimum cost to segment the first i sentences (i.e., sentences[:i]).
     dp = np.full(num_sentences + 1, np.inf)
