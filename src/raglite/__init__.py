@@ -1,6 +1,6 @@
 """RAGLite."""
 
-from raglite._config import RAGLiteConfig
+from raglite._config import ImageType, MistralOCRConfig, RAGLiteConfig
 from raglite._database import Document
 from raglite._delete import delete_documents, delete_documents_by_metadata
 from raglite._eval import answer_evals, evaluate, insert_evals
@@ -22,6 +22,8 @@ from raglite._search import (
 __all__ = [
     # Config
     "RAGLiteConfig",
+    "MistralOCRConfig",
+    "ImageType",
     # Insert
     "Document",
     "insert_documents",

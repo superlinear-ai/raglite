@@ -3,6 +3,7 @@
 import contextlib
 import os
 from dataclasses import dataclass, field
+from enum import Enum
 from io import StringIO
 from pathlib import Path
 from typing import Literal
@@ -21,6 +22,32 @@ with contextlib.redirect_stdout(StringIO()):
 
 
 cache_path = Path(user_data_dir("raglite", ensure_exists=True))
+
+
+class ImageType(str, Enum):
+    """Type of image detected by OCR."""
+
+    GRAPH = "graph"
+    CHART = "chart"
+    DIAGRAM = "diagram"
+    TABLE = "table"
+    PHOTO = "photo"
+    SCREENSHOT = "screenshot"
+    LOGO = "logo"
+    ICON = "icon"
+    OTHER = "other"
+
+
+@dataclass(frozen=True)
+class MistralOCRConfig:
+    """Configuration for MistralOCR document processor."""
+
+    # API key - falls back to MISTRAL_API_KEY env var if None.
+    api_key: str | None = None
+    # Whether to use vision to describe images in documents.
+    include_image_descriptions: bool = True
+    # Image types to exclude from processing (e.g., {ImageType.LOGO, ImageType.ICON}).
+    exclude_image_types: frozenset[ImageType] = field(default_factory=frozenset)
 
 
 # Lazily load the default search method to avoid circular imports.
@@ -65,6 +92,8 @@ class RAGLiteConfig:
     embedder_normalize: bool = True
     # Chunk config used to partition documents into chunks.
     chunk_max_size: int = 2048  # Max number of characters per chunk.
+    # Document processing config. None = default processor.
+    document_processor: MistralOCRConfig | None = None
     # Vector search config.
     vector_search_distance_metric: Literal["cosine", "dot", "l2"] = "cosine"
     vector_search_multivector: bool = True
