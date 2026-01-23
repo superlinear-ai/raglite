@@ -75,7 +75,7 @@ async def handle_message(user_message: cl.Message) -> None:
     inline_attachments = []
     for file in user_message.elements:
         if file.path:
-            doc_md = document_to_markdown(Path(file.path))
+            doc_md = document_to_markdown(Path(file.path), config=config)
             if len(doc_md) // 3 <= 5 * (config.chunk_max_size // 3):
                 # Document is small enough to attach to the context.
                 inline_attachments.append(f"{Path(file.path).name}:\n\n{doc_md}")
@@ -83,7 +83,7 @@ async def handle_message(user_message: cl.Message) -> None:
                 # Document is too large and must be inserted into the database.
                 async with cl.Step(name="insert", type="run") as step:
                     step.input = Path(file.path).name
-                    document = Document.from_path(Path(file.path))
+                    document = Document.from_path(Path(file.path), config=config)
                     await async_insert_documents([document], config=config)
     # Append any inline attachments to the user prompt.
     user_prompt = (
