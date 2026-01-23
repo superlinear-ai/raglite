@@ -1,26 +1,38 @@
 """MistralOCR document processor for RAGLite."""
 
-from __future__ import annotations
-
 import base64
 import logging
 import os
 import re
-from pathlib import Path  # noqa: TC003
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from raglite._config import ImageType, MistralOCRConfig  # noqa: TC001
+from raglite._config import ImageType, MistralOCRConfig
 
 logger = logging.getLogger(__name__)
 
-# File extensions supported by MistralOCR.
-SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".avif", ".docx", ".pptx", ".webp"}
+# Single source of truth for supported extensions and their MIME types.
+_MIME_TYPES: dict[str, str] = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".avif": "image/avif",
+    ".webp": "image/webp",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
+SUPPORTED_EXTENSIONS = frozenset(_MIME_TYPES)
+_IMAGE_EXTENSIONS = frozenset(ext for ext, mime in _MIME_TYPES.items() if mime.startswith("image/"))
 
 
 class MistralOCRError(Exception):
     """Error during MistralOCR processing."""
+
+
+_IMAGE_TYPE_VALUES = ", ".join(t.value for t in ImageType)
 
 
 class ImageAnnotation(BaseModel):
@@ -28,10 +40,7 @@ class ImageAnnotation(BaseModel):
 
     image_type: ImageType = Field(
         ...,
-        description=(
-            "The type of the image. Must be one of: graph, chart, diagram, table, "
-            "photo, screenshot, logo, icon, or other."
-        ),
+        description=f"The type of the image. Must be one of: {_IMAGE_TYPE_VALUES}.",
     )
     description: str = Field(
         ...,
@@ -71,17 +80,7 @@ def _get_mistral_client(processor_config: MistralOCRConfig) -> Any:
 
 def _encode_document_base64(doc_path: Path) -> tuple[str, str]:
     """Encode a document as base64 with appropriate MIME type."""
-    mime_types = {
-        ".pdf": "application/pdf",
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".avif": "image/avif",
-        ".webp": "image/webp",
-        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    }
-    mime_type = mime_types.get(doc_path.suffix.lower(), "application/octet-stream")
+    mime_type = _MIME_TYPES.get(doc_path.suffix.lower(), "application/octet-stream")
     data = base64.standard_b64encode(doc_path.read_bytes()).decode("utf-8")
     return data, mime_type
 
@@ -168,13 +167,6 @@ def mistral_ocr_to_markdown(doc_path: Path, *, processor_config: MistralOCRConfi
     MistralOCRError
         If the OCR processing fails.
     """
-    # Check if file extension is supported by MistralOCR.
-    if doc_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
-        # Fall back to default processor for unsupported types.
-        from raglite._markdown import _default_document_to_markdown
-
-        return _default_document_to_markdown(doc_path)
-
     try:
         from mistralai.extra import response_format_from_pydantic_model
 
@@ -184,7 +176,7 @@ def mistral_ocr_to_markdown(doc_path: Path, *, processor_config: MistralOCRConfi
         data, mime_type = _encode_document_base64(doc_path)
 
         # Prepare document payload based on file type.
-        if doc_path.suffix.lower() in {".png", ".jpg", ".jpeg", ".avif", ".webp"}:
+        if doc_path.suffix.lower() in _IMAGE_EXTENSIONS:
             document_payload = {
                 "type": "image_url",
                 "image_url": f"data:{mime_type};base64,{data}",
@@ -219,10 +211,8 @@ def mistral_ocr_to_markdown(doc_path: Path, *, processor_config: MistralOCRConfi
             exclude_image_types=processor_config.exclude_image_types,
         )
 
-    except ImportError:
-        raise  # Re-raise import errors with the helpful message.
-    except ValueError:
-        raise  # Re-raise API key errors.
+    except (ImportError, ValueError):
+        raise
     except Exception as e:
         error_msg = f"MistralOCR failed to process {doc_path}: {e}"
         raise MistralOCRError(error_msg) from e

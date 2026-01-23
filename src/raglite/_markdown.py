@@ -243,8 +243,9 @@ def document_to_markdown(doc_path: Path, *, config: RAGLiteConfig | None = None)
 
     if isinstance(config.document_processor, MistralOCRConfig):
         # Lazy import to avoid requiring mistralai when not using MistralOCR.
-        from raglite._mistral_ocr import mistral_ocr_to_markdown
+        from raglite._mistral_ocr import SUPPORTED_EXTENSIONS, mistral_ocr_to_markdown
 
-        return mistral_ocr_to_markdown(doc_path, processor_config=config.document_processor)
+        if doc_path.suffix.lower() in SUPPORTED_EXTENSIONS:
+            return mistral_ocr_to_markdown(doc_path, processor_config=config.document_processor)
 
     return _default_document_to_markdown(doc_path)
