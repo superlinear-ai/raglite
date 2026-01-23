@@ -47,7 +47,7 @@ class MistralOCRConfig:
     # Whether to use vision to describe images in documents.
     include_image_descriptions: bool = True
     # Image types to exclude from processing (e.g., {ImageType.LOGO, ImageType.ICON}).
-    exclude_image_types: frozenset[ImageType] = field(default_factory=frozenset)
+    exclude_image_types: frozenset[ImageType] = frozenset()
 
 
 # Lazily load the default search method to avoid circular imports.

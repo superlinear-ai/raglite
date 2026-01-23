@@ -1,7 +1,5 @@
 """Test MistralOCR integration."""
 
-from __future__ import annotations
-
 import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -9,6 +7,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from raglite import ImageType, MistralOCRConfig, RAGLiteConfig
+from raglite._markdown import document_to_markdown
+from raglite._mistral_ocr import (
+    SUPPORTED_EXTENSIONS,
+    _get_api_key,
+    _process_ocr_response,
+    mistral_ocr_to_markdown,
+)
 
 
 class TestMistralOCRConfig:
@@ -55,31 +60,23 @@ class TestMistralOCRAPIKey:
 
     def test_api_key_from_config(self) -> None:
         """API key can be provided via config."""
-        from raglite._mistral_ocr import _get_api_key
-
         processor_config = MistralOCRConfig(api_key="config-key")
         assert _get_api_key(processor_config) == "config-key"
 
     def test_api_key_from_env(self) -> None:
         """API key falls back to environment variable."""
-        from raglite._mistral_ocr import _get_api_key
-
         processor_config = MistralOCRConfig()
         with patch.dict(os.environ, {"MISTRAL_API_KEY": "env-key"}):
             assert _get_api_key(processor_config) == "env-key"
 
     def test_api_key_config_takes_precedence(self) -> None:
         """Config API key takes precedence over environment variable."""
-        from raglite._mistral_ocr import _get_api_key
-
         processor_config = MistralOCRConfig(api_key="config-key")
         with patch.dict(os.environ, {"MISTRAL_API_KEY": "env-key"}):
             assert _get_api_key(processor_config) == "config-key"
 
     def test_missing_api_key_raises_error(self) -> None:
         """Missing API key should raise ValueError."""
-        from raglite._mistral_ocr import _get_api_key
-
         processor_config = MistralOCRConfig()
         with patch.dict(os.environ, {}, clear=True):
             # Remove MISTRAL_API_KEY if present.
@@ -93,17 +90,14 @@ class TestMistralOCRFallback:
 
     def test_unsupported_extension_falls_back(self) -> None:
         """Unsupported file extensions should fall back to default processor."""
-        from raglite._mistral_ocr import SUPPORTED_EXTENSIONS, mistral_ocr_to_markdown
-
         # .odt is not in SUPPORTED_EXTENSIONS.
         assert ".odt" not in SUPPORTED_EXTENSIONS
 
-        processor_config = MistralOCRConfig(api_key="test-key")
+        config = RAGLiteConfig(document_processor=MistralOCRConfig(api_key="test-key"))
 
-        # Patch at the source module where it's defined.
         with patch("raglite._markdown._default_document_to_markdown") as mock_default:
             mock_default.return_value = "fallback content"
-            result = mistral_ocr_to_markdown(Path("test.odt"), processor_config=processor_config)
+            result = document_to_markdown(Path("test.odt"), config=config)
             mock_default.assert_called_once_with(Path("test.odt"))
             assert result == "fallback content"
 
@@ -113,8 +107,6 @@ class TestMistralOCRMocked:
 
     def test_process_ocr_response_basic(self) -> None:
         """Test _process_ocr_response with basic markdown."""
-        from raglite._mistral_ocr import _process_ocr_response
-
         # Create mock OCR response.
         mock_page = MagicMock()
         mock_page.markdown = "# Test Document\n\nThis is a test."
@@ -130,8 +122,6 @@ class TestMistralOCRMocked:
 
     def test_process_ocr_response_with_annotations(self) -> None:
         """Test _process_ocr_response replaces image placeholders with annotations."""
-        from raglite._mistral_ocr import _process_ocr_response
-
         # Create mock image with valid JSON annotation.
         mock_image = MagicMock()
         mock_image.id = "img-0.jpeg"
@@ -154,8 +144,6 @@ class TestMistralOCRMocked:
 
     def test_process_ocr_response_with_raw_annotation_fallback(self) -> None:
         """Test _process_ocr_response falls back to raw annotation if parsing fails."""
-        from raglite._mistral_ocr import _process_ocr_response
-
         # Create mock image with non-JSON annotation.
         mock_image = MagicMock()
         mock_image.id = "img-0.jpeg"
@@ -175,8 +163,6 @@ class TestMistralOCRMocked:
 
     def test_process_ocr_response_multiple_pages(self) -> None:
         """Test _process_ocr_response with multiple pages."""
-        from raglite._mistral_ocr import _process_ocr_response
-
         mock_page1 = MagicMock()
         mock_page1.markdown = "# Page 1"
         mock_page1.images = []
@@ -197,8 +183,6 @@ class TestMistralOCRMocked:
 
     def test_process_ocr_response_exclude_image_types(self) -> None:
         """Test _process_ocr_response excludes specified image types."""
-        from raglite._mistral_ocr import _process_ocr_response
-
         # Create mock images with different types.
         mock_logo = MagicMock()
         mock_logo.id = "img-logo.jpeg"
@@ -237,8 +221,6 @@ class TestDocumentToMarkdownDispatch:
 
     def test_default_processor_used(self) -> None:
         """Default config should use default processor."""
-        from raglite._markdown import document_to_markdown
-
         config = RAGLiteConfig()
 
         with patch("raglite._markdown._default_document_to_markdown") as mock_default:
@@ -249,8 +231,6 @@ class TestDocumentToMarkdownDispatch:
 
     def test_mistral_processor_used(self) -> None:
         """Mistral config should use MistralOCR processor."""
-        from raglite._markdown import document_to_markdown
-
         processor_config = MistralOCRConfig(api_key="test-key")
         config = RAGLiteConfig(document_processor=processor_config)
 
@@ -264,20 +244,13 @@ class TestDocumentToMarkdownDispatch:
             assert result == "mistral content"
 
 
-def is_mistral_available() -> bool:
-    """Check if Mistral API key is set."""
-    return bool(os.environ.get("MISTRAL_API_KEY"))
-
-
-@pytest.mark.skipif(not is_mistral_available(), reason="MISTRAL_API_KEY not set")
+@pytest.mark.skipif(not os.environ.get("MISTRAL_API_KEY"), reason="MISTRAL_API_KEY not set")
 @pytest.mark.slow
 class TestMistralOCRIntegration:
     """Integration tests requiring actual API access."""
 
     def test_real_pdf_conversion(self) -> None:
         """Test real PDF conversion with actual API."""
-        from raglite._mistral_ocr import mistral_ocr_to_markdown
-
         processor_config = MistralOCRConfig(include_image_descriptions=True)
 
         # Use the test PDF that exists in the tests directory.
