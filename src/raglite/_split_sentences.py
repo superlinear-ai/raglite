@@ -1,14 +1,12 @@
 """Split a document into sentences."""
 
-import warnings
+from collections import deque
 from collections.abc import Callable
 from functools import cache
 from typing import Any
 
 import numpy as np
 from markdown_it import MarkdownIt
-from scipy import sparse
-from scipy.optimize import OptimizeWarning, linprog
 from wtpsplit_lite import SaT
 
 from raglite._typing import FloatVector
@@ -55,43 +53,90 @@ def markdown_sentence_boundaries(doc: str) -> FloatVector:
     return boundary_probas
 
 
-def _split_sentences(
+def _split_sentences(  # noqa: C901, PLR0912, PLR0915
     doc: str, probas: FloatVector, *, min_len: int, max_len: int | None = None
 ) -> list[str]:
-    # Solve an optimisation problem to find the best sentence boundaries given the predicted
-    # boundary probabilities. The objective is to select boundaries that maximise the sum of the
-    # boundary probabilities above a given threshold, subject to the resulting sentences not being
-    # shorter or longer than the given minimum or maximum length, respectively.
+    """Find optimal sentence boundaries using dynamic programming.
+
+    Maximises the sum of the boundary probabilities above a threshold, subject to the resulting
+    sentences not being shorter or longer than the given minimum or maximum length, respectively.
+
+    A boundary at position i means the character at index i is the last character of a sentence
+    (the next sentence starts at i + 1).
+    """
     sentence_threshold = 0.25  # Default threshold for -sm models.
-    c = probas - sentence_threshold
-    N = len(probas)  # noqa: N806
-    M = N - min_len + 1  # noqa: N806
-    diagonals = [np.ones(M, dtype=np.float32) for _ in range(min_len)]
-    offsets = list(range(min_len))
-    A_min = sparse.diags(diagonals, offsets, shape=(M, N), format="csr")  # noqa: N806
-    b_min = np.ones(M, dtype=np.float32)
-    bounds = [(0, 1)] * N
-    bounds[: min_len - 1] = [(0, 0)] * (min_len - 1)  # Prevent short leading sentences.
-    bounds[-min_len:] = [(0, 0)] * min_len  # Prevent short trailing sentences.
-    if max_len is not None and (M := N - max_len + 1) > 0:  # noqa: N806
-        diagonals = [np.ones(M, dtype=np.float32) for _ in range(max_len)]
-        offsets = list(range(max_len))
-        A_max = sparse.diags(diagonals, offsets, shape=(M, N), format="csr")  # noqa: N806
-        b_max = np.ones(M, dtype=np.float32)
-        A_ub = sparse.vstack([A_min, -A_max], format="csr")  # noqa: N806
-        b_ub = np.hstack([b_min, -b_max])
+    n = len(probas)
+    first_valid = min_len - 1  # Earliest boundary ensuring first sentence has >= min_len chars.
+    last_valid = n - min_len - 1  # Latest boundary ensuring last sentence has >= min_len chars.
+    if last_valid < first_valid:
+        return [doc]
+    # Score for placing a boundary at each position: positive means "good boundary".
+    scores = probas - sentence_threshold
+    # dp[i] = maximum total score with the last boundary at position i.
+    # back[i] = position of the previous boundary (-1 means "first boundary", no predecessor).
+    dp = np.full(n, -np.inf)
+    back = np.full(n, -1, dtype=np.intp)
+    if max_len is None:
+        # No maximum length: use a running maximum for O(N) computation.
+        best_prev = -np.inf
+        best_prev_idx = -1
+        for i in range(first_valid, last_valid + 1):
+            # Position i - min_len becomes a valid predecessor for position i.
+            j = i - min_len
+            if j >= first_valid and dp[j] > best_prev:
+                best_prev = dp[j]
+                best_prev_idx = j
+            # Option 1: this is the first (and possibly only) boundary.
+            dp[i] = scores[i]
+            # Option 2: extend from the best previous boundary.
+            if best_prev > -np.inf and best_prev + scores[i] > dp[i]:
+                dp[i] = best_prev + scores[i]
+                back[i] = best_prev_idx
     else:
-        A_ub = A_min  # noqa: N806
-        b_ub = b_min
-    x0 = (probas >= sentence_threshold).astype(np.float32)
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=OptimizeWarning)  # Ignore x0 not being used.
-        res = linprog(-c, A_ub=A_ub, b_ub=b_ub, bounds=bounds, x0=x0, integrality=[1] * N)
-    if not res.success:
-        error_message = "Optimization of sentence partitions failed."
+        # With maximum length: use a monotonic deque for O(N) sliding window maximum.
+        dq: deque[tuple[float, int]] = deque()
+        for i in range(first_valid, last_valid + 1):
+            # Position i - min_len becomes a valid predecessor for position i.
+            j = i - min_len
+            if j >= first_valid and np.isfinite(dp[j]):
+                while dq and dq[-1][0] <= dp[j]:
+                    dq.pop()
+                dq.append((dp[j], j))
+            # Evict predecessors that would create a sentence longer than max_len.
+            while dq and dq[0][1] < i - max_len:
+                dq.popleft()
+            # Option 1: this is the first boundary (sentence is doc[0:i+1]).
+            if i + 1 <= max_len:
+                dp[i] = scores[i]
+            # Option 2: extend from the best previous boundary in the valid window.
+            if dq and dq[0][0] + scores[i] > dp[i]:
+                dp[i] = dq[0][0] + scores[i]
+                back[i] = dq[0][1]
+    # Find the best final boundary such that the trailing sentence is also valid.
+    answer_min = first_valid
+    if max_len is not None:
+        answer_min = max(answer_min, n - max_len - 1)
+    no_boundary_valid = max_len is None or max_len >= n
+    best_score = 0.0 if no_boundary_valid else -np.inf
+    best_last = -1
+    for i in range(answer_min, last_valid + 1):
+        if dp[i] > best_score:
+            best_score = dp[i]
+            best_last = i
+    if best_last == -1:
+        if no_boundary_valid:
+            return [doc]
+        error_message = "Sentence partition failed: no valid split satisfies the constraints."
         raise ValueError(error_message)
-    # Split the document into sentences where the boundary probability exceeds a threshold.
-    partition_indices = np.where(res.x > 0.5)[0] + 1  # noqa: PLR2004
+    # Backtrack to recover the optimal boundary positions.
+    boundaries: list[int] = []
+    pos = best_last
+    while pos >= 0:
+        boundaries.append(pos)
+        pos = back[pos]
+    boundaries.reverse()
+    # Split the document at the boundary positions.
+    partition_indices = [b + 1 for b in boundaries]
     sentences = [
         doc[i:j] for i, j in zip([0, *partition_indices], [*partition_indices, None], strict=True)
     ]
@@ -155,18 +200,20 @@ def split_sentences(
     # For each sentence that exceeds the maximum length, solve the optimization problem again with
     # a maximum length constraint.
     if max_len is not None:
-        sentences = [
-            subsentence
-            for sentence in sentences
-            for subsentence in (
-                [sentence]
-                if len(sentence) <= max_len
-                else _split_sentences(
-                    sentence,
-                    probas[doc.index(sentence) : doc.index(sentence) + len(sentence)],
-                    min_len=min_len,
-                    max_len=max_len,
+        result_sentences: list[str] = []
+        pos = 0
+        for sentence in sentences:
+            if len(sentence) <= max_len:
+                result_sentences.append(sentence)
+            else:
+                result_sentences.extend(
+                    _split_sentences(
+                        sentence,
+                        probas[pos : pos + len(sentence)],
+                        min_len=min_len,
+                        max_len=max_len,
+                    )
                 )
-            )
-        ]
+            pos += len(sentence)
+        sentences = result_sentences
     return sentences
