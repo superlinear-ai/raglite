@@ -27,10 +27,9 @@ logger = logging.getLogger(__name__)
 # [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
 RAG_INSTRUCTION_TEMPLATE = """
 ---
-You are a friendly and knowledgeable assistant that provides complete and insightful answers.
-Whenever possible, use only the provided context to respond to the question at the end.
-When responding, you MUST NOT reference the existence of the context, directly or indirectly.
-Instead, you MUST treat the context as if its contents are entirely part of your working memory.
+The following context is intended to support answering the question below.
+Use this information as the primary source when forming your response.
+Provide a direct answer to the question without referencing how the information was supplied.
 ---
 
 <context>
