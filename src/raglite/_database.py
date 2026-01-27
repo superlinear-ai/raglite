@@ -108,6 +108,7 @@ class Document(SQLModel, table=True):
         *,
         id: DocumentId | None = None,  # noqa: A002
         url: str | None = None,
+        config: RAGLiteConfig | None = None,
         **kwargs: Any,
     ) -> "Document":
         """Create a document from a file path.
@@ -120,6 +121,8 @@ class Document(SQLModel, table=True):
             The document id to use. If not provided, a hash of the document's content is used.
         url
             The URL of the document, if available.
+        config
+            The RAGLite configuration for document processing.
         kwargs
             Any additional metadata to store.
 
@@ -145,7 +148,7 @@ class Document(SQLModel, table=True):
             filename=doc_path.name,
             url=url,
             metadata_=metadata,
-            content=document_to_markdown(doc_path),
+            content=document_to_markdown(doc_path, config=config),
         )
 
     @staticmethod

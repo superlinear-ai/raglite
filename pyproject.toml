@@ -79,6 +79,7 @@ chainlit = ["chainlit (>=2.0.0)"]
 # Large Language Models:
 llama-cpp-python = ["llama-cpp-python (>=0.3.9)"]
 # Markdown conversion:
+mistral-ocr = ["mistralai (>=1.10.1)"]
 pandoc = ["pypandoc-binary (>=1.13)"]
 # Evaluation:
 ragas = ["pandas (>=2.1.1)", "ragas (>=0.3.3)"]
