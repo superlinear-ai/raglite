@@ -184,10 +184,14 @@ def insert_documents(  # noqa: C901, PLR0912
     if not all(isinstance(doc.content, str) for doc in documents):
         error_message = "Some or all documents have missing `document.content`."
         raise ValueError(error_message)
+
     # Early exit if no documents are provided.
+    # Remove duplicate documents and empty documents.
+    documents = list({doc.id: doc for doc in documents}.values())
     documents = [doc for doc in documents if doc.content.strip()]  # type: ignore[union-attr]
     if not documents:
         return
+
     # Skip documents that are already in the database.
     batch_size = 128
     with Session(engine := create_database_engine(config := config or RAGLiteConfig())) as session:
@@ -218,10 +222,14 @@ def insert_documents(  # noqa: C901, PLR0912
     # Create and insert the document, chunk, and chunk embedding records.
     with (
         db_lock,
-        Session(engine) as session,
+        Session(engine, expire_on_commit=False) as session,
         ThreadPoolExecutor(max_workers=max_workers) as executor,
         tqdm(
-            total=len(documents), desc="Inserting documents", unit="document", dynamic_ncols=True
+            total=len(documents),
+            desc="Inserting documents",
+            unit="document",
+            dynamic_ncols=True,
+            leave=False,
         ) as pbar,
     ):
         futures = [

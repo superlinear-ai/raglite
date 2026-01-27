@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, Document, create_database_engine
-from raglite._insert import _get_database_metadata
+from raglite._insert import _get_database_metadata, insert_documents
 from raglite._markdown import document_to_markdown
 
 
@@ -56,3 +56,54 @@ def test_insert(raglite_test_config: RAGLiteConfig) -> None:
                 assert value in meta.values, (
                     f"Metadata value '{value}' for '{meta.name}' not found in database metadata"
                 )
+
+
+def test_insert_reuse_document_instance(
+    raglite_test_config: RAGLiteConfig,
+) -> None:
+    """Reuse a document instance across calls without errors."""
+    isolated_config = RAGLiteConfig(
+        db_url="duckdb:///:memory:",
+        llm=raglite_test_config.llm,
+        embedder=raglite_test_config.embedder,
+    )
+    doc = Document.from_text(
+        content="Reuse instance test content.",
+        url="http://example.com/reuse",
+        filename="reuse_instance.html",
+        id="reuse-instance-test",
+    )
+    insert_documents([doc], config=isolated_config)
+    insert_documents([doc], config=isolated_config)
+
+    with Session(create_database_engine(isolated_config)) as session:
+        documents = session.exec(select(Document).where(Document.id == "reuse-instance-test")).all()
+        assert len(documents) == 1
+
+
+def test_insert_duplicate_documents_with_same_id(
+    raglite_test_config: RAGLiteConfig,
+) -> None:
+    """De-duplicate incoming documents that share the same id."""
+    isolated_config = RAGLiteConfig(
+        db_url="duckdb:///:memory:",
+        llm=raglite_test_config.llm,
+        embedder=raglite_test_config.embedder,
+    )
+    doc1 = Document.from_text(
+        content="Duplicate id test content.",
+        url="http://example.com/duplicate",
+        filename="duplicate.html",
+        id="duplicate-id-test",
+    )
+    doc2 = Document.from_text(
+        content="Duplicate id test content.",
+        url="http://example.com/duplicate",
+        filename="duplicate.html",
+        id="duplicate-id-test",
+    )
+    insert_documents([doc1, doc2], config=isolated_config)
+
+    with Session(create_database_engine(isolated_config)) as session:
+        documents = session.exec(select(Document).where(Document.id == "duplicate-id-test")).all()
+        assert len(documents) == 1
