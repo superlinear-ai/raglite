@@ -253,6 +253,7 @@ def insert_documents(  # noqa: C901, PLR0912
                 session.flush()  # Flush changes to the database.
                 session.expunge_all()  # Release memory of flushed changes.
                 num_unflushed_embeddings = 0
+            pbar.set_postfix({"id": document_record.id})
             pbar.update()
         # Update metadata table.
         _update_metadata_from_documents(documents=documents, session=session)

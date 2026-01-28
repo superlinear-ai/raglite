@@ -2,7 +2,7 @@
 
 import warnings
 from abc import ABC, abstractmethod
-from collections.abc import Generator
+from collections.abc import Iterator
 from dataclasses import replace
 from functools import cached_property
 from pathlib import Path
@@ -60,13 +60,15 @@ class IREvaluator(ABC):
     def trec_run_filepath(self) -> Path:
         return self.cwd / self.trec_run_filename
 
-    def score(self) -> Generator[ScoredDoc, None, None]:
+    def score(self) -> Iterator[ScoredDoc]:
         """Read or compute a TREC run."""
         if self.trec_run_filepath.exists():
             yield from read_trec_run(self.trec_run_filepath.as_posix())  # type: ignore[no-untyped-call]
             return
         if not self.search("q0", next(self.dataset.queries_iter()).text):
             self.insert_documents()
+        if hasattr(self, "prescore"):
+            self.prescore()
         with self.trec_run_filepath.open(mode="w") as trec_run_file:
             for query in tqdm(
                 self.dataset.queries_iter(),
@@ -113,23 +115,37 @@ class RAGLiteEvaluator(IREvaluator):
         ]
         insert_documents(documents, max_workers=max_workers, config=self.config)
 
-    def update_query_adapter(self, num_evals: int = 1024) -> None:
-        from raglite import insert_evals, update_query_adapter
-        from raglite._database import IndexMetadata
+    def prescore(self) -> None:
+        from sqlalchemy import func, select
+        from sqlmodel import Session
 
-        if (
-            self.config.vector_search_query_adapter
-            and IndexMetadata.get(config=self.config).get("query_adapter") is None
-        ):
-            insert_evals(num_evals=num_evals, config=self.config)
+        from raglite import insert_evals, update_query_adapter
+        from raglite._database import Eval, IndexMetadata, create_database_engine
+
+        if not self.config.vector_search_query_adapter:
+            return
+
+        required_evals = 1024
+        with Session(create_database_engine(self.config)) as session:
+            num_evals = session.execute(select(func.count()).select_from(Eval)).scalar_one()
+        if num_evals < required_evals:
+            insert_evals(num_evals=required_evals - num_evals, config=self.config)
+        if IndexMetadata.get(config=self.config).get("query_adapter") is None:
             update_query_adapter(config=self.config)
 
     def search(self, query_id: str, query: str, *, num_results: int = 10) -> list[ScoredDoc]:
-        from raglite import retrieve_chunks, vector_search
+        from raglite import retrieve_chunks, search_and_rerank_chunks, vector_search
 
-        self.update_query_adapter()
-        chunk_ids, scores = vector_search(query, num_results=2 * num_results, config=self.config)
-        chunks = retrieve_chunks(chunk_ids, config=self.config)
+        if self.config.reranker:
+            chunks = search_and_rerank_chunks(
+                query=query, num_results=2 * num_results, config=self.config
+            )
+            scores = [1 / rank for rank in range(1, len(chunks) + 1)]
+        else:
+            chunk_ids, scores = vector_search(
+                query, num_results=2 * num_results, config=self.config
+            )
+            chunks = retrieve_chunks(chunk_ids, config=self.config)
         scored_docs = [
             ScoredDoc(query_id=query_id, doc_id=chunk.document.id, score=score)
             for chunk, score in zip(chunks, scores, strict=True)
