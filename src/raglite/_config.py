@@ -48,6 +48,7 @@ class MistralOCRConfig:
     include_image_descriptions: bool = True
     # Image types to exclude from processing (e.g., {ImageType.LOGO, ImageType.ICON}).
     exclude_image_types: frozenset[ImageType] = frozenset()
+    model: str = "mistral-ocr-latest"
 
 
 # Lazily load the default search method to avoid circular imports.

@@ -78,6 +78,19 @@ def _get_mistral_client(processor_config: MistralOCRConfig) -> Any:
     return Mistral(api_key=api_key)
 
 
+def _get_response_format_converter() -> Any:
+    """Get the response_format_from_pydantic_model function from mistralai."""
+    try:
+        from mistralai.extra import response_format_from_pydantic_model
+    except ImportError as e:
+        error_msg = (
+            "To use MistralOCR, please install the `mistral-ocr` extra: "
+            "`uv add raglite[mistral-ocr]` or `pip install raglite[mistral-ocr]`."
+        )
+        raise ImportError(error_msg) from e
+    return response_format_from_pydantic_model
+
+
 def _encode_document_base64(doc_path: Path) -> tuple[str, str]:
     """Encode a document as base64 with appropriate MIME type."""
     mime_type = _MIME_TYPES.get(doc_path.suffix.lower(), "application/octet-stream")
@@ -168,14 +181,10 @@ def mistral_ocr_to_markdown(doc_path: Path, *, processor_config: MistralOCRConfi
         If the OCR processing fails.
     """
     try:
-        from mistralai.extra import response_format_from_pydantic_model
-
         client = _get_mistral_client(processor_config)
 
-        # Encode document as base64.
         data, mime_type = _encode_document_base64(doc_path)
 
-        # Prepare document payload based on file type.
         if doc_path.suffix.lower() in _IMAGE_EXTENSIONS:
             document_payload = {
                 "type": "image_url",
@@ -190,18 +199,18 @@ def mistral_ocr_to_markdown(doc_path: Path, *, processor_config: MistralOCRConfi
 
         # Build OCR request parameters.
         ocr_params: dict[str, Any] = {
-            "model": "mistral-ocr-latest",
+            "model": processor_config.model,
             "document": document_payload,
             "include_image_base64": False,  # We don't need base64, just annotations.
         }
 
         # Add bbox annotation format if image descriptions are enabled.
         if processor_config.include_image_descriptions:
+            response_format_from_pydantic_model = _get_response_format_converter()
             ocr_params["bbox_annotation_format"] = response_format_from_pydantic_model(
                 ImageAnnotation
             )
 
-        # Call MistralOCR API.
         ocr_response = client.ocr.process(**ocr_params)
 
         # Process response and replace image placeholders with annotations.
