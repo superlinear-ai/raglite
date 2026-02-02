@@ -5,6 +5,7 @@ import socket
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -124,6 +125,6 @@ def raglite_test_config(database: str, llm: str, embedder: str) -> RAGLiteConfig
     db_config = RAGLiteConfig(db_url=database, llm=llm, embedder=embedder)
     # Insert a document and update the index.
     doc_path = Path(__file__).parent / "specrel.pdf"  # Einstein's special relativity paper.
-    metadata = {"type": "Paper", "topic": "Physics", "author": "Albert Einstein"}
+    metadata: dict[str, Any] = {"type": "Paper", "topic": "Physics", "author": "Albert Einstein"}
     insert_documents([Document.from_path(doc_path, **metadata)], config=db_config)
     return db_config
