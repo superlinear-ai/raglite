@@ -70,6 +70,7 @@ dev = [
   "pytest (>=8.3.4)",
   "pytest-mock (>=3.14.0)",
   "pytest-xdist (>=3.6.1)",
+  "python-dotenv (>=1.0.0)",
   "ruff (>=0.10.0)",
   "typeguard (>=4.4.1)",
 ]
