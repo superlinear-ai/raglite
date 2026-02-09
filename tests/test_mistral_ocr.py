@@ -55,11 +55,13 @@ def test_process_ocr_response() -> None:
 @pytest.mark.skipif(not os.environ.get("MISTRAL_API_KEY"), reason="MISTRAL_API_KEY not set")
 @pytest.mark.slow
 def test_real_pdf_conversion() -> None:
-    """Test real PDF conversion with the Mistral API."""
-    doc_path = Path(__file__).parent / "specrel.pdf"
+    """Test Mistral OCR on NVIDIA report with tables, charts, and financial data."""
+    doc_path = Path(__file__).parent / "NVIDIA-report.pdf"
     result = mistral_ocr_to_markdown(
         doc_path,
         processor_config=MistralOCRConfig(include_image_descriptions=True),
     )
-    assert len(result) > 100  # noqa: PLR2004
-    assert "electrodynamics" in result.lower() or "einstein" in result.lower()
+    assert len(result) > 500  # noqa: PLR2004  # substantial multi-page content
+    assert "| " in result  # tables rendered as markdown
+    assert "[Image (" in result  # image descriptions with type classification
+    assert "$130.5 billion" in result  # financial data from table cells

@@ -8,9 +8,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
 from raglite import Document, RAGLiteConfig, insert_documents
+
+load_dotenv()
 
 POSTGRES_URL = "postgresql+pg8000://raglite_user:raglite_password@postgres:5432/postgres"
 
@@ -80,7 +83,7 @@ def database(request: pytest.FixtureRequest) -> str:
     params=[
         pytest.param(
             (
-                "llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192",
+                "llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192",  # mistralai/Ministral-3-3B-Instruct-2512
                 "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@512",  # More context degrades performance.
             ),
             id="qwen3_4B-bge_m3",
