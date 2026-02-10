@@ -180,48 +180,45 @@ def mistral_ocr_to_markdown(doc_path: Path, *, processor_config: MistralOCRConfi
     MistralOCRError
         If the OCR processing fails.
     """
-    try:
-        client = _get_mistral_client(processor_config)
+    data, mime_type = _encode_document_base64(doc_path)
 
-        data, mime_type = _encode_document_base64(doc_path)
-
-        if doc_path.suffix.lower() in _IMAGE_EXTENSIONS:
-            document_payload = {
-                "type": "image_url",
-                "image_url": f"data:{mime_type};base64,{data}",
-            }
-        else:
-            # PDF, DOCX, PPTX.
-            document_payload = {
-                "type": "document_url",
-                "document_url": f"data:{mime_type};base64,{data}",
-            }
-
-        # Build OCR request parameters.
-        ocr_params: dict[str, Any] = {
-            "model": processor_config.model,
-            "document": document_payload,
-            "include_image_base64": False,  # We don't need base64, just annotations.
+    if doc_path.suffix.lower() in _IMAGE_EXTENSIONS:
+        document_payload = {
+            "type": "image_url",
+            "image_url": f"data:{mime_type};base64,{data}",
+        }
+    else:
+        # PDF, DOCX, PPTX.
+        document_payload = {
+            "type": "document_url",
+            "document_url": f"data:{mime_type};base64,{data}",
         }
 
+    # Build OCR request parameters.
+    ocr_params: dict[str, Any] = {
+        "model": processor_config.model,
+        "document": document_payload,
+        "include_image_base64": False,  # We don't need base64, just annotations.
+    }
+
+    try:
+        client = _get_mistral_client(processor_config)
         # Add bbox annotation format if image descriptions are enabled.
         if processor_config.include_image_descriptions:
             response_format_from_pydantic_model = _get_response_format_converter()
             ocr_params["bbox_annotation_format"] = response_format_from_pydantic_model(
                 ImageAnnotation
             )
-
         ocr_response = client.ocr.process(**ocr_params)
-
-        # Process response and replace image placeholders with annotations.
-        return _process_ocr_response(
-            ocr_response,
-            include_image_descriptions=processor_config.include_image_descriptions,
-            exclude_image_types=processor_config.exclude_image_types,
-        )
-
     except (ImportError, ValueError):
         raise
     except Exception as e:
         error_msg = f"MistralOCR failed to process {doc_path}: {e}"
         raise MistralOCRError(error_msg) from e
+
+    # Process response and replace image placeholders with annotations.
+    return _process_ocr_response(
+        ocr_response,
+        include_image_descriptions=processor_config.include_image_descriptions,
+        exclude_image_types=processor_config.exclude_image_types,
+    )
