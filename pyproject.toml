@@ -74,6 +74,22 @@ dev = [
 ]
 
 [project.optional-dependencies]  # https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#dependencies-optional-dependencies
+# CRAG
+crag = [
+  "accelerate>=1.12.0",
+  "beautifulsoup4>=4.14.3",
+  "bitsandbytes>=0.49.1",
+  "blingfire>=0.1.8",
+  "hf-transfer>=0.1.9",
+  "loguru>=0.7.3",
+  "lxml>=5.4.0",
+  "openai>=2.15.0",
+  "sentence-transformers>=5.2.2",
+  "streamlit>=1.54.0",
+  "torch>=2.10.0",
+  "transformers>=5.1.0",
+  "markdownify>=1.2.2",
+]
 # Frontend:
 chainlit = ["chainlit (>=2.0.0)"]
 # Large Language Models:
@@ -146,7 +162,7 @@ docstring-code-format = true
 
 [tool.ruff.lint]
 select = ["A", "ASYNC", "B", "BLE", "C4", "C90", "D", "DTZ", "E", "EM", "ERA", "F", "FBT", "FLY", "FURB", "G", "I", "ICN", "INP", "INT", "ISC", "LOG", "N", "NPY", "PERF", "PGH", "PIE", "PL", "PT", "PTH", "PYI", "Q", "RET", "RSE", "RUF", "S", "SIM", "SLF", "SLOT", "T10", "T20", "TCH", "TID", "TRY", "UP", "W", "YTT"]
-ignore = ["D203", "D213", "E501", "PLC0415", "RET504", "RUF002", "RUF022", "S101", "S307", "TC004"]
+ignore = ["D203", "D213", "E501", "PLC0415", "RET504", "RUF002", "RUF022", "S101", "S307", "TC004", "PTH123"]
 unfixable = ["ERA001", "F401", "F841", "T201", "T203"]
 
 [tool.ruff.lint.flake8-tidy-imports]

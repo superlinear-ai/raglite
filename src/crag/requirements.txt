@@ -1,0 +1,14 @@
+accelerate
+beautifulsoup4
+bitsandbytes
+blingfire
+hf-transfer
+huggingface-hub
+loguru
+lxml
+openai==1.13.3
+sentence_transformers
+streamlit
+torch
+transformers
+vllm>=0.4.2
