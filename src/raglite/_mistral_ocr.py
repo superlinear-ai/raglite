@@ -4,12 +4,13 @@ import base64
 import logging
 import os
 import re
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from raglite._config import ImageType, MistralOCRConfig
+from raglite._config import MistralOCRConfig
 
 logger = logging.getLogger(__name__)
 
@@ -32,24 +33,28 @@ class MistralOCRError(Exception):
     """Error during MistralOCR processing."""
 
 
-_IMAGE_TYPE_VALUES = ", ".join(t.value for t in ImageType)
+def _build_image_annotation_model(image_types: frozenset[str]) -> type[BaseModel]:
+    """Build an ImageAnnotation Pydantic model with the given image types."""
+    image_type_enum = Enum("ImageType", {t.upper(): t for t in sorted(image_types)}, type=str)  # type: ignore[misc]
+    image_type_values = ", ".join(sorted(image_types))
 
+    class ImageAnnotation(BaseModel):
+        """Schema for vision-based image annotation."""
 
-class ImageAnnotation(BaseModel):
-    """Schema for vision-based image annotation."""
+        image_type: image_type_enum = Field(  # type: ignore[valid-type]
+            ...,
+            description=f"The type of the image. Must be one of: {image_type_values}.",
+        )
+        description: str = Field(
+            ...,
+            description=(
+                "A concise description of the image content. For diagrams and charts, "
+                "describe what is being illustrated. For tables, summarize the data. "
+                "For photos, describe the subject matter."
+            ),
+        )
 
-    image_type: ImageType = Field(
-        ...,
-        description=f"The type of the image. Must be one of: {_IMAGE_TYPE_VALUES}.",
-    )
-    description: str = Field(
-        ...,
-        description=(
-            "A concise description of the image content. For diagrams and charts, "
-            "describe what is being illustrated. For tables, summarize the data. "
-            "For photos, describe the subject matter."
-        ),
-    )
+    return ImageAnnotation
 
 
 def _get_api_key(processor_config: MistralOCRConfig) -> str:
@@ -101,8 +106,9 @@ def _encode_document_base64(doc_path: Path) -> tuple[str, str]:
 def _process_ocr_response(
     ocr_response: Any,
     *,
+    annotation_model: type[BaseModel],
     include_image_descriptions: bool = True,
-    exclude_image_types: frozenset[ImageType] | None = None,
+    exclude_image_types: frozenset[str] | None = None,
 ) -> str:
     """Convert MistralOCR response to markdown string.
 
@@ -113,10 +119,12 @@ def _process_ocr_response(
     ----------
     ocr_response
         Response from Mistral OCR API.
+    annotation_model
+        The Pydantic model used to parse image annotations.
     include_image_descriptions
         Whether to replace image placeholders with annotations.
     exclude_image_types
-        Set of ImageType values to exclude from output.
+        Set of image type strings to exclude from output.
 
     Returns
     -------
@@ -137,12 +145,13 @@ def _process_ocr_response(
                     placeholder_pattern = rf"!\[[^\]]*\]\({re.escape(img.id)}\)"
                     # Parse annotation to check image type for filtering.
                     try:
-                        parsed = ImageAnnotation.model_validate_json(annotation)
-                        if parsed.image_type in exclude_image_types:
+                        parsed: Any = annotation_model.model_validate_json(annotation)
+                        image_type = parsed.image_type.value
+                        if image_type in exclude_image_types:
                             # Remove the image placeholder entirely.
                             page_md = re.sub(placeholder_pattern, "", page_md)
                             continue
-                        replacement = f"[Image ({parsed.image_type.value}): {parsed.description}]"
+                        replacement = f"[Image ({image_type}): {parsed.description}]"
                     except (ValueError, TypeError):
                         # If parsing fails, use raw annotation.
                         replacement = f"[Image: {annotation}]"
@@ -201,13 +210,15 @@ def mistral_ocr_to_markdown(doc_path: Path, *, processor_config: MistralOCRConfi
         "include_image_base64": False,  # We don't need base64, just annotations.
     }
 
+    annotation_model = _build_image_annotation_model(processor_config.image_types)
+
     try:
         client = _get_mistral_client(processor_config)
         # Add bbox annotation format if image descriptions are enabled.
         if processor_config.include_image_descriptions:
             response_format_from_pydantic_model = _get_response_format_converter()
             ocr_params["bbox_annotation_format"] = response_format_from_pydantic_model(
-                ImageAnnotation
+                annotation_model
             )
         ocr_response = client.ocr.process(**ocr_params)
     except (ImportError, ValueError):
@@ -219,6 +230,7 @@ def mistral_ocr_to_markdown(doc_path: Path, *, processor_config: MistralOCRConfi
     # Process response and replace image placeholders with annotations.
     return _process_ocr_response(
         ocr_response,
+        annotation_model=annotation_model,
         include_image_descriptions=processor_config.include_image_descriptions,
         exclude_image_types=processor_config.exclude_image_types,
     )

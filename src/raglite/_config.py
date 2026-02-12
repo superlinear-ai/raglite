@@ -3,7 +3,6 @@
 import contextlib
 import os
 from dataclasses import dataclass, field
-from enum import Enum
 from io import StringIO
 from pathlib import Path
 from typing import Literal
@@ -24,18 +23,9 @@ with contextlib.redirect_stdout(StringIO()):
 cache_path = Path(user_data_dir("raglite", ensure_exists=True))
 
 
-class ImageType(str, Enum):
-    """Type of image detected by OCR."""
-
-    GRAPH = "graph"
-    CHART = "chart"
-    DIAGRAM = "diagram"
-    TABLE = "table"
-    PHOTO = "photo"
-    SCREENSHOT = "screenshot"
-    LOGO = "logo"
-    ICON = "icon"
-    OTHER = "other"
+DEFAULT_IMAGE_TYPES = frozenset(
+    {"graph", "chart", "diagram", "table", "photo", "screenshot", "logo", "icon", "other"}
+)
 
 
 @dataclass(frozen=True)
@@ -46,8 +36,10 @@ class MistralOCRConfig:
     api_key: str | None = None
     # Whether to use vision to describe images in documents.
     include_image_descriptions: bool = True
-    # Image types to exclude from processing (e.g., {ImageType.LOGO, ImageType.ICON}).
-    exclude_image_types: frozenset[ImageType] = frozenset()
+    # Image types that Mistral classifies each image into.
+    image_types: frozenset[str] = DEFAULT_IMAGE_TYPES
+    # Image types to exclude from the output (e.g., {"logo", "icon"}).
+    exclude_image_types: frozenset[str] = frozenset()
     model: str = "mistral-ocr-latest"
 
 

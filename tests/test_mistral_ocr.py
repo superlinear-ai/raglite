@@ -6,8 +6,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from raglite import ImageType, MistralOCRConfig
+from raglite import MistralOCRConfig
 from raglite._mistral_ocr import (
+    _build_image_annotation_model,
     _process_ocr_response,
     mistral_ocr_to_markdown,
 )
@@ -42,10 +43,12 @@ def test_process_ocr_response() -> None:
             ("![](img-r.jpeg)", [("img-r.jpeg", "raw fallback text")]),  # page 2
         ]
     )
+    annotation_model = _build_image_annotation_model(frozenset({"diagram", "logo"}))
     result = _process_ocr_response(
         response,
+        annotation_model=annotation_model,
         include_image_descriptions=True,
-        exclude_image_types=frozenset({ImageType.LOGO}),
+        exclude_image_types=frozenset({"logo"}),
     )
     assert "[Image (diagram): A flowchart]" in result
     assert "Company logo" not in result
