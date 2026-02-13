@@ -32,8 +32,8 @@ def test_rag_auto_with_retrieval(raglite_test_config: RAGLiteConfig) -> None:
     # Answer a question that requires RAG.
     user_prompt = "How does Einstein define 'simultaneous events' in his special relativity paper?"
     messages = [{"role": "user", "content": user_prompt}]
-    chunk_spans = []
-    stream = rag(messages, on_retrieval=lambda x: chunk_spans.extend(x), config=raglite_test_config)
+    chunk_spans: list[ChunkSpan] = []
+    stream = rag(messages, on_retrieval=chunk_spans.extend, config=raglite_test_config)
     answer = ""
     for update in stream:
         assert isinstance(update, str)
@@ -52,8 +52,8 @@ def test_rag_auto_without_retrieval(raglite_test_config: RAGLiteConfig) -> None:
     # Answer a question that does not require RAG.
     user_prompt = "Is 7 a prime number?"
     messages = [{"role": "user", "content": user_prompt}]
-    chunk_spans = []
-    stream = rag(messages, on_retrieval=lambda x: chunk_spans.extend(x), config=raglite_test_config)
+    chunk_spans: list[ChunkSpan] = []
+    stream = rag(messages, on_retrieval=chunk_spans.extend, config=raglite_test_config)
     answer = ""
     for update in stream:
         assert isinstance(update, str)

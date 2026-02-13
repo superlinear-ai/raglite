@@ -349,7 +349,7 @@ class ChunkSpan:
         xml_document = "\n".join(
             [
                 f'<document{index_attribute} id="{self.document.id}">',
-                f"<source>{self.document.url if self.document.url else self.document.filename}</source>",
+                f"<source>{self.document.url or self.document.filename}</source>",
                 f'<span from_chunk_id="{self.chunks[0].id}" to_chunk_id="{self.chunks[-1].id}">',
                 f"<headings>\n{escape(self.chunks[0].headings.strip())}\n</headings>",
                 f"<content>\n{escape(''.join(chunk.body for chunk in self.chunks).strip())}\n</content>",
@@ -372,7 +372,7 @@ class ChunkSpan:
         json_document = {
             **index_attribute,
             "id": self.document.id,
-            "source": self.document.url if self.document.url else self.document.filename,
+            "source": self.document.url or self.document.filename,
             "span": {
                 "from_chunk_id": self.chunks[0].id,
                 "to_chunk_id": self.chunks[-1].id,

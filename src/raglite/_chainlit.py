@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import chainlit as cl
 from chainlit.input_widget import Switch, TextInput
@@ -15,6 +16,9 @@ from raglite import (
     rerank_chunks,
 )
 from raglite._markdown import document_to_markdown
+
+if TYPE_CHECKING:
+    from raglite._database import ChunkSpan
 
 async_insert_documents = cl.make_async(insert_documents)
 async_hybrid_search = cl.make_async(hybrid_search)
@@ -91,12 +95,10 @@ async def handle_message(user_message: cl.Message) -> None:
     ).strip()
     # Stream the LLM response.
     assistant_message = cl.Message(content="")
-    chunk_spans = []
+    chunk_spans: list[ChunkSpan] = []
     messages: list[dict[str, str]] = cl.chat_context.to_openai()[:-1]  # type: ignore[no-untyped-call]
     messages.append({"role": "user", "content": user_prompt})
-    async for token in async_rag(
-        messages, on_retrieval=lambda x: chunk_spans.extend(x), config=config
-    ):
+    async for token in async_rag(messages, on_retrieval=chunk_spans.extend, config=config):
         await assistant_message.stream_token(token)
     # Append RAG sources, if any.
     if chunk_spans:
