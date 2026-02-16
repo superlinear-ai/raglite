@@ -89,6 +89,7 @@ crag = [
   "torch>=2.10.0",
   "transformers>=5.1.0",
   "markdownify>=1.2.2",
+  "matplotlib>=3.10.8",
 ]
 # Frontend:
 chainlit = ["chainlit (>=2.0.0)"]

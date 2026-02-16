@@ -13,6 +13,8 @@ import bs4
 import markdownify as md
 from tqdm import tqdm
 
+YEAR_PATTERN = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
+
 
 def trim_predictions_to_max_token_length(prediction: str) -> str:
     """Trim prediction output to approximately 75 tokens using whitespace splitting."""
@@ -20,6 +22,19 @@ def trim_predictions_to_max_token_length(prediction: str) -> str:
     token_avg_ch = 4  # Average characters per token
     prediction_words = str(prediction).split()
     return " ".join(prediction_words[: max_token_length * token_avg_ch])
+
+
+def extract_year_from_last_modified(last_modified: str | None) -> str:
+    """Extract a 4-digit year from an HTTP-style Last-Modified string."""
+    if last_modified is None:
+        return ""
+    normalized_last_modified = str(last_modified).strip()
+    if not normalized_last_modified:
+        return ""
+    year_match = YEAR_PATTERN.search(normalized_last_modified)
+    if year_match is None:
+        return ""
+    return year_match.group(0)
 
 
 def denoise_html(html: str | bytes) -> str:
@@ -62,5 +77,5 @@ def read_jsonl(file_path: Path) -> list[dict[str, Any]]:
     data: list[dict[str, Any]] = []
     with file_path.open("r", encoding="utf-8") as f:
         for line in tqdm(f, desc="Reading JSONL file"):
-            data.extend(json.loads(line))
+            data.append(json.loads(line))  # noqa: PERF401
     return data

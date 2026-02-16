@@ -24,7 +24,7 @@ UserModel = RAGLiteModel | OpenAIRAGModel
 
 load_dotenv()
 
-TASK = "comparison"  # or "set"
+TASK = "set"  # or "set, comparison, condition"
 DATASET_PATH = os.getenv(f"EVALUATION_DATASET_PATH_{TASK.upper()}")
 EVALUATION_MODEL_NAME = os.getenv("EVALUATION_MODEL_NAME")
 OPENAI_API_KEY = os.getenv("EVALUATION_API_KEY")
@@ -57,7 +57,7 @@ def load_json_file(file_path):
 
 
 def get_system_message():
-    """Returns the system message containing instructions and in context examples."""
+    """Return the system message containing instructions and in context examples."""
     return INSTRUCTIONS + "\n" + IN_CONTEXT_EXAMPLES
 
 
@@ -70,7 +70,6 @@ def attempt_api_call(client: OpenAI, model_name: str, messages: list, max_retrie
                 model=model_name,
                 input=messages,
                 text_format=CRAGResponse,
-                # reasoning={"effort": "low"},
             )
             return response.output_parsed
         except (APIConnectionError, RateLimitError):
@@ -126,7 +125,7 @@ def load_data_in_batches(dataset_path, batch_size):
                     if len(batch["query"]) == batch_size:
                         yield batch
                         batch = initialize_batch()
-                except json.JSONDecodeError:
+                except json.JSONDecodeError:  # noqa: PERF203
                     logger.warning("Warning: Failed to decode a line.")
             # Yield any remaining data as the last batch
             if batch["query"]:
@@ -173,7 +172,9 @@ def generate_predictions(dataset_path, participant_model: UserModel, output_file
         predictions.extend(batch_predictions)
 
         # append to output file incrementally
-        for q, gt, pred in zip(batch["query"], batch_ground_truths, batch_predictions):
+        for q, gt, pred in zip(
+            batch["query"], batch_ground_truths, batch_predictions, strict=False
+        ):
             with open(output_file, "a") as f:
                 json_line = json.dumps({"query": q, "ground_truth": gt, "prediction": pred})
                 f.write(json_line + "\n")
@@ -216,7 +217,7 @@ def evaluate_predictions(
         return bool(ABSTAIN_RE.search(p))
 
     for query, ground_truth, prediction in tqdm(
-        zip(queries, ground_truths, predictions),
+        zip(queries, ground_truths, predictions, strict=True),
         total=len(predictions),
         desc="Evaluating Predictions",
     ):
@@ -287,26 +288,33 @@ def evaluate_predictions(
 
 
 if __name__ == "__main__":
-    # # Generate predictions
-    # model_id = "openai"
-    # participant_model = OpenAIRAGModel(
-    #     TASK, vector_store_id=os.getenv(f"OPENAI_VECTOR_STORE_ID_{TASK.upper()}")
+    #### Select model to evaluate
+    model_id = "openai"
+    participant_model = OpenAIRAGModel(
+        TASK, vector_store_id=os.getenv(f"OPENAI_VECTOR_STORE_ID_{TASK.upper()}")
+    )
+    # participant_model.ingest_documents()
+
+    # # Raglite
+    # model_id = "raglite"
+    # participant_model = RAGLiteModel(
+    #     TASK,
+    #     use_self_query=True,
+    #     use_rerank=False,
+    #     use_hybrid_search=False,
+    #     # use_agentic_rag=False,
     # )
     # participant_model.ingest_documents()
 
-    # Raglite
-    model_id = "raglite"
-    participant_model = RAGLiteModel(TASK, use_self_query=True, use_rerank=False)
-    # participant_model.ingest_documents()
-
-    # Generate predictions
-    output_file = f"{datetime.now().strftime('%Y%m%d-%H%M%S')}_{model_id}_preds.jsonl"
+    #### Generate predictions
+    tz = datetime.now().astimezone().tzinfo
+    output_file = f"{datetime.now(tz=tz).strftime('%Y%m%d-%H%M%S')}_{model_id}_preds.jsonl"
     queries, ground_truths, predictions = generate_predictions(
         DATASET_PATH, participant_model, output_file
     )
 
-    # Evaluate Predictions
-    save_file_name = f"{datetime.now().strftime('%Y%m%d-%H%M%S')}_{model_id}_evals.jsonl"
+    #### Evaluate Predictions
+    save_file_name = f"{datetime.now(tz=tz).strftime('%Y%m%d-%H%M%S')}_{model_id}_selfQ.jsonl"
     evaluation_results = evaluate_predictions(
         queries, ground_truths, predictions, EVALUATION_MODEL_NAME, save_file_name
     )

@@ -29,6 +29,7 @@ def run_raglite(
         use_self_query=self_query,
         use_rerank=rerank,
         use_hybrid_search=hybrid_search,
+        use_agentic_rag=False,
     )
     stdout_capture = StringIO()
     stderr_capture = StringIO()

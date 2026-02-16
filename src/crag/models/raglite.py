@@ -4,6 +4,8 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+from dataclasses import replace
+from functools import partial
 import os
 import time
 from pathlib import Path
@@ -13,13 +15,8 @@ from dotenv import load_dotenv
 from rerankers import Reranker
 from tqdm import tqdm
 
-from crag.models.utils import html_to_md, read_jsonl
+from crag.models.utils import extract_year_from_last_modified, html_to_md, read_jsonl
 from raglite import RAGLiteConfig, add_context, hybrid_search, rag, vector_search
-
-# Load the environment variable that specifies the URL of the MockAPI. This URL is essential
-# for accessing the correct API endpoint in Task 2 and Task 3. The value of this environment variable
-# may vary across different evaluation settings, emphasizing the importance of dynamically obtaining
-# the API URL to ensure accurate endpoint communication.
 
 load_dotenv()
 
@@ -35,6 +32,7 @@ class RAGLiteModel:
         use_self_query: bool = False,
         use_rerank: bool = False,
         use_hybrid_search: bool = False,
+        use_agentic_rag: bool = False,
     ):
         """
         Initialize your model(s) here if necessary.
@@ -42,10 +40,18 @@ class RAGLiteModel:
         This is the constructor for your RAGLiteModel class, where you can set up any
         required initialization steps for your model(s) to function correctly.
         """
-        assert task in ["set", "comparison"], "Task must be either 'set' or 'comparison'."
+        assert task in [
+            "set",
+            "comparison",
+            "condition",
+        ], "Task must be either 'set', 'comparison', or 'condition'."
+        assert not (use_agentic_rag and use_rerank), "Agentic RAG and reranking cannot be currently used together."
+
         self.task = task
         self.use_self_query = use_self_query
         self.use_rerank = use_rerank
+        self.use_hybrid_search = use_hybrid_search
+        self.use_agentic_rag = use_agentic_rag
 
         # set up RAGLite configuration
         self.config = RAGLiteConfig(
@@ -57,8 +63,6 @@ class RAGLiteModel:
         )
 
         if use_rerank:
-            from dataclasses import replace
-
             self.config = replace(
                 self.config,
                 reranker=(
@@ -119,7 +123,9 @@ class RAGLiteModel:
                             content=html_to_md(doc["page_result"]),
                             url=doc["page_url"],
                             filename=doc["page_name"],
-                            last_modified=doc["page_last_modified"],
+                            last_modified=extract_year_from_last_modified(
+                                doc.get("page_last_modified")
+                            ),
                             domain=sample["domain"],
                             question_type=sample["question_type"],
                         )
@@ -135,7 +141,7 @@ class RAGLiteModel:
 
         return ingested
 
-    def get_chunks_via_rerank(self, query: str, num_chunks: int):
+    def get_chunks_via_rerank(self, query: str, num_chunks: int, oversample_factor: int = 4) -> list[dict[str, Any]]:
         """
         Retrieve relevant chunk spans for a given query using vector search and reranking.
 
@@ -143,11 +149,12 @@ class RAGLiteModel:
         ----------
             query (str): The user query for which relevant chunks need to be retrieved.
             num_chunks (int): The number of relevant chunk spans to retrieve.
+            oversample_factor (int, optional): The factor by which to oversample candidate chunks before reranking. Defaults to 4.
         """
         from raglite import rerank_chunks, retrieve_chunk_spans, retrieve_chunks, vector_search
 
         # Step 1: Perform vector search to retrieve initial candidate chunks
-        chunk_ids_vector, _ = vector_search(query, num_results=20, config=self.config)
+        chunk_ids_vector, _ = vector_search(query, num_results=num_chunks * oversample_factor, config=self.config)
 
         # Step 2: Retrieve the content and metadata of the candidate chunks
         chunk_spans = retrieve_chunks(chunk_ids_vector, config=self.config)
@@ -215,14 +222,6 @@ class RAGLiteModel:
             total=len(queries),
         ):
 
-            if self.use_rerank:
-                chunk_spans = self.get_chunks_via_rerank(query=query, num_chunks=5)
-            else:
-                from raglite import retrieve_context
-
-                chunk_spans = retrieve_context(query=query, num_chunks=5, config=self.config)
-
-            # Append a RAG instruction based on the user prompt and context to the message history
             messages = [
                 {
                     "role": "system",
@@ -230,10 +229,28 @@ class RAGLiteModel:
                     f"Today's date is {query_time}.",
                 }
             ]
-            messages.append(add_context(user_prompt=query, context=chunk_spans, config=self.config))
+
+            # from raglite import search_and_rerank_chunk_spans
+            # replace(self.config, search_method=partial(search_and_rerank_chunk_spans, num_chunks=5, config=self.config))
+
+            chunk_spans = []
+            if self.use_agentic_rag:
+                # If using agentic RAG, we start with just the user query and allow the model to iteratively retrieve chunks as needed.
+                messages.append({"role": "user", "content": query})
+            else:
+                # If not using agentic RAG, we retrieve relevant chunks upfront (optionally with reranking) and provide them to the model in one go.
+                if self.use_rerank:
+                    chunk_spans = self.get_chunks_via_rerank(query=query, num_chunks=5)
+                else:
+                    from raglite import retrieve_context
+
+                    chunk_spans = retrieve_context(query=query, num_chunks=5, config=self.config)
+
+                # Add retrieved context to the message history for RAG
+                messages.append(add_context(user_prompt=query, context=chunk_spans, config=self.config))
 
             # Stream the RAG response and append it to the message history
-            stream = rag(messages, config=self.config)
+            stream = rag(messages, config=self.config, on_retrieval=lambda x: chunk_spans.extend(x) if self.use_agentic_rag else None)
             answer = ""
             for update in stream:
                 answer += update

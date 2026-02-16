@@ -46,7 +46,6 @@ def run_openai(
         parallel_tool_calls=False,
         tool_choice="required",
         include=["file_search_call.results"],
-        # reasoning={"effort": "low"},
     )
     tool_results = extract_file_search_results_from_response(response)
     return {
