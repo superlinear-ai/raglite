@@ -4,12 +4,13 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from dataclasses import replace
-from functools import partial
 import os
 import time
+from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Annotated
+from enum import Enum
+from pydantic import Field
 
 from dotenv import load_dotenv
 from rerankers import Reranker
@@ -17,8 +18,60 @@ from tqdm import tqdm
 
 from crag.models.utils import extract_year_from_last_modified, html_to_md, read_jsonl
 from raglite import RAGLiteConfig, add_context, hybrid_search, rag, vector_search
+from raglite._database import ChunkSpan
+from raglite._extract import expand_document_metadata
 
 load_dotenv()
+
+class _Domain(str, Enum):
+    sports = "sports"
+    music = "music"
+    movie = "movie"
+    popculture = "popculture"
+    forums = "forums"
+    travel_geography = "travel_geography"
+    technology = "technology"
+    health_nutrition = "health_nutrition"
+    science_research = "science_research"
+    other = "other"
+
+
+class _ContentKind(str, Enum):
+    profile_bio = "profile_bio"
+    reference_explainer = "reference_explainer"
+    news_article = "news_article"
+    stats_scores = "stats_scores"
+    comparison = "comparison"
+    ranking_list = "ranking_list"
+    review = "review"
+    guide_howto = "guide_howto"
+    forum_thread = "forum_thread"
+    other = "other"
+
+
+METADATA_FIELDS = {
+    "domains": Annotated[
+        list[_Domain] | None,
+        Field(
+            default_factory=list,
+            max_length=3,
+            description="Broad topic areas specifying the general subject matter of the page (max 3).",
+        ),
+    ],
+    "primary_entity": Annotated[
+        list[str] | None,
+        Field(
+            default_factory=list,
+            max_length=2,
+            description="Main subjects of the page in lowercase (max 2). An entity can be a person, place, thing, concept, etc. "
+            "It should be specific enough to distinguish the page from others, but not so specific that it only applies to a single page. "
+            "Example entities: 'lebron james', 'guitar pedals', 'hiking', 'national park'."),
+    ],
+    "content_type": Annotated[
+        _ContentKind | None,
+        Field(None, description="The kind of content on the page."),
+    ],
+}
 
 
 class RAGLiteModel:
@@ -126,11 +179,10 @@ class RAGLiteModel:
                             last_modified=extract_year_from_last_modified(
                                 doc.get("page_last_modified")
                             ),
-                            domain=sample["domain"],
-                            question_type=sample["question_type"],
                         )
                         for doc in chunk
                     ]
+                    docs = list(expand_document_metadata(docs, METADATA_FIELDS, config=self.config, strict=False)) # type: ignore
                     insert_documents(docs, config=self.config)
                     time.sleep(0.5)  # avoid rate limiting
                 ingested_n += 1
@@ -141,7 +193,7 @@ class RAGLiteModel:
 
         return ingested
 
-    def get_chunks_via_rerank(self, query: str, num_chunks: int, oversample_factor: int = 4) -> list[dict[str, Any]]:
+    def get_chunks_via_rerank(self, query: str, num_chunks: int, oversample_factor: int = 4) -> list[ChunkSpan]:
         """
         Retrieve relevant chunk spans for a given query using vector search and reranking.
 

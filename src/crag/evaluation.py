@@ -24,7 +24,7 @@ UserModel = RAGLiteModel | OpenAIRAGModel
 
 load_dotenv()
 
-TASK = "set"  # or "set, comparison, condition"
+TASK = "comparison"  # or "set, comparison, condition"
 DATASET_PATH = os.getenv(f"EVALUATION_DATASET_PATH_{TASK.upper()}")
 EVALUATION_MODEL_NAME = os.getenv("EVALUATION_MODEL_NAME")
 OPENAI_API_KEY = os.getenv("EVALUATION_API_KEY")
@@ -288,22 +288,22 @@ def evaluate_predictions(
 
 
 if __name__ == "__main__":
-    #### Select model to evaluate
-    model_id = "openai"
-    participant_model = OpenAIRAGModel(
-        TASK, vector_store_id=os.getenv(f"OPENAI_VECTOR_STORE_ID_{TASK.upper()}")
-    )
-    # participant_model.ingest_documents()
-
-    # # Raglite
-    # model_id = "raglite"
-    # participant_model = RAGLiteModel(
-    #     TASK,
-    #     use_self_query=True,
-    #     use_rerank=False,
-    #     use_hybrid_search=False,
-    #     # use_agentic_rag=False,
+    # #### Select model to evaluate
+    # model_id = "openai"
+    # participant_model = OpenAIRAGModel(
+    #     TASK, vector_store_id=os.getenv(f"OPENAI_VECTOR_STORE_ID_{TASK.upper()}")
     # )
+    # # participant_model.ingest_documents()
+
+    # Raglite
+    model_id = "raglite"
+    participant_model = RAGLiteModel(
+        TASK,
+        use_self_query=True,
+        use_rerank=False,
+        use_hybrid_search=False,
+        use_agentic_rag=False,
+    )
     # participant_model.ingest_documents()
 
     #### Generate predictions
@@ -314,7 +314,7 @@ if __name__ == "__main__":
     )
 
     #### Evaluate Predictions
-    save_file_name = f"{datetime.now(tz=tz).strftime('%Y%m%d-%H%M%S')}_{model_id}_selfQ.jsonl"
+    save_file_name = f"{datetime.now(tz=tz).strftime('%Y%m%d-%H%M%S')}_{model_id}_selfQ_newMeta.jsonl"
     evaluation_results = evaluate_predictions(
         queries, ground_truths, predictions, EVALUATION_MODEL_NAME, save_file_name
     )

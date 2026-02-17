@@ -15,7 +15,7 @@ Your job is to output one label: correct, missing, or incorrect.
 - If the ground truth is numeric, the prediction must provide a numerically equivalent value
 - For comparison, choice, or identification questions (e.g., “which has more”, “which is larger”, “which came first”):
   - The prediction is correct if it selects the same option or comparative outcome as the ground truth
-  - DO NOT evaluate the correctness of any numeric values, counts, or supporting facts used in the prediction.
+  - DO NOT evaluate the correctness of any supporting numeric values, counts, or facts used in the prediction.
   - Incorrect or inconsistent supporting details do not affect correctness.
 
 ## Missing
