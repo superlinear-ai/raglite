@@ -108,6 +108,7 @@ class Document(SQLModel, table=True):
         *,
         id: DocumentId | None = None,  # noqa: A002
         url: str | None = None,
+        config: RAGLiteConfig | None = None,
         **kwargs: Any,
     ) -> "Document":
         """Create a document from a file path.
@@ -120,6 +121,8 @@ class Document(SQLModel, table=True):
             The document id to use. If not provided, a hash of the document's content is used.
         url
             The URL of the document, if available.
+        config
+            The RAGLite configuration for document processing.
         kwargs
             Any additional metadata to store.
 
@@ -145,7 +148,7 @@ class Document(SQLModel, table=True):
             filename=doc_path.name,
             url=url,
             metadata_=metadata,
-            content=document_to_markdown(doc_path),
+            content=document_to_markdown(doc_path, config=config),
         )
 
     @staticmethod
@@ -349,7 +352,7 @@ class ChunkSpan:
         xml_document = "\n".join(
             [
                 f'<document{index_attribute} id="{self.document.id}">',
-                f"<source>{self.document.url if self.document.url else self.document.filename}</source>",
+                f"<source>{self.document.url or self.document.filename}</source>",
                 f'<span from_chunk_id="{self.chunks[0].id}" to_chunk_id="{self.chunks[-1].id}">',
                 f"<headings>\n{escape(self.chunks[0].headings.strip())}\n</headings>",
                 f"<content>\n{escape(''.join(chunk.body for chunk in self.chunks).strip())}\n</content>",
@@ -372,7 +375,7 @@ class ChunkSpan:
         json_document = {
             **index_attribute,
             "id": self.document.id,
-            "source": self.document.url if self.document.url else self.document.filename,
+            "source": self.document.url or self.document.filename,
             "span": {
                 "from_chunk_id": self.chunks[0].id,
                 "to_chunk_id": self.chunks[-1].id,

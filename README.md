@@ -34,6 +34,7 @@ RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with DuckDB
 - 🔌 A built-in [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that any MCP client like [Claude desktop](https://claude.ai/download) can connect with
 - 💬 Optional customizable ChatGPT-like frontend for [web](https://docs.chainlit.io/deploy/copilot), [Slack](https://docs.chainlit.io/deploy/slack), and [Teams](https://docs.chainlit.io/deploy/teams) with [Chainlit](https://github.com/Chainlit/chainlit)
 - ✍️ Optional conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
+- 🔎 Optional high-quality document processing with [Mistral OCR](https://docs.mistral.ai/capabilities/document/) for PDFs, images, DOCX, and PPTX with automatic image descriptions
 - ✅ Optional evaluation of retrieval and generation performance with [Ragas](https://github.com/explodinggradients/ragas)
 
 ## Installing
@@ -67,6 +68,12 @@ To add support for filetypes other than PDF, use the `pandoc` extra:
 
 ```sh
 pip install raglite[pandoc]
+```
+
+To add support for high-quality document processing with [Mistral OCR](https://docs.mistral.ai/capabilities/document/), use the `mistral-ocr` extra:
+
+```sh
+pip install raglite[mistral-ocr]
 ```
 
 To add support for evaluation, use the `ragas` extra:
@@ -151,6 +158,21 @@ my_config = RAGLiteConfig(
 
 > [!TIP]
 > ✍️ To insert documents other than PDF, install the `pandoc` extra with `pip install raglite[pandoc]`.
+
+> [!TIP]
+> 🔎 For higher-quality document processing with automatic image descriptions, install the `mistral-ocr` extra with `pip install raglite[mistral-ocr]` and configure it as follows:
+> ```python
+> from raglite import RAGLiteConfig, MistralOCRConfig
+>
+> my_config = RAGLiteConfig(
+>     document_processor=MistralOCRConfig(
+>         include_image_descriptions=True,  # Describe images, charts, and diagrams as text
+>         image_types=frozenset({"chart", "diagram", "photo", "table", "logo", "icon"}),  # Custom image categories
+>         exclude_image_types=frozenset({"logo", "icon"}),  # Filter out specific types from the output
+>     ),
+> )
+> ```
+> The `image_types` parameter defines the categories that Mistral classifies each image into — you can use the defaults or provide your own domain-specific types. Use `exclude_image_types` to filter out any classified types that are not useful for retrieval.
 
 Next, insert some documents into the database. RAGLite will take care of the [conversion to Markdown](src/raglite/_markdown.py), [optimal level 4 semantic chunking](src/raglite/_split_chunks.py), and [multi-vector embedding with late chunking](src/raglite/_embed.py):
 

@@ -129,7 +129,7 @@ def split_chunklets(
     if not use_optimized:
         # Fall back to default lambdas if only one is provided.
         boundary_cost = boundary_cost or (lambda p: (1.0 - p[0]) + np.sum(p[1:]))
-        statement_cost = statement_cost or (lambda s: ((s - 3) ** 2 / np.sqrt(max(s, 1e-6)) / 2))
+        statement_cost = statement_cost or (lambda s: (s - 3) ** 2 / np.sqrt(max(s, 1e-6)) / 2)
     else:
         prefix_boundary = np.concatenate(([0.0], np.cumsum(boundary_probas)), dtype=np.float64)
         prefix_statements = np.concatenate(([0.0], np.cumsum(num_statements_arr)), dtype=np.float64)

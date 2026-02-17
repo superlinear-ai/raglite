@@ -1,11 +1,12 @@
 """RAGLite."""
 
-from raglite._config import RAGLiteConfig
+from raglite._config import MistralOCRConfig, RAGLiteConfig
 from raglite._database import Document
 from raglite._delete import delete_documents, delete_documents_by_metadata
 from raglite._eval import answer_evals, evaluate, insert_evals
 from raglite._extract import expand_document_metadata
 from raglite._insert import insert_documents
+from raglite._mistral_ocr import MistralOCRError
 from raglite._query_adapter import update_query_adapter
 from raglite._rag import add_context, async_rag, rag, retrieve_context
 from raglite._search import (
@@ -22,6 +23,8 @@ from raglite._search import (
 __all__ = [
     # Config
     "RAGLiteConfig",
+    "MistralOCRConfig",
+    "MistralOCRError",
     # Insert
     "Document",
     "insert_documents",

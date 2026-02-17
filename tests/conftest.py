@@ -5,11 +5,15 @@ import socket
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
+from typing import Any
 
 import pytest
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
 from raglite import Document, RAGLiteConfig, insert_documents
+
+load_dotenv()
 
 POSTGRES_URL = "postgresql+pg8000://raglite_user:raglite_password@postgres:5432/postgres"
 
@@ -79,7 +83,7 @@ def database(request: pytest.FixtureRequest) -> str:
     params=[
         pytest.param(
             (
-                "llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192",
+                "llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192",  # mistralai/Ministral-3-3B-Instruct-2512
                 "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@512",  # More context degrades performance.
             ),
             id="qwen3_4B-bge_m3",
@@ -124,6 +128,6 @@ def raglite_test_config(database: str, llm: str, embedder: str) -> RAGLiteConfig
     db_config = RAGLiteConfig(db_url=database, llm=llm, embedder=embedder)
     # Insert a document and update the index.
     doc_path = Path(__file__).parent / "specrel.pdf"  # Einstein's special relativity paper.
-    metadata = {"type": "Paper", "topic": "Physics", "author": "Albert Einstein"}
+    metadata: dict[str, Any] = {"type": "Paper", "topic": "Physics", "author": "Albert Einstein"}
     insert_documents([Document.from_path(doc_path, **metadata)], config=db_config)
     return db_config

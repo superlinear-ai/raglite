@@ -1,5 +1,6 @@
 """Convert any document to Markdown."""
 
+import logging
 import re
 from copy import deepcopy
 from pathlib import Path
@@ -8,6 +9,10 @@ from typing import Any
 import numpy as np
 from pdftext.extraction import dictionary_output
 from sklearn.cluster import KMeans
+
+from raglite._config import MistralOCRConfig, RAGLiteConfig
+
+logger = logging.getLogger(__name__)
 
 
 def parsed_pdf_to_markdown(pages: list[dict[str, Any]]) -> list[str]:  # noqa: C901, PLR0915
@@ -194,8 +199,8 @@ def parsed_pdf_to_markdown(pages: list[dict[str, Any]]) -> list[str]:  # noqa: C
     return pages_md
 
 
-def document_to_markdown(doc_path: Path) -> str:
-    """Convert any document to GitHub Flavored Markdown."""
+def _default_document_to_markdown(doc_path: Path) -> str:
+    """Convert any document to GitHub Flavored Markdown using pdftext/pandoc."""
     # Convert the file's content to GitHub Flavored Markdown.
     if doc_path.suffix == ".pdf":
         # Parse the PDF with pdftext and convert it to Markdown.
@@ -219,3 +224,34 @@ def document_to_markdown(doc_path: Path) -> str:
             # File format not supported, fall back to reading the text.
             doc = doc_path.read_text()
     return doc
+
+
+def document_to_markdown(doc_path: Path, *, config: RAGLiteConfig | None = None) -> str:
+    """Convert any document to GitHub Flavored Markdown.
+
+    Parameters
+    ----------
+    doc_path
+        Path to the document file.
+    config
+        Optional RAGLite configuration. If document_processor is set to a
+        MistralOCRConfig, uses MistralOCR instead of the default processor.
+
+    Returns
+    -------
+    str
+        Document content as GitHub Flavored Markdown.
+    """
+    config = config or RAGLiteConfig()
+
+    if isinstance(config.document_processor, MistralOCRConfig):
+        # Lazy import to avoid requiring mistralai when not using MistralOCR.
+        from raglite._mistral_ocr import SUPPORTED_EXTENSIONS, mistral_ocr_to_markdown
+
+        if doc_path.suffix.lower() in SUPPORTED_EXTENSIONS:
+            return mistral_ocr_to_markdown(doc_path, processor_config=config.document_processor)
+        logger.debug(
+            "Mistral does not support file type: %s\nFalling back to default processor.", doc_path
+        )
+
+    return _default_document_to_markdown(doc_path)
