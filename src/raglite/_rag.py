@@ -111,13 +111,17 @@ def _cutoff_idx(token_counts: list[int], max_tokens: int, *, reverse: bool = Fal
 def _get_token_counts(items: Sequence[str | ChunkSpan | Mapping[str, str]]) -> list[int]:
     """Compute token counts for a list of items."""
     return [
-        _count_tokens(item.to_xml())
-        if isinstance(item, ChunkSpan)
-        else _count_tokens(json.dumps(item, ensure_ascii=False))
-        if isinstance(item, dict)
-        else _count_tokens(item)
-        if isinstance(item, str)
-        else 0
+        (
+            _count_tokens(item.to_xml())
+            if isinstance(item, ChunkSpan)
+            else (
+                _count_tokens(json.dumps(item, ensure_ascii=False))
+                if isinstance(item, dict)
+                else _count_tokens(item)
+                if isinstance(item, str)
+                else 0
+            )
+        )
         for item in items
     ]
 
@@ -254,9 +258,12 @@ def _get_tools(
                 "function": {
                     "name": "search_knowledge_base",
                     "description": (
-                        "Search the knowledge base.\n"
+                        "Search the knowledge base using single-faceted questions.\n"
+                        "For multi-faceted questions (comparison, sets, ..), call this function once for each facet.\n "
+                        "Example original query: Which artist has the most number-one albums on the Billboard 200: X or Y?\n"
+                        "Facet 1: How many albums on the Billboard 200 does X have? \n"
+                        "Facet 2: How many albums on the Billboard 200 does Y have? \n"
                         "IMPORTANT: You MAY NOT use this function if the question can be answered with common knowledge or straightforward reasoning.\n"
-                        "For multi-faceted questions, call this function once for each facet."
                     ),
                     "parameters": {
                         "type": "object",
@@ -362,6 +369,7 @@ def rag(
     messages: list[dict[str, str]],
     *,
     on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
+    allowed_iterations: int = 2,
     config: RAGLiteConfig,
 ) -> Iterator[str]:
     # If the final message does not contain RAG context, get a tool to search the knowledge base.
@@ -380,23 +388,50 @@ def rag(
         chunks.append(chunk)
         if isinstance(token := chunk.choices[0].delta.content, str):
             yield token
-    # Check if there are tools to be called.
     response = stream_chunk_builder(chunks, messages)
     tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
-    if tool_calls:
+    # Check if there are tools to be called.
+    iterations = 0
+    while iterations < allowed_iterations and tool_calls is not None:
         # Add the tool call request to the message array.
         messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
         # Run the tool calls to retrieve the RAG context and append the output to the message array.
+        # TODO: should merge results between tools if same document is extracted by multiple tools
+        # to avoid duplicates in context, and to optimize token usage.
+        # TODO: Also, make sure that the questions are different from call tools
+        # to avoid redundant calls.
+        # TODO: To avoid same question, should we construct a message ourselves with the
+        # responses and add context function?
         messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
+
+        # check if we've reached the maximum number of allowed iterations and append a stop message
+        if iterations == allowed_iterations - 1:
+            stop_message = {
+                "role": "system",
+                "content": "You have reached the maximum number of retrieval iterations for this query. "
+                "Answer the question based on the retrieved context without making additional tool calls.",
+            }
+            messages.extend([stop_message])
+
         # Stream the assistant response.
         chunks = []
-        stream = completion(model=config.llm, messages=_clip(messages, max_tokens), stream=True)
+        stream = completion(
+            model=config.llm,
+            messages=_clip(messages, max_tokens),
+            tools=tools,
+            tool_choice=tool_choice,
+            stream=True,
+        )
         for chunk in stream:
             chunks.append(chunk)
             if isinstance(token := chunk.choices[0].delta.content, str):
                 yield token
+
+        # Check if there are additional tool calls for another iteration.
+        response = stream_chunk_builder(chunks, messages)
+        tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
+        iterations += 1
     # Append the assistant response to the message array.
-    response = stream_chunk_builder(chunks, messages)
     messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
 
 
