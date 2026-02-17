@@ -1,13 +1,11 @@
 """Delete documents from the database."""
 
-import json
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, Literal
 
 from filelock import FileLock
-from sqlalchemy import delete, func, text, update
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import delete, text, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import load_only
 from sqlalchemy.orm.attributes import flag_modified
@@ -21,10 +19,10 @@ from raglite._database import (
     Eval,
     IndexMetadata,
     Metadata,
-    _adapt_metadata,
     create_database_engine,
 )
 from raglite._insert import _aggregate_metadata_from_documents
+from raglite._metadata_filter import build_metadata_filter_condition
 from raglite._typing import DocumentId
 
 
@@ -49,17 +47,14 @@ def _get_documents_with_metadata(
     metadata_filter: dict[str, Any], session: Session
 ) -> list[DocumentId]:
     """Get document IDs matching a metadata filter."""
-    metadata_filter = _adapt_metadata(metadata_filter)
-
-    # Determine the filter condition based on the database engine
-    if session.get_bind().dialect.name == "postgresql":
-        condition = col(Document.metadata_).cast(JSONB).op("@>")(metadata_filter)  # type: ignore[attr-defined]
-    else:
-        condition = func.json_contains(
-            col(Document.metadata_), func.json(json.dumps(metadata_filter))
-        )
-
-    statement = select(Document.id).where(condition)
+    condition = build_metadata_filter_condition(
+        Document.metadata_,
+        metadata_filter,
+        dialect=session.get_bind().dialect.name,
+    )
+    statement = select(Document.id)
+    if condition is not None:
+        statement = statement.where(condition)
 
     return list(session.exec(statement).all())
 
