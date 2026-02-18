@@ -13,8 +13,9 @@ def run_raglite(
     embedder: str,
     llm: str,
     self_query: bool = True,
-    rerank: bool = True,
+    rerank: bool = False,
     hybrid_search: bool = False,
+    agentic_rag: bool = False,
     capture_logs: bool = False,
     serialize_chunks: bool = False,
 ) -> dict[str, Any]:
@@ -29,18 +30,12 @@ def run_raglite(
         use_self_query=self_query,
         use_rerank=rerank,
         use_hybrid_search=hybrid_search,
-        use_agentic_rag=False,
+        use_agentic_rag=agentic_rag,
     )
     stdout_capture = StringIO()
     stderr_capture = StringIO()
 
     def _execute() -> tuple[list[Any], str]:
-        if model.use_rerank:
-            chunk_spans = model.get_chunks_via_rerank(query=query, num_chunks=num_chunks)
-        else:
-            from raglite import retrieve_context
-
-            chunk_spans = retrieve_context(query=query, num_chunks=num_chunks, config=model.config)
         messages = [
             {
                 "role": "system",
@@ -48,8 +43,28 @@ def run_raglite(
                 f"Today's date is {query_time}.",
             }
         ]
-        messages.append(add_context(user_prompt=query, context=chunk_spans, config=model.config))
-        answer = "".join(rag(messages, config=model.config))
+
+        chunk_spans: list[Any] = []
+        if model.use_agentic_rag:
+            messages.append({"role": "user", "content": query})
+        else:
+            if model.use_rerank:
+                chunk_spans = model.get_chunks_via_rerank(query=query, num_chunks=num_chunks)
+            else:
+                from raglite import retrieve_context
+
+                chunk_spans = retrieve_context(query=query, num_chunks=num_chunks, config=model.config)
+
+            messages.append(add_context(user_prompt=query, context=chunk_spans, config=model.config))
+
+        answer = ""
+        stream = rag(
+            messages,
+            config=model.config,
+            on_retrieval=chunk_spans.extend if model.use_agentic_rag else None,
+        )
+        for update in stream:
+            answer += update
         return chunk_spans, answer
 
     if capture_logs:
@@ -68,6 +83,7 @@ def run_raglite(
         "self_query": self_query,
         "rerank": rerank,
         "hybrid_search": hybrid_search,
+        "agentic_rag": agentic_rag,
         "answer": answer,
         "chunks": chunks,
         "stdout": stdout_capture.getvalue() if capture_logs else "",
