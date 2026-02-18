@@ -1,6 +1,7 @@
 """String embedder."""
 
 from functools import partial
+from threading import Lock
 from typing import Literal
 
 import numpy as np
@@ -11,6 +12,8 @@ from raglite._config import RAGLiteConfig
 from raglite._lazy_llama import LLAMA_POOLING_TYPE_NONE, Llama
 from raglite._litellm import LlamaCppPythonLLM
 from raglite._typing import FloatMatrix, IntVector
+
+LLAMA_EMBED_LOCK = Lock()
 
 
 def embed_strings_with_late_chunking(  # noqa: C901,PLR0915
@@ -116,7 +119,8 @@ def embed_strings_with_late_chunking(  # noqa: C901,PLR0915
         # Get the token embeddings of the entire segment, including preamble and content.
         segment_start_index, content_start_index, segment_end_index = segment
         segment_sentences = sentences[segment_start_index:segment_end_index]
-        segment_embedding = np.asarray(embedder.embed("".join(segment_sentences)))
+        with LLAMA_EMBED_LOCK:
+            segment_embedding = np.asarray(embedder.embed("".join(segment_sentences)))
         # Split the segment embeddings into embedding matrices per sentence using the largest
         # remainder method.
         segment_tokens = num_tokens[segment_start_index:segment_end_index]
@@ -151,7 +155,8 @@ def _embed_string_batch(string_batch: list[str], *, config: RAGLiteConfig) -> Fl
         embedder = LlamaCppPythonLLM.llm(
             config.embedder, embedding=True, pooling_type=LLAMA_POOLING_TYPE_NONE
         )
-        embeddings = np.asarray([np.mean(row, axis=0) for row in embedder.embed(string_batch)])
+        with LLAMA_EMBED_LOCK:
+            embeddings = np.asarray([np.mean(row, axis=0) for row in embedder.embed(string_batch)])
     else:
         # Use LiteLLM's API to embed the batch of strings.
         response = embedding(config.embedder, string_batch)
