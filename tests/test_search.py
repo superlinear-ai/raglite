@@ -131,7 +131,7 @@ def test_search_metadata_filter(
 
 
 def test_search_metadata_filter_multiple_values_match_any(
-    raglite_test_config: RAGLiteConfig, search_method: BasicSearchMethod
+    isolated_raglite_test_config: RAGLiteConfig, search_method: BasicSearchMethod
 ) -> None:
     """Match any value when a metadata field filter contains multiple values."""
     topic = f"or-filter-topic-{uuid4().hex}"
@@ -156,7 +156,7 @@ def test_search_metadata_filter_multiple_values_match_any(
             topic=topic,
         ),
     ]
-    insert_documents(documents, config=raglite_test_config)
+    insert_documents(documents, config=isolated_raglite_test_config)
 
     try:
         query = "piano orchestra retrieval"
@@ -165,24 +165,24 @@ def test_search_metadata_filter_multiple_values_match_any(
             query,
             num_results=5,
             metadata_filter=metadata_filter,
-            config=raglite_test_config,
+            config=isolated_raglite_test_config,
         )
         assert chunk_ids, (
             "Expected OR metadata filter to match documents with domain='open' and 'music'."
         )
 
-        chunks = retrieve_chunks(chunk_ids, config=raglite_test_config)
+        chunks = retrieve_chunks(chunk_ids, config=isolated_raglite_test_config)
         for chunk in chunks:
             assert chunk.metadata_.get("topic") == [topic]
             assert any(
                 domain in {"open", "music"} for domain in chunk.metadata_.get("domain", [])
             ), f"Expected OR match on domain values, got {chunk.metadata_.get('domain')}"
     finally:
-        delete_documents(document_ids, config=raglite_test_config)
+        delete_documents(document_ids, config=isolated_raglite_test_config)
 
 
 def test_search_metadata_filter_matches_documents_with_list_metadata_values(
-    raglite_test_config: RAGLiteConfig, search_method: BasicSearchMethod
+    isolated_raglite_test_config: RAGLiteConfig, search_method: BasicSearchMethod
 ) -> None:
     """Match documents when metadata values are stored as lists with multiple elements."""
     topic = f"list-domain-topic-{uuid4().hex}"
@@ -207,7 +207,7 @@ def test_search_metadata_filter_matches_documents_with_list_metadata_values(
             topic=topic,
         ),
     ]
-    insert_documents(documents, config=raglite_test_config)
+    insert_documents(documents, config=isolated_raglite_test_config)
 
     try:
         query = "piano orchestra retrieval systems"
@@ -216,11 +216,11 @@ def test_search_metadata_filter_matches_documents_with_list_metadata_values(
             query,
             num_results=10,
             metadata_filter=metadata_filter,
-            config=raglite_test_config,
+            config=isolated_raglite_test_config,
         )
         assert chunk_ids, "Expected results for list metadata values in domain."
 
-        chunks = retrieve_chunks(chunk_ids, config=raglite_test_config)
+        chunks = retrieve_chunks(chunk_ids, config=isolated_raglite_test_config)
         matched_document_ids = {chunk.document.id for chunk in chunks}
         assert matched_document_ids.issubset(set(document_ids[:2])), (
             "Expected only documents whose domain list overlaps ['open', 'music'], "
@@ -230,7 +230,7 @@ def test_search_metadata_filter_matches_documents_with_list_metadata_values(
             f"Expected both list-based domain matches to be returned, got {matched_document_ids}."
         )
     finally:
-        delete_documents(document_ids, config=raglite_test_config)
+        delete_documents(document_ids, config=isolated_raglite_test_config)
 
 
 def test_self_query_deduplicates_and_keeps_multiple_values(

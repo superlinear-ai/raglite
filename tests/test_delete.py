@@ -79,7 +79,7 @@ def test_delete_by_metadata(raglite_test_config: RAGLiteConfig) -> None:
 
 
 def test_delete_by_metadata_multiple_values_match_any(
-    raglite_test_config: RAGLiteConfig,
+    isolated_raglite_test_config: RAGLiteConfig,
 ) -> None:
     """Delete documents when a multi-value metadata filter matches multiple values."""
     unique_topic = f"delete-topic-{uuid4().hex}"
@@ -109,18 +109,18 @@ def test_delete_by_metadata_multiple_values_match_any(
     )
     insert_documents(
         [document_open, document_sports, document_open_and_movie, document_movie],
-        config=raglite_test_config,
+        config=isolated_raglite_test_config,
     )
 
     deleted_count = delete_documents_by_metadata(
         {"topic": unique_topic, "domain": ["sports", "movie"]},
-        config=raglite_test_config,
+        config=isolated_raglite_test_config,
     )
     assert (
         deleted_count == 3  # noqa: PLR2004
     ), "Expected OR metadata filter to delete the documents with domain='sports' or domain='movie'."
 
-    with Session(create_database_engine(raglite_test_config)) as session:
+    with Session(create_database_engine(isolated_raglite_test_config)) as session:
         remaining_document = session.get(Document, document_open.id)
         assert remaining_document is not None
         deleted_document = session.get(Document, document_sports.id)
@@ -130,7 +130,7 @@ def test_delete_by_metadata_multiple_values_match_any(
         deleted_document = session.get(Document, document_movie.id)
         assert deleted_document is None
 
-    delete_documents([document_sports.id], config=raglite_test_config)
+    delete_documents([document_open.id], config=isolated_raglite_test_config)
 
 
 def test_delete_with_multivector_disabled(raglite_test_config: RAGLiteConfig) -> None:

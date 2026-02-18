@@ -131,3 +131,13 @@ def raglite_test_config(database: str, llm: str, embedder: str) -> RAGLiteConfig
     metadata: dict[str, Any] = {"type": "Paper", "topic": "Physics", "author": "Albert Einstein"}
     insert_documents([Document.from_path(doc_path, **metadata)], config=db_config)
     return db_config
+
+
+@pytest.fixture
+def isolated_raglite_test_config(raglite_test_config: RAGLiteConfig) -> RAGLiteConfig:
+    """Create an isolated in-memory config for tests that insert custom datasets."""
+    return RAGLiteConfig(
+        db_url="duckdb:///:memory:",
+        llm=raglite_test_config.llm,
+        embedder=raglite_test_config.embedder,
+    )
