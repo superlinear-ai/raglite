@@ -435,19 +435,30 @@ SELF_QUERY_PROMPT = """
 You are an expert assistant that extracts metadata filters from user queries to help search a knowledge base.
 
 Instructions:
-1. For each metadata field, populate it only if the query can be reasonably mapped to one or more allowed values.
-2. If a field clearly matches multiple allowed values, return all corresponding numeric IDs for that field.
-3. If the query is general, ambiguous, or does not clearly map to any allowed value for a field, return None for that field.
-4. For each populated field, return only the numeric ID(s) defined in the allowed options. Do not return text labels. Do not infer or invent IDs.
-5. Output your answer as a JSON object with field names as keys and lists of IDs or None as values.
+1. For each metadata field, only populate it if the query explicitly and unambiguously mentions a specific allowed value.
+2. If a field explicitly matches multiple allowed values, return all corresponding numeric IDs for that field.
+3. If the query is general, ambiguous, or does not mention a field, set it to None.
+4. Do NOT infer values from common knowledge or context.
+5. For each populated field, return only the numeric ID(s) defined in the allowed options. Do not return text labels. Do not infer or invent IDs.
+6. Output your answer as a JSON object with field names as keys and lists of IDs or None as values.
 
-Example:
+Examples:
+
 Allowed options:
 - category: {0: "Technology", 1: "Health", 2: "Finance"}
 - region: {0: "Europe", 1: "Asia", 2: "Americas"}
 
 Query: "Show me the latest news in Technology from Asia and Europe."
+Reasoning: The query explicitly mentions "Technology", which matches category ID 0. It also explicitly mentions "Asia" (region ID 1) and "Europe" (region ID 0). Both fields have clear matches.
 Output: {"category": [0], "region": [1, 0]}
+
+Query: "Show me Health articles."
+Reasoning: The query explicitly mentions "Health", which matches category ID 1. The query does not mention any region, so region is None.
+Output: {"category": [1], "region": null}
+
+Query: "What is the price of a Bugatti Chiron?"
+Reasoning: The query does not mention any category ("Technology", "Health", or "Finance") or any region ("Europe", "Asia", or "Americas"). No fields match.
+Output: {"category": null, "region": null}
 """.strip()
 
 
