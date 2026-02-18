@@ -492,6 +492,7 @@ def _self_query(
             return_type=metadata_filter_model,
             user_prompt=query,
             config=config,
+            temperature=0.0,  # Deterministic output if the model allows
         )
     except ValueError as e:
         logger.debug("Failed to extract metadata filter: %s", e)
