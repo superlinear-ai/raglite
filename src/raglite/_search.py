@@ -435,12 +435,11 @@ SELF_QUERY_PROMPT = """
 You are an expert assistant that extracts metadata filters from user queries to help search a knowledge base.
 
 Instructions:
-1. For each metadata field, only populate it if the query explicitly and unambiguously mentions a specific allowed value.
-2. If a field explicitly matches multiple allowed values, return all corresponding numeric IDs for that field.
-3. If the query is general, ambiguous, or does not mention a field, set it to None.
-4. Do NOT infer values from common knowledge or context.
-5. For each populated field, return only the numeric ID(s) defined in the allowed options. Do not return text labels. Do not infer or invent IDs.
-6. Output your answer as a JSON object with field names as keys and lists of IDs or None as values.
+1. For each metadata field, populate it only if the query can be reasonably mapped to one or more allowed values.
+2. If a field clearly matches multiple allowed values, return all corresponding numeric IDs for that field.
+3. If the query is general, ambiguous, or does not clearly map to any allowed value for a field, return None for that field.
+4. For each populated field, return only the numeric ID(s) defined in the allowed options. Do not return text labels. Do not infer or invent IDs.
+5. Output your answer as a JSON object with field names as keys and lists of IDs or None as values.
 
 Examples:
 
