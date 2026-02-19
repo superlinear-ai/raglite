@@ -513,11 +513,13 @@ def _self_query(
         metadata_filter: dict[str, list[MetadataValue] | MetadataValue] = {}
         for field, value_ids in metadata_filter_by_id.items():
             value_mapping = field_ids_mapping.get(field, {})
-            metadata_values = {
-                value_mapping[value_id]
-                for value_id in value_ids
-                if value_id in value_mapping  # handle potential out-of-range IDs gracefully
-            }
+            metadata_values = list(
+                dict.fromkeys(
+                    value_mapping[value_id]
+                    for value_id in value_ids
+                    if value_id in value_mapping  # handle potential out-of-range IDs gracefully
+                )
+            )
             if metadata_values:
-                metadata_filter[field] = list(metadata_values)
+                metadata_filter[field] = metadata_values
         return metadata_filter
