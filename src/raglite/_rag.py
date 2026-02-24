@@ -2,7 +2,7 @@
 
 import json
 import logging
-from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Generator, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -37,6 +37,65 @@ Provide a direct answer to the question without referencing how the information 
 </context>
 
 {user_prompt}
+""".strip()
+
+SEARCH_AGENT_PROMPT = """
+You are an expert research assistant that answers the user's question using a search tool over a knowledge base (RAG).
+You may perform up to {allowed_iterations} iterations. In each iteration, you may issue up to {max_questions_per_iteration} search tool queries.
+
+Your job is to:
+1) If the question can be answered via common knowledge or straightforward reasoning, answer directly without using the search tool.
+2) If not, decide what information is required to answer the question.
+3) Call the search tool with precise, single-faceted questions to retrieve that information from the knowledge base.
+4) Produce a final answer grounded in retrieved evidence.
+
+## Workflow (repeat until done or iterations exhausted)
+At the start of each iteration:
+- Briefly state what is currently missing (the minimum unknowns that block a confident answer).
+- Generate search queries that directly target those unknowns.
+
+After each retrieval:
+- Extract the relevant facts (and ignore irrelevant text).
+- Assess sufficiency:
+    - SUFFICIENT if you can answer every part of the user question with direct support from the retrieved info.
+    - INSUFFICIENT if any required fact is missing, ambiguous, or unsupported.
+- If sufficient, stop searching and answer the question.
+- If insufficient, call the tool again with queries that target ONLY what's missing.
+
+## Query guidelines (tool calls)
+- Use the tool ONLY when the answer is not common knowledge or requires knowledge-base-specific facts.
+- Each tool call must be a single, precise question (single facet). Split multi-facet needs into separate calls.
+- Resolve pronouns and vague references into explicit nouns/entities.
+- Avoid redundancy:
+    - Do not ask the same question twice.
+    - Do not ask semantically overlapping questions unless you are disambiguating conflicting info.
+- Prefer queries that request:
+    - Definitions / canonical records first (IDs, names, dates).
+    - Then relationships / comparisons.
+    - Then edge cases / exceptions if needed.
+
+## Termination and fallback
+- Stop early if sufficient.
+- If you hit iteration limits and still lack key facts:
+    - Provide the best partial answer supported by evidence.
+    - List missing information clearly.
+
+## Example
+Original user question: "Which city has a larger population, City A or City B?"
+Reasoning: We need the population of both cities. This is not common knowledge, so we will use the search tool to find this information.
+Iteration 1:
+    - Tool Call 1: "Population of City A"
+    - Tool Call 2: "Population of City B"
+Retrieved information:
+    - "The population of City A is 1,000,000."
+    - "The population of the urban area of City B is 1,200,000"
+Assessment: INSUFFICIENT (urban area population includes city population and surroundings, so we cannot confidently compare)
+Iteration 2:
+    - Tool Call 1: "Population of City B (city proper)"
+Retrieved information:
+    - "The population of the city proper of City B is 900,000."
+Assessment: SUFFICIENT (now we have comparable population figures for both cities)
+Final answer: "City A has a larger population than City B. City A has a population of 1,000,000, while City B has a population of 900,000."
 """.strip()
 
 
@@ -369,52 +428,31 @@ def rag(
     messages: list[dict[str, str]],
     *,
     on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
-    allowed_iterations: int = 2,
+    allowed_iterations: int = 20,
     config: RAGLiteConfig,
 ) -> Iterator[str]:
+    """Run retrieval-augmented generation with the given messages and config."""
+    assert allowed_iterations >= 1, "allowed_iterations must be at least 1"
+
     # If the final message does not contain RAG context, get a tool to search the knowledge base.
     max_tokens = get_context_size(config)
     tools, tool_choice = _get_tools(messages, config)
-    # Stream the LLM response, which is either a tool call request or an assistant response.
-    stream = completion(
-        model=config.llm,
-        messages=_clip(messages, max_tokens),
-        tools=tools,
-        tool_choice=tool_choice,
-        stream=True,
-    )
-    chunks = []
-    for chunk in stream:
-        chunks.append(chunk)
-        if isinstance(token := chunk.choices[0].delta.content, str):
-            yield token
-    response = stream_chunk_builder(chunks, messages)
-    tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
-    # Check if there are tools to be called.
-    iterations = 0
-    while iterations < allowed_iterations and tool_calls is not None:
-        # Add the tool call request to the message array.
-        messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
-        # Run the tool calls to retrieve the RAG context and append the output to the message array.
-        # TODO: should merge results between tools if same document is extracted by multiple tools
-        # to avoid duplicates in context, and to optimize token usage.
-        # TODO: Also, make sure that the questions are different from call tools
-        # to avoid redundant calls.
-        # TODO: To avoid same question, should we construct a message ourselves with the
-        # responses and add context function?
-        messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
 
-        # check if we've reached the maximum number of allowed iterations and append a stop message
-        if iterations == allowed_iterations - 1:
-            stop_message = {
-                "role": "system",
-                "content": "You have reached the maximum number of retrieval iterations for this query. "
-                "Answer the question based on the retrieved context without making additional tool calls.",
-            }
-            messages.extend([stop_message])
+    if tools:
+        # inject a system prompt to guide the LLM to use the tool for iterative retrieval if
+        # no context is provided
+        system_prompt = {
+            "role": "system",
+            "content": SEARCH_AGENT_PROMPT.format(
+                allowed_iterations=allowed_iterations,
+                max_questions_per_iteration=3,  # This can be made configurable if needed
+            ),
+        }
+        messages.insert(0, system_prompt)
 
-        # Stream the assistant response.
-        chunks = []
+    def _stream_rag_response() -> Generator[str, None, list[Any]]:
+        """Stream the RAG response, which may include tool calls for retrieval."""
+        local_chunks: list[Any] = []
         stream = completion(
             model=config.llm,
             messages=_clip(messages, max_tokens),
@@ -423,14 +461,47 @@ def rag(
             stream=True,
         )
         for chunk in stream:
-            chunks.append(chunk)
-            if isinstance(token := chunk.choices[0].delta.content, str):
+            local_chunks.append(chunk)
+            if isinstance(token := chunk.choices[0].delta.content, str):  # type: ignore[union-attr]
                 yield token
+        return local_chunks
+
+    chunks = yield from _stream_rag_response()
+    response = stream_chunk_builder(chunks, messages)
+    tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
+
+    # Check if there are tools to be called.
+    iterations = 0
+    while iterations < allowed_iterations and tool_calls is not None:
+        # Add the tool call request to the message array.
+        messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+        # Run the tool calls to retrieve the RAG context and append the output to the message array.
+        messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
+
+        # check if we've reached the maximum number of allowed iterations and append a stop message
+        if iterations == allowed_iterations - 1:
+            stop_message = {
+                "role": "system",
+                "content": "You have reached the maximum number of retrieval iterations for this user query. "
+                "Answer the question based on the retrieved context without making additional tool calls.",
+            }
+            messages.extend([stop_message])
+
+        # Stream the assistant response.
+        chunks = yield from _stream_rag_response()
 
         # Check if there are additional tool calls for another iteration.
         response = stream_chunk_builder(chunks, messages)
         tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
         iterations += 1
+
+    # remove last system calls
+    if tools:
+        messages.pop(0)  # remove the system prompt we injected at the start of the function
+        system_idx = _get_last_message_idx(messages, "system")
+        if system_idx is not None:
+            messages.pop(system_idx)
+
     # Append the assistant response to the message array.
     messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
 
