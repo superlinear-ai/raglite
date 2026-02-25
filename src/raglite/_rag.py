@@ -424,6 +424,30 @@ def _run_tools(
     return tool_messages
 
 
+def _stream_response(
+    messages: list[dict[str, str]],
+    *,
+    tools: list[dict[str, Any]] | None,
+    tool_choice: dict[str, Any] | str | None,
+    max_tokens: int,
+    config: RAGLiteConfig,
+) -> Generator[str, None, Any]:
+    """Stream an LLM response, yielding tokens and returning the assembled response."""
+    chunks: list[Any] = []
+    stream = completion(
+        model=config.llm,
+        messages=_clip(messages, max_tokens),
+        tools=tools,
+        tool_choice=tool_choice,
+        stream=True,
+    )
+    for chunk in stream:
+        chunks.append(chunk)
+        if isinstance(token := chunk.choices[0].delta.content, str):  # type: ignore[union-attr]
+            yield token
+    return stream_chunk_builder(chunks, messages)
+
+
 def rag(
     messages: list[dict[str, str]],
     *,
@@ -431,78 +455,51 @@ def rag(
     allowed_iterations: int = 20,
     config: RAGLiteConfig,
 ) -> Iterator[str]:
-    """Run retrieval-augmented generation with the given messages and config."""
+    """Run retrieval-augmented generation with iterative tool calling."""
     assert allowed_iterations >= 1, "allowed_iterations must be at least 1"
 
-    # If the final message does not contain RAG context, get a tool to search the knowledge base.
     max_tokens = get_context_size(config)
     tools, tool_choice = _get_tools(messages, config)
 
+    # Inject a system prompt to guide iterative retrieval in agentic mode.
     if tools:
-        # inject a system prompt to guide the LLM to use the tool for iterative retrieval if
-        # no context is provided
-        system_prompt = {
+        messages.insert(0, {
             "role": "system",
             "content": SEARCH_AGENT_PROMPT.format(
                 allowed_iterations=allowed_iterations,
-                max_questions_per_iteration=3,  # This can be made configurable if needed
+                max_questions_per_iteration=3,
             ),
-        }
-        messages.insert(0, system_prompt)
+        })
 
-    def _stream_rag_response() -> Generator[str, None, list[Any]]:
-        """Stream the RAG response, which may include tool calls for retrieval."""
-        local_chunks: list[Any] = []
-        stream = completion(
-            model=config.llm,
-            messages=_clip(messages, max_tokens),
-            tools=tools,
-            tool_choice=tool_choice,
-            stream=True,
-        )
-        for chunk in stream:
-            local_chunks.append(chunk)
-            if isinstance(token := chunk.choices[0].delta.content, str):  # type: ignore[union-attr]
-                yield token
-        return local_chunks
+    # Stream the initial LLM response.
+    response = yield from _stream_response(
+        messages, tools=tools, tool_choice=tool_choice, max_tokens=max_tokens, config=config
+    )
 
-    chunks = yield from _stream_rag_response()
-    response = stream_chunk_builder(chunks, messages)
-    tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
+    # Iterative tool-calling loop: execute tool calls and stream follow-up responses.
+    for iteration in range(allowed_iterations):
+        tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
+        if not tool_calls:
+            break
 
-    # Check if there are tools to be called.
-    iterations = 0
-    while iterations < allowed_iterations and tool_calls is not None:
-        # Add the tool call request to the message array.
         messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
-        # Run the tool calls to retrieve the RAG context and append the output to the message array.
         messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
 
-        # check if we've reached the maximum number of allowed iterations and append a stop message
-        if iterations == allowed_iterations - 1:
-            stop_message = {
-                "role": "system",
-                "content": "You have reached the maximum number of retrieval iterations for this user query. "
-                "Answer the question based on the retrieved context without making additional tool calls.",
-            }
-            messages.extend([stop_message])
+        # On the final allowed iteration, withhold tools to force a direct answer.
+        is_final = iteration == allowed_iterations - 1
+        response = yield from _stream_response(
+            messages,
+            tools=None if is_final else tools,
+            tool_choice=None if is_final else tool_choice,
+            max_tokens=max_tokens,
+            config=config,
+        )
 
-        # Stream the assistant response.
-        chunks = yield from _stream_rag_response()
-
-        # Check if there are additional tool calls for another iteration.
-        response = stream_chunk_builder(chunks, messages)
-        tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
-        iterations += 1
-
-    # remove last system calls
+    # Remove the injected system prompt before returning.
     if tools:
-        messages.pop(0)  # remove the system prompt we injected at the start of the function
-        system_idx = _get_last_message_idx(messages, "system")
-        if system_idx is not None:
-            messages.pop(system_idx)
+        messages.pop(0)
 
-    # Append the assistant response to the message array.
+    # Append the final assistant response to the message array.
     messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
 
 
@@ -510,42 +507,71 @@ async def async_rag(
     messages: list[dict[str, str]],
     *,
     on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
+    allowed_iterations: int = 20,
     config: RAGLiteConfig,
 ) -> AsyncIterator[str]:
-    # If the final message does not contain RAG context, get a tool to search the knowledge base.
+    """Async retrieval-augmented generation with iterative tool calling."""
+    assert allowed_iterations >= 1, "allowed_iterations must be at least 1"
+
     max_tokens = get_context_size(config)
     tools, tool_choice = _get_tools(messages, config)
-    # Asynchronously stream the LLM response, which is either a tool call or an assistant response.
-    async_stream = await acompletion(
-        model=config.llm,
-        messages=_clip(messages, max_tokens),
-        tools=tools,
-        tool_choice=tool_choice,
-        stream=True,
-    )
-    chunks = []
-    async for chunk in async_stream:
-        chunks.append(chunk)
-        if isinstance(token := chunk.choices[0].delta.content, str):
-            yield token
-    # Check if there are tools to be called.
-    response = stream_chunk_builder(chunks, messages)
-    tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
-    if tool_calls:
-        # Add the tool call requests to the message array.
-        messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
-        # Run the tool calls to retrieve the RAG context and append the output to the message array.
-        # TODO: Make this async.
-        messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
-        # Asynchronously stream the assistant response.
-        chunks = []
+
+    # Inject a system prompt to guide iterative retrieval in agentic mode.
+    if tools:
+        messages.insert(0, {
+            "role": "system",
+            "content": SEARCH_AGENT_PROMPT.format(
+                allowed_iterations=allowed_iterations,
+                max_questions_per_iteration=3,
+            ),
+        })
+
+    response: Any = None
+
+    async def _async_stream(
+        current_tools: list[dict[str, Any]] | None,
+        current_tool_choice: dict[str, Any] | str | None,
+    ) -> AsyncIterator[str]:
+        nonlocal response
+        chunks: list[Any] = []
         async_stream = await acompletion(
-            model=config.llm, messages=_clip(messages, max_tokens), stream=True
+            model=config.llm,
+            messages=_clip(messages, max_tokens),
+            tools=current_tools,
+            tool_choice=current_tool_choice,
+            stream=True,
         )
         async for chunk in async_stream:
             chunks.append(chunk)
             if isinstance(token := chunk.choices[0].delta.content, str):
                 yield token
-    # Append the assistant response to the message array.
-    response = stream_chunk_builder(chunks, messages)
+        response = stream_chunk_builder(chunks, messages)
+
+    # Stream the initial LLM response.
+    async for token in _async_stream(tools, tool_choice):
+        yield token
+
+    # Iterative tool-calling loop: execute tool calls and stream follow-up responses.
+    for iteration in range(allowed_iterations):
+        tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
+        if not tool_calls:
+            break
+
+        messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+        # TODO: Make _run_tools async for true async execution.
+        messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
+
+        # On the final allowed iteration, withhold tools to force a direct answer.
+        is_final = iteration == allowed_iterations - 1
+        async for token in _async_stream(
+            None if is_final else tools,
+            None if is_final else tool_choice,
+        ):
+            yield token
+
+    # Remove the injected system prompt before returning.
+    if tools:
+        messages.pop(0)
+
+    # Append the final assistant response to the message array.
     messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
