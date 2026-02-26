@@ -496,6 +496,7 @@ def _self_query(
             user_prompt=query,
             config=config,
             temperature=0,
+            drop_params=True,
         )
     except ValueError as e:
         logger.debug("Failed to extract metadata filter: %s", e)
