@@ -370,9 +370,10 @@ def _run_tools(
     *,
     messages: list[dict[str, str]] | None,
     metadata_filter: MetadataFilter | None = None,
+    seen_chunk_ids: set[str] | None = None,
     max_workers: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Run tools in parallel, limit the total context, then format messages."""
+    """Run tools in parallel, deduplicate, limit the total context, then format messages."""
     tool_chunk_spans: dict[str, list[ChunkSpan]] = {}
 
     # 1. Parallel Execution
@@ -393,7 +394,17 @@ def _run_tools(
             error_message = f"Error executing tool: {e}"
             raise ValueError(error_message) from e
 
-    # 2. Limit Context (Global limiting across all tools)
+    # 2. Deduplicate: drop chunk spans whose chunks have all been seen in prior iterations.
+    if seen_chunk_ids is not None:
+        for tool_id, spans in tool_chunk_spans.items():
+            novel = [s for s in spans if not all(c.id in seen_chunk_ids for c in s.chunks)]
+            tool_chunk_spans[tool_id] = novel
+        # Register all remaining chunk IDs as seen for future iterations.
+        for spans in tool_chunk_spans.values():
+            for span in spans:
+                seen_chunk_ids.update(c.id for c in span.chunks)
+
+    # 3. Limit Context (Global limiting across all tools)
     total_before = sum(len(spans) for spans in tool_chunk_spans.values())
     tool_chunk_spans = _limit_chunkspans(tool_chunk_spans, config, messages=messages)
     total_after = sum(len(spans) for spans in tool_chunk_spans.values())
@@ -486,6 +497,7 @@ def rag(
     )
 
     # Iterative tool-calling loop: execute tool calls and stream follow-up responses.
+    seen_chunk_ids: set[str] = set()
     for iteration in range(allowed_iterations):
         tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
         if not tool_calls:
@@ -507,6 +519,7 @@ def rag(
                 config,
                 messages=messages,
                 metadata_filter=metadata_filter,
+                seen_chunk_ids=seen_chunk_ids,
             )
         )
 
@@ -586,6 +599,7 @@ async def async_rag(
         yield token
 
     # Iterative tool-calling loop: execute tool calls and stream follow-up responses.
+    seen_chunk_ids: set[str] = set()
     for iteration in range(allowed_iterations):
         tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
         if not tool_calls:
@@ -608,6 +622,7 @@ async def async_rag(
                 config,
                 messages=messages,
                 metadata_filter=metadata_filter,
+                seen_chunk_ids=seen_chunk_ids,
             )
         )
 
