@@ -343,6 +343,8 @@ def _get_tools(
 def _run_tool(
     tool_call: ChatCompletionMessageToolCall,
     config: RAGLiteConfig,
+    *,
+    metadata_filter: MetadataFilter | None = None,
 ) -> tuple[str, list[ChunkSpan]]:
     """
     Run a single tool to search the knowledge base.
@@ -352,6 +354,8 @@ def _run_tool(
     if tool_call.function.name == "search_knowledge_base":
         kwargs = json.loads(tool_call.function.arguments)
         kwargs["config"] = config
+        if metadata_filter is not None:
+            kwargs["metadata_filter"] = metadata_filter
         chunk_spans = retrieve_context(**kwargs)
         # Return ID and data so the main function can aggregate and limit them
         return tool_call.id, chunk_spans
@@ -365,6 +369,7 @@ def _run_tools(
     config: RAGLiteConfig,
     *,
     messages: list[dict[str, str]] | None,
+    metadata_filter: MetadataFilter | None = None,
     max_workers: int | None = None,
 ) -> list[dict[str, Any]]:
     """Run tools in parallel, limit the total context, then format messages."""
@@ -373,7 +378,10 @@ def _run_tools(
     # 1. Parallel Execution
     # We use the _run_tool helper to fetch data concurrently
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(_run_tool, tool_call, config) for tool_call in tool_calls]
+        futures = [
+            executor.submit(_run_tool, tool_call, config, metadata_filter=metadata_filter)
+            for tool_call in tool_calls
+        ]
 
         # Collect results as they finish
         try:
@@ -451,6 +459,7 @@ def rag(
     messages: list[dict[str, str]],
     *,
     on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
+    metadata_filter: MetadataFilter | None = None,
     allowed_iterations: int = 20,
     config: RAGLiteConfig,
 ) -> Iterator[str]:
@@ -491,7 +500,15 @@ def rag(
         logger.info("Iteration %d: %d tool call(s) — queries: %s", iteration + 1, len(tool_calls), queries)
 
         messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
-        messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
+        messages.extend(
+            _run_tools(
+                tool_calls,
+                on_retrieval,
+                config,
+                messages=messages,
+                metadata_filter=metadata_filter,
+            )
+        )
 
         # On the final allowed iteration, withhold tools to force a direct answer.
         is_final = iteration == allowed_iterations - 1
@@ -519,6 +536,7 @@ async def async_rag(
     messages: list[dict[str, str]],
     *,
     on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
+    metadata_filter: MetadataFilter | None = None,
     allowed_iterations: int = 20,
     config: RAGLiteConfig,
 ) -> AsyncIterator[str]:
@@ -583,7 +601,15 @@ async def async_rag(
 
         messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
         # TODO: Make _run_tools async for true async execution.
-        messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
+        messages.extend(
+            _run_tools(
+                tool_calls,
+                on_retrieval,
+                config,
+                messages=messages,
+                metadata_filter=metadata_filter,
+            )
+        )
 
         # On the final allowed iteration, withhold tools to force a direct answer.
         is_final = iteration == allowed_iterations - 1
