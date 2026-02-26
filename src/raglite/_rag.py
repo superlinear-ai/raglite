@@ -40,45 +40,24 @@ Provide a direct answer to the question without referencing how the information 
 """.strip()
 
 SEARCH_AGENT_PROMPT = """
-You are an expert research assistant that answers the user's question using a search tool over a knowledge base (RAG).
-You may perform up to {allowed_iterations} iterations. In each iteration, you may issue up to {max_questions_per_iteration} search tool queries.
+You are an expert research assistant that helps retrieve the necessary information to answer a user's question.
+You have access to a search tool that can query a knowledge base of documents. Each time you call the tool, you will receive a set of relevant document chunks as context.
+You may perform up to {allowed_iterations} iterations. In each iteration, you may issue up to {max_questions_per_iteration} search tool queries in parallel.
 
 Your job is to:
-1) If the question can be answered via common knowledge or straightforward reasoning, answer directly without using the search tool.
-2) If not, decide what information is required to answer the question.
-3) Call the search tool with precise, single-faceted questions to retrieve that information from the knowledge base.
-4) Produce a final answer grounded in retrieved evidence.
-
-## Workflow (repeat until done or iterations exhausted)
-At the start of each iteration:
-- Briefly state what is currently missing (the minimum unknowns that block a confident answer).
-- Generate search queries that directly target those unknowns.
-
-After each retrieval:
-- Extract the relevant facts (and ignore irrelevant text).
-- Assess sufficiency:
-    - SUFFICIENT if you can answer every part of the user question with direct support from the retrieved info.
-    - INSUFFICIENT if any required fact is missing, ambiguous, or unsupported.
-- If sufficient, stop searching and answer the question.
-- If insufficient, call the tool again with queries that target ONLY what's missing.
+1) Evaluate if the context provided is sufficient to answer the user's question with confidence.
+2) If sufficient, respond with "Context is sufficient" and stop iterating.
+3) If insufficient, reason on which information is still required to answer the question.
+4) Call the search tool with precise, single-faceted questions to retrieve that information from the knowledge base.
+5) Repeat from step 1
+*IMPORTANT*: Your goal is to retrieve the necessary information with AS FEW iterations and tool calls AS POSSIBLE. Be strategic and efficient in your retrieval process.
 
 ## Query guidelines (tool calls)
-- Use the tool ONLY when the answer is not common knowledge or requires knowledge-base-specific facts.
-- Each tool call must be a single, precise question (single facet). Split multi-facet needs into separate calls.
+- Each tool call must be a single, precise question (single facet). Split multi-facets into separate calls.
 - Resolve pronouns and vague references into explicit nouns/entities.
-- Avoid redundancy:
-    - Do not ask the same question twice.
-    - Do not ask semantically overlapping questions unless you are disambiguating conflicting info.
-- Prefer queries that request:
-    - Definitions / canonical records first (IDs, names, dates).
-    - Then relationships / comparisons.
-    - Then edge cases / exceptions if needed.
-
-## Termination and fallback
-- Stop early if sufficient.
-- If you hit iteration limits and still lack key facts:
-    - Provide the best partial answer supported by evidence.
-    - List missing information clearly.
+Compared to prior iterations:
+    - DO NOT ask the same question twice.
+    - DO NOT ask semantically overlapping questions.
 
 ## Example
 Original user question: "Which city has a larger population, City A or City B?"
@@ -95,7 +74,6 @@ Iteration 2:
 Retrieved information:
     - "The population of the city proper of City B is 900,000."
 Assessment: SUFFICIENT (now we have comparable population figures for both cities)
-Final answer: "City A has a larger population than City B. City A has a population of 1,000,000, while City B has a population of 900,000."
 """.strip()
 
 
@@ -317,22 +295,16 @@ def _get_tools(
                 "function": {
                     "name": "search_knowledge_base",
                     "description": (
-                        "Search the knowledge base using single-faceted questions.\n"
-                        "For multi-faceted questions (comparison, sets, ..), call this function once for each facet.\n "
-                        "Example original query: Which artist has the most number-one albums on the Billboard 200: X or Y?\n"
-                        "Facet 1: How many albums on the Billboard 200 does X have? \n"
-                        "Facet 2: How many albums on the Billboard 200 does Y have? \n"
-                        "IMPORTANT: You MAY NOT use this function if the question can be answered with common knowledge or straightforward reasoning.\n"
+                        "Search the knowledge base.\n"
+                        "IMPORTANT: You MAY not use this function if the question can be answered with common knowledge or straightforward reasoning.\n"
+                        "Reformulate the question to ensure clarity, precision, and specificity."
                     ),
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "query": {
                                 "type": "string",
-                                "description": (
-                                    "The `query` string MUST be a precise single-faceted question in the user's language.\n"
-                                    "The `query` string MUST resolve all pronouns to explicit nouns."
-                                ),
+                                "description": "The search question.",
                             },
                         },
                         "required": ["query"],
@@ -358,6 +330,79 @@ def _run_tool(
     Returns the tool_id and the raw chunk_spans (before formatting/limiting).
     """
     if tool_call.function.name == "search_knowledge_base":
+        query = json.loads(tool_call.function.arguments)["query"]
+        messages = [
+            {
+                "role": "system",
+                "content": SEARCH_AGENT_PROMPT.format(
+                    allowed_iterations=config.allowed_iterations, max_questions_per_iteration=3
+                ),
+            },
+            {
+                "role": "user",
+                "content": query,
+            },
+        ]
+        tool = {
+            "type": "function",
+            "function": {
+                "name": "query_knowledge_base",
+                "description": (
+                    "Search the knowledge base with a single faceted question. "
+                    "Each question must be precise and focused on a specific piece of information. "
+                    "Multi-faceted questions that can be split into separate queries are not allowed. \n"
+                    "Example of a bad question: 'What is the population of City A and the GDP of Country B?'\n"
+                    "Example of good questions: 'What is the population of City A?', 'What is the GDP of Country B?'\n"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "A precise, single-faceted question to search for in the knowledge base.",
+                        },
+                    },
+                    "required": ["query"],
+                    "additionalProperties": False,
+                },
+            },
+        }
+
+        # start iterating
+        chunk_spans = []
+        iterations = 0
+        while True:
+            response = completion(
+                model=config.llm,
+                messages=messages,
+                tools=[tool],
+                tool_choice="auto",
+            )
+            messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+            tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
+
+            # check if the tool call is valid
+            if tool_calls is not None:
+                messages.extend(
+                    _run_tools(
+                        tool_calls,
+                        lambda spans: chunk_spans.extend(spans),
+                        config,
+                        messages=messages,
+                    )
+                )
+            else:
+                break
+
+            # check if we've reached the maximum number of allowed iterations
+            iterations += 1
+            if iterations >= config.allowed_iterations:
+                break
+
+        # Return ID and data so the main function can aggregate and limit them
+        return tool_call.id, chunk_spans
+
+    if tool_call.function.name == "query_knowledge_base":
         kwargs = json.loads(tool_call.function.arguments)
         kwargs["config"] = config
         chunk_spans = retrieve_context(**kwargs)
@@ -424,86 +469,46 @@ def _run_tools(
     return tool_messages
 
 
+def _stream_rag_response(
+    messages: list[dict[str, str]], config: RAGLiteConfig
+) -> Generator[str, None, list[Any]]:
+    """Stream the RAG response, which may include tool calls for retrieval."""
+    max_tokens = get_context_size(config)
+    tools, tool_choice = _get_tools(messages, config)
+    local_chunks: list[Any] = []
+    stream = completion(
+        model=config.llm,
+        messages=_clip(messages, max_tokens),
+        tools=tools,
+        tool_choice=tool_choice,
+        stream=True,
+    )
+    for chunk in stream:
+        local_chunks.append(chunk)
+        if isinstance(token := chunk.choices[0].delta.content, str):  # type: ignore[union-attr]
+            yield token
+    return local_chunks
+
+
 def rag(
     messages: list[dict[str, str]],
     *,
     on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
-    allowed_iterations: int = 20,
     config: RAGLiteConfig,
 ) -> Iterator[str]:
     """Run retrieval-augmented generation with the given messages and config."""
-    assert allowed_iterations >= 1, "allowed_iterations must be at least 1"
-
-    # If the final message does not contain RAG context, get a tool to search the knowledge base.
-    max_tokens = get_context_size(config)
-    tools, tool_choice = _get_tools(messages, config)
-
-    if tools:
-        # inject a system prompt to guide the LLM to use the tool for iterative retrieval if
-        # no context is provided
-        system_prompt = {
-            "role": "system",
-            "content": SEARCH_AGENT_PROMPT.format(
-                allowed_iterations=allowed_iterations,
-                max_questions_per_iteration=3,  # This can be made configurable if needed
-            ),
-        }
-        messages.insert(0, system_prompt)
-
-    def _stream_rag_response() -> Generator[str, None, list[Any]]:
-        """Stream the RAG response, which may include tool calls for retrieval."""
-        local_chunks: list[Any] = []
-        stream = completion(
-            model=config.llm,
-            messages=_clip(messages, max_tokens),
-            tools=tools,
-            tool_choice=tool_choice,
-            stream=True,
-        )
-        for chunk in stream:
-            local_chunks.append(chunk)
-            if isinstance(token := chunk.choices[0].delta.content, str):  # type: ignore[union-attr]
-                yield token
-        return local_chunks
-
-    chunks = yield from _stream_rag_response()
+    chunks = yield from _stream_rag_response(messages, config)
     response = stream_chunk_builder(chunks, messages)
+    messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
     tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
 
-    # Check if there are tools to be called.
-    iterations = 0
-    while iterations < allowed_iterations and tool_calls is not None:
-        # Add the tool call request to the message array.
-        messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
-        # Run the tool calls to retrieve the RAG context and append the output to the message array.
+    if tool_calls:
         messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
-
-        # check if we've reached the maximum number of allowed iterations and append a stop message
-        if iterations == allowed_iterations - 1:
-            stop_message = {
-                "role": "system",
-                "content": "You have reached the maximum number of retrieval iterations for this user query. "
-                "Answer the question based on the retrieved context without making additional tool calls.",
-            }
-            messages.extend([stop_message])
-
-        # Stream the assistant response.
-        chunks = yield from _stream_rag_response()
-
-        # Check if there are additional tool calls for another iteration.
+        chunks = yield from _stream_rag_response(messages, config)
         response = stream_chunk_builder(chunks, messages)
-        tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
-        iterations += 1
-
-    # remove last system calls
-    if tools:
-        messages.pop(0)  # remove the system prompt we injected at the start of the function
-        system_idx = _get_last_message_idx(messages, "system")
-        if system_idx is not None:
-            messages.pop(system_idx)
-
-    # Append the assistant response to the message array.
-    messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+        messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+    else:
+        messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
 
 
 async def async_rag(
