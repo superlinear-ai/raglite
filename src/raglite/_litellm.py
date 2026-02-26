@@ -36,7 +36,6 @@ from raglite._lazy_llama import (
 
 # Reduce the logging level for LiteLLM, flashrank, and httpx.
 litellm.suppress_debug_info = True
-litellm.drop_params = True  # Drop unsupported parameters for models like GPT-5
 os.environ["LITELLM_LOG"] = "WARNING"
 logging.getLogger("LiteLLM").setLevel(logging.WARNING)
 logging.getLogger("flashrank").setLevel(logging.WARNING)

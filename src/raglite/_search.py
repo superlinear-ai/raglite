@@ -56,7 +56,8 @@ def vector_search(
     # Apply the query adapter to the query embedding.
     if (
         config.vector_search_query_adapter
-        and (Q := IndexMetadata.get("default", config=config).get("query_adapter")) is not None  # noqa: N806
+        and (Q := IndexMetadata.get("default", config=config).get("query_adapter"))  # noqa: N806
+        is not None
     ):
         query_embedding = (Q @ query_embedding).astype(query_embedding.dtype)
     # Rank the chunks by relevance according to the L∞ norm of the similarities of the multi-vector
@@ -503,6 +504,7 @@ def _self_query(
             user_prompt=query,
             config=config,
             temperature=0.0,  # Deterministic output if the model allows
+            drop_params=True,
         )
     except ValueError as e:
         logger.debug("Failed to extract metadata filter: %s", e)
