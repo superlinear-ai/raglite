@@ -480,10 +480,13 @@ def rag(
     context_size = get_context_size(config)
     tools, tool_choice = _get_tools(messages, config)
 
+    # Work on a copy so the caller's list is not corrupted if an error occurs.
+    working = list(messages)
+
     # Inject a system prompt to guide iterative retrieval in agentic mode.
     if tools:
         logger.info("Starting agentic RAG (up to %d iterations).", allowed_iterations)
-        messages.insert(0, {
+        working.insert(0, {
             "role": "system",
             "content": SEARCH_AGENT_PROMPT.format(
                 allowed_iterations=allowed_iterations,
@@ -493,7 +496,7 @@ def rag(
 
     # Stream the initial LLM response.
     response = yield from _stream_response(
-        messages, tools=tools, tool_choice=tool_choice, context_size=context_size, config=config
+        working, tools=tools, tool_choice=tool_choice, context_size=context_size, config=config
     )
 
     # Iterative tool-calling loop: execute tool calls and stream follow-up responses.
@@ -511,13 +514,13 @@ def rag(
         ]
         logger.info("Iteration %d: %d tool call(s) — queries: %s", iteration + 1, len(tool_calls), queries)
 
-        messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
-        messages.extend(
+        working.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+        working.extend(
             _run_tools(
                 tool_calls,
                 on_retrieval,
                 config,
-                messages=messages,
+                messages=working,
                 metadata_filter=metadata_filter,
                 seen_chunk_ids=seen_chunk_ids,
             )
@@ -528,7 +531,7 @@ def rag(
         if is_final:
             logger.info("Iteration limit reached (%d). Forcing final answer.", allowed_iterations)
         response = yield from _stream_response(
-            messages,
+            working,
             tools=None if is_final else tools,
             tool_choice=None if is_final else tool_choice,
             context_size=context_size,
@@ -537,12 +540,12 @@ def rag(
     else:
         logger.info("Retrieval loop exhausted all %d iterations.", allowed_iterations)
 
-    # Remove the injected system prompt before returning.
-    if tools:
-        messages.pop(0)
+    # Append the final assistant response.
+    working.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
 
-    # Append the final assistant response to the message array.
-    messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+    # Update the caller's messages with only the new conversation turns (no system prompt).
+    offset = len(messages) + (1 if tools else 0)  # Skip system prompt if it was injected.
+    messages.extend(working[offset:])
 
 
 async def async_rag(
@@ -561,10 +564,13 @@ async def async_rag(
     max_input_tokens = context_size - max_output_tokens
     tools, tool_choice = _get_tools(messages, config)
 
+    # Work on a copy so the caller's list is not corrupted if an error occurs.
+    working = list(messages)
+
     # Inject a system prompt to guide iterative retrieval in agentic mode.
     if tools:
         logger.info("Starting async agentic RAG (up to %d iterations).", allowed_iterations)
-        messages.insert(0, {
+        working.insert(0, {
             "role": "system",
             "content": SEARCH_AGENT_PROMPT.format(
                 allowed_iterations=allowed_iterations,
@@ -582,7 +588,7 @@ async def async_rag(
         chunks: list[Any] = []
         async_stream = await acompletion(
             model=config.llm,
-            messages=_clip(messages, max_input_tokens),
+            messages=_clip(working, max_input_tokens),
             tools=current_tools,
             tool_choice=current_tool_choice,
             max_tokens=max_output_tokens,
@@ -592,7 +598,7 @@ async def async_rag(
             chunks.append(chunk)
             if isinstance(token := chunk.choices[0].delta.content, str):
                 yield token
-        response = stream_chunk_builder(chunks, messages)
+        response = stream_chunk_builder(chunks, working)
 
     # Stream the initial LLM response.
     async for token in _async_stream(tools, tool_choice):
@@ -613,14 +619,14 @@ async def async_rag(
         ]
         logger.info("Iteration %d: %d tool call(s) — queries: %s", iteration + 1, len(tool_calls), queries)
 
-        messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+        working.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
         # TODO: Make _run_tools async for true async execution.
-        messages.extend(
+        working.extend(
             _run_tools(
                 tool_calls,
                 on_retrieval,
                 config,
-                messages=messages,
+                messages=working,
                 metadata_filter=metadata_filter,
                 seen_chunk_ids=seen_chunk_ids,
             )
@@ -638,9 +644,9 @@ async def async_rag(
     else:
         logger.info("Retrieval loop exhausted all %d iterations.", allowed_iterations)
 
-    # Remove the injected system prompt before returning.
-    if tools:
-        messages.pop(0)
+    # Append the final assistant response.
+    working.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
 
-    # Append the final assistant response to the message array.
-    messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+    # Update the caller's messages with only the new conversation turns (no system prompt).
+    offset = len(messages) + (1 if tools else 0)  # Skip system prompt if it was injected.
+    messages.extend(working[offset:])
