@@ -408,7 +408,7 @@ def _run_tools(
     total_before = sum(len(spans) for spans in tool_chunk_spans.values())
     tool_chunk_spans = _limit_chunkspans(tool_chunk_spans, config, messages=messages)
     total_after = sum(len(spans) for spans in tool_chunk_spans.values())
-    logger.info("Retrieved %d chunk span(s) across %d tool call(s) (%d after limiting).",
+    logger.debug("Retrieved %d chunk span(s) across %d tool call(s) (%d after limiting).",
                 total_before, len(tool_calls), total_after)
 
     # 3. Formatting & Callbacks
@@ -485,7 +485,7 @@ def rag(
 
     # Inject a system prompt to guide iterative retrieval in agentic mode.
     if tools:
-        logger.info("Starting agentic RAG (up to %d iterations).", allowed_iterations)
+        logger.debug("Starting agentic RAG (up to %d iterations).", allowed_iterations)
         working.insert(0, {
             "role": "system",
             "content": SEARCH_AGENT_PROMPT.format(
@@ -504,7 +504,7 @@ def rag(
     for iteration in range(allowed_iterations):
         tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
         if not tool_calls:
-            logger.info("Retrieval loop stopped after %d iteration(s): LLM returned no tool calls.", iteration)
+            logger.debug("Retrieval loop stopped after %d iteration(s): LLM returned no tool calls.", iteration)
             break
 
         queries = [
@@ -512,7 +512,7 @@ def rag(
             for tc in tool_calls
             if tc.function.name == "search_knowledge_base"
         ]
-        logger.info("Iteration %d: %d tool call(s) — queries: %s", iteration + 1, len(tool_calls), queries)
+        logger.debug("Iteration %d: %d tool call(s) — queries: %s", iteration + 1, len(tool_calls), queries)
 
         working.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
         working.extend(
@@ -529,7 +529,7 @@ def rag(
         # On the final allowed iteration, withhold tools to force a direct answer.
         is_final = iteration == allowed_iterations - 1
         if is_final:
-            logger.info("Iteration limit reached (%d). Forcing final answer.", allowed_iterations)
+            logger.debug("Iteration limit reached (%d). Forcing final answer.", allowed_iterations)
         response = yield from _stream_response(
             working,
             tools=None if is_final else tools,
@@ -538,7 +538,7 @@ def rag(
             config=config,
         )
     else:
-        logger.info("Retrieval loop exhausted all %d iterations.", allowed_iterations)
+        logger.debug("Retrieval loop exhausted all %d iterations.", allowed_iterations)
 
     # Append the final assistant response.
     working.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
@@ -569,7 +569,7 @@ async def async_rag(
 
     # Inject a system prompt to guide iterative retrieval in agentic mode.
     if tools:
-        logger.info("Starting async agentic RAG (up to %d iterations).", allowed_iterations)
+        logger.debug("Starting async agentic RAG (up to %d iterations).", allowed_iterations)
         working.insert(0, {
             "role": "system",
             "content": SEARCH_AGENT_PROMPT.format(
@@ -609,7 +609,7 @@ async def async_rag(
     for iteration in range(allowed_iterations):
         tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
         if not tool_calls:
-            logger.info("Retrieval loop stopped after %d iteration(s): LLM returned no tool calls.", iteration)
+            logger.debug("Retrieval loop stopped after %d iteration(s): LLM returned no tool calls.", iteration)
             break
 
         queries = [
@@ -617,7 +617,7 @@ async def async_rag(
             for tc in tool_calls
             if tc.function.name == "search_knowledge_base"
         ]
-        logger.info("Iteration %d: %d tool call(s) — queries: %s", iteration + 1, len(tool_calls), queries)
+        logger.debug("Iteration %d: %d tool call(s) — queries: %s", iteration + 1, len(tool_calls), queries)
 
         working.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
         # TODO: Make _run_tools async for true async execution.
@@ -635,14 +635,14 @@ async def async_rag(
         # On the final allowed iteration, withhold tools to force a direct answer.
         is_final = iteration == allowed_iterations - 1
         if is_final:
-            logger.info("Iteration limit reached (%d). Forcing final answer.", allowed_iterations)
+            logger.debug("Iteration limit reached (%d). Forcing final answer.", allowed_iterations)
         async for token in _async_stream(
             None if is_final else tools,
             None if is_final else tool_choice,
         ):
             yield token
     else:
-        logger.info("Retrieval loop exhausted all %d iterations.", allowed_iterations)
+        logger.debug("Retrieval loop exhausted all %d iterations.", allowed_iterations)
 
     # Append the final assistant response.
     working.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
