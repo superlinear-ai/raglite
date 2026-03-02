@@ -115,22 +115,14 @@ def _get_last_message_idx(messages: list[dict[str, str]], role: str) -> int | No
 
 def _calculate_buffer_tokens(
     messages: list[dict[str, str]] | None,
-    roles: list[str],
     user_prompt: str | None,
     template: str,
 ) -> int:
-    """Calculate the number of tokens used by other messages."""
-    # Calculate already used tokens (buffer)
-    buffer = 0
-    # Triggered when using tool calls
+    """Calculate the number of tokens used by existing messages."""
+    # Triggered when using tool calls: count all messages.
     if messages:
-        # Count used tokens by the last message of each role
-        for role in roles:
-            idx = _get_last_message_idx(messages, role)
-            if idx is not None:
-                buffer += _count_tokens(json.dumps(messages[idx]))
-        return buffer
-    # Triggered when using add_context
+        return sum(_count_tokens(json.dumps(m, ensure_ascii=False)) for m in messages)
+    # Triggered when using add_context: count template overhead.
     if user_prompt:
         return _count_tokens(template.format(context="", user_prompt=user_prompt))
     return 0
@@ -172,11 +164,10 @@ def _limit_chunkspans(
 ) -> dict[str, list[ChunkSpan]]:
     """Limit chunk spans to fit within the context window."""
     # Calculate already used tokens (buffer)
-    buffer = _calculate_buffer_tokens(
-        messages, ["user", "system", "assistant"], user_prompt, template
-    )
-    # Determine max tokens available for context
-    max_tokens = get_context_size(config) - buffer
+    buffer = _calculate_buffer_tokens(messages, user_prompt, template)
+    # Determine max tokens available for context, reserving space for the LLM's response.
+    max_output_tokens = min(2048, get_context_size(config) // 4)
+    max_tokens = get_context_size(config) - buffer - max_output_tokens
     # Compute token counts for all chunk spans per tool
     tool_tokens_list: dict[str, list[int]] = {}
     tool_total_tokens: dict[str, int] = {}
@@ -258,7 +249,8 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
             max_tokens,
         )
         # Try to include both last system and user messages if they fit together.
-        # If not, include just user if it fits, else return empty.
+        # If not, always preserve at least the last user message — the token estimate
+        # is approximate, and dropping all messages guarantees a crash.
         idx_system = _get_last_message_idx(messages, "system")
         if (
             idx_user is not None
@@ -267,9 +259,9 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
             and token_counts[idx_user] + token_counts[idx_system] <= max_tokens
         ):
             return [messages[idx_system], messages[idx_user]]
-        if idx_user is not None and token_counts[idx_user] <= max_tokens:
+        if idx_user is not None:
             return [messages[idx_user]]
-        return []
+        return messages[-1:]
     return messages[cutoff_idx:]
 
 
@@ -467,15 +459,18 @@ def _stream_rag_response(
     messages: list[dict[str, str]], config: RAGLiteConfig, *, use_tools: bool = True
 ) -> Generator[str, None, list[Any]]:
     """Stream the RAG response, which may include tool calls for retrieval."""
-    max_tokens = get_context_size(config)
+    context_size = get_context_size(config)
+    max_output_tokens = min(2048, context_size // 4)
+    max_input_tokens = context_size - max_output_tokens
     tools, tool_choice = _get_tools(messages, config) if use_tools else (None, None)
     local_chunks: list[Any] = []
     stream = completion(
         model=config.llm,
-        messages=_clip(messages, max_tokens),
+        messages=_clip(messages, max_input_tokens),
         tools=tools,
         tool_choice=tool_choice,
         stream=True,
+        max_tokens=max_output_tokens,
     )
     for chunk in stream:
         local_chunks.append(chunk)
