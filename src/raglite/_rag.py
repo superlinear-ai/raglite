@@ -41,39 +41,38 @@ Provide a direct answer to the question without referencing how the information 
 
 SEARCH_AGENT_PROMPT = """
 You are an expert research assistant that helps retrieve the necessary information to answer a user's question.
-You have access to a search tool that can query a knowledge base of documents. Each time you call the tool, you will receive a set of relevant document chunks as context.
-You may perform up to {allowed_iterations} iterations. In each iteration, you may issue up to {max_questions_per_iteration} search tool queries in parallel.
-
-Your job is to:
-1) Evaluate if the context provided is sufficient to answer the user's question with confidence.
-2) If sufficient, respond with "Context is sufficient" and stop iterating.
-3) If insufficient, reason on which information is still required to answer the question.
-4) Call the search tool with precise, single-faceted questions to retrieve that information from the knowledge base.
-5) Repeat from step 1
-*IMPORTANT*: Your goal is to retrieve the necessary information with AS FEW iterations and tool calls AS POSSIBLE. Be strategic and efficient in your retrieval process.
+You need to use a search tool that queries a knowledge base of documents. Each time you call the tool, you will receive a set of relevant document chunks as context.
+You can use this context to iteratively refine your search and gather more information until you have enough to answer the user's question.
+Once you do, respond with "Context is sufficient" and stop iterating.
+*IMPORTANT*: You MUST iterate AS FEW TIMES AS POSSIBLE. Be strategic and efficient in your retrieval process.
 
 ## Query guidelines (tool calls)
-- Each tool call must be a single, precise question (single facet). Split multi-facets into separate calls.
-- Resolve pronouns and vague references into explicit nouns/entities.
-Compared to prior iterations:
+- Each query must be a short, simple, precise question (single facet).
+- Optimize questions for document retrieval: use keywords, explicit nouns/entities names, dates ...
+- When a tool call does not return any relevant information, pivot your line of questioning.
+Always consider prior asked questions before asking a new one:
     - DO NOT ask the same question twice.
     - DO NOT ask semantically overlapping questions.
 
-## Example
-Original user question: "Which city has a larger population, City A or City B?"
-Reasoning: We need the population of both cities. This is not common knowledge, so we will use the search tool to find this information.
-Iteration 1:
-    - Tool Call 1: "Population of City A"
-    - Tool Call 2: "Population of City B"
-Retrieved information:
-    - "The population of City A is 1,000,000."
-    - "The population of the urban area of City B is 1,200,000"
-Assessment: INSUFFICIENT (urban area population includes city population and surroundings, so we cannot confidently compare)
-Iteration 2:
-    - Tool Call 1: "Population of City B (city proper)"
-Retrieved information:
-    - "The population of the city proper of City B is 900,000."
-Assessment: SUFFICIENT (now we have comparable population figures for both cities)
+## Example of bad questions:
+- "What is the population of City A and City B?" (multi-faceted, not precise)
+- "What is the population of City A?" followed by "What about City B?" (vague question, not optimized for retrieval)
+- "What is the population of City A?" followed by "What is the population of City A?" (same question twice, not strategic)
+- "When did David Gilmour join Pink Floyd and when did Syd Barrett leave? give months/years and reason" (multi-faceted, too complex)
+- "Timeline of The Offspring band lineup changes drummers bassists guitarists with years (James Lilja, Ron Welty, Atom Willard, Pete Parada, Josh Freese, Brandon Pertzborn, Greg K., Todd Morse, Noodles)" (multi-faceted, too complex)
+
+## Example of good questions:
+- "When did David Gilmour join Pink Floyd?" (single-faceted, precise)
+- "Timeline of the Offspring" (optimized for retrieval, can be followed by more specific questions if needed)
+- "What is the population of City A?" in parallel with "What is the population of City B?" (single-faceted, precise, non-repetitive)
+- "When was X born?" instead of "How old is X?" (optimized for retrieval, as age depends on current date)
+""".strip()
+
+NO_TOOLS_FOLLOW_UP_PROMPT = """
+Tools are unavailable for this step.
+Do not call or reference any tool/function.
+Try to answer the question to the best of your ability using only the context provided and your general knowledge.
+If that is not possible, unknowledge it.
 """.strip()
 
 
@@ -295,16 +294,16 @@ def _get_tools(
                 "function": {
                     "name": "search_knowledge_base",
                     "description": (
-                        "Search the knowledge base.\n"
+                        "Search the knowledge base for contextual information needed to answer the user question.\n"
+                        "Use the exact user question as the query to the knowledge base. Only rephrase if necessary for clarity.\n"
                         "IMPORTANT: You MAY not use this function if the question can be answered with common knowledge or straightforward reasoning.\n"
-                        "Reformulate the question to ensure clarity, precision, and specificity."
                     ),
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "query": {
                                 "type": "string",
-                                "description": "The search question.",
+                                "description": "The exact user question. Only add current date information.",
                             },
                         },
                         "required": ["query"],
@@ -349,8 +348,7 @@ def _run_tool(
                 "name": "query_knowledge_base",
                 "description": (
                     "Search the knowledge base with a single faceted question. "
-                    "Each question must be precise and focused on a specific piece of information. "
-                    "Multi-faceted questions that can be split into separate queries are not allowed. \n"
+                    "Multi-faceted questions are not allowed and should be broken down into multiple calls. \n"
                     "Example of a bad question: 'What is the population of City A and the GDP of Country B?'\n"
                     "Example of good questions: 'What is the population of City A?', 'What is the GDP of Country B?'\n"
                 ),
@@ -359,7 +357,7 @@ def _run_tool(
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "A precise, single-faceted question to search for in the knowledge base.",
+                            "description": "A short, precise, single-faceted question.",
                         },
                     },
                     "required": ["query"],
@@ -372,30 +370,26 @@ def _run_tool(
         chunk_spans = []
         iterations = 0
         while True:
+            iterations += 1
             response = completion(
                 model=config.llm,
                 messages=messages,
                 tools=[tool],
-                tool_choice="auto",
+                tool_choice="required" if iterations == 1 else "auto",
             )
             messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
             tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
 
             # check if the tool call is valid
             if tool_calls is not None:
-                messages.extend(
-                    _run_tools(
-                        tool_calls,
-                        lambda spans: chunk_spans.extend(spans),
-                        config,
-                        messages=messages,
-                    )
-                )
+                new_spans: list[ChunkSpan] = []
+                messages.extend(_run_tools(tool_calls, new_spans.extend, config, messages=messages))
+                # check new chunks and extend chunk_spans without duplicates
+                chunk_spans.extend([span for span in new_spans if span not in chunk_spans])
             else:
                 break
 
             # check if we've reached the maximum number of allowed iterations
-            iterations += 1
             if iterations >= config.allowed_iterations:
                 break
 
@@ -470,11 +464,11 @@ def _run_tools(
 
 
 def _stream_rag_response(
-    messages: list[dict[str, str]], config: RAGLiteConfig
+    messages: list[dict[str, str]], config: RAGLiteConfig, *, use_tools: bool = True
 ) -> Generator[str, None, list[Any]]:
     """Stream the RAG response, which may include tool calls for retrieval."""
     max_tokens = get_context_size(config)
-    tools, tool_choice = _get_tools(messages, config)
+    tools, tool_choice = _get_tools(messages, config) if use_tools else (None, None)
     local_chunks: list[Any] = []
     stream = completion(
         model=config.llm,
@@ -504,7 +498,8 @@ def rag(
 
     if tool_calls:
         messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
-        chunks = yield from _stream_rag_response(messages, config)
+        messages.append({"role": "system", "content": NO_TOOLS_FOLLOW_UP_PROMPT})
+        chunks = yield from _stream_rag_response(messages, config, use_tools=False)
         response = stream_chunk_builder(chunks, messages)
         messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
     else:
@@ -542,6 +537,7 @@ async def async_rag(
         # Run the tool calls to retrieve the RAG context and append the output to the message array.
         # TODO: Make this async.
         messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
+        messages.append({"role": "system", "content": NO_TOOLS_FOLLOW_UP_PROMPT})
         # Asynchronously stream the assistant response.
         chunks = []
         async_stream = await acompletion(
