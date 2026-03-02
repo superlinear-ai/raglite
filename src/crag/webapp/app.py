@@ -145,6 +145,9 @@ def _render_notebook_comparison_page() -> None:
             self_query_a = st.checkbox(
                 "Self Query (A)", value=True, key="comparison_page_self_query_a"
             )
+            agentic_a = st.checkbox(
+                "Agentic behavior (A)", value=True, key="comparison_page_agentic_a"
+            )
             rerank_a = st.checkbox("Rerank (A)", value=False, key="comparison_page_rerank_a")
             hybrid_search_a = st.checkbox(
                 "Hybrid Search (A)", value=False, key="comparison_page_hybrid_search_a"
@@ -179,6 +182,9 @@ def _render_notebook_comparison_page() -> None:
             )
             self_query_b = st.checkbox(
                 "Self Query (B)", value=False, key="comparison_page_self_query_b"
+            )
+            agentic_b = st.checkbox(
+                "Agentic behavior (B)", value=False, key="comparison_page_agentic_b"
             )
             rerank_b = st.checkbox("Rerank (B)", value=False, key="comparison_page_rerank_b")
             hybrid_search_b = st.checkbox(
@@ -219,6 +225,7 @@ def _render_notebook_comparison_page() -> None:
                     hybrid_search=hybrid_search_a,
                     capture_logs=True,
                     serialize_chunks=True,
+                    agentic_rag=agentic_a,
                 )
 
                 result_b = run_raglite(
@@ -234,6 +241,7 @@ def _render_notebook_comparison_page() -> None:
                     hybrid_search=hybrid_search_b,
                     capture_logs=True,
                     serialize_chunks=True,
+                    agentic_rag=agentic_b,
                 )
 
                 st.session_state["notebook_comparison_result"] = {

@@ -8,6 +8,7 @@ import json
 import os
 import re
 import time
+import warnings
 from datetime import datetime
 from enum import Enum
 
@@ -20,11 +21,18 @@ from tqdm.auto import tqdm
 from crag.models import OpenAIRAGModel, RAGLiteModel
 from crag.prompts.templates import IN_CONTEXT_EXAMPLES, INSTRUCTIONS
 
+warnings.filterwarnings(
+    "ignore",
+    message=r"Pydantic serializer warnings:.*",
+    category=UserWarning,
+    module=r"pydantic\.main",
+)
+
 UserModel = RAGLiteModel | OpenAIRAGModel
 
 load_dotenv()
 
-TASK = "comparison"  # or "set, comparison, condition"
+TASK = "set"  # or "set, comparison, condition"
 DATASET_PATH = os.getenv(f"EVALUATION_DATASET_PATH_{TASK.upper()}")
 EVALUATION_MODEL_NAME = os.getenv("EVALUATION_MODEL_NAME")
 OPENAI_API_KEY = os.getenv("EVALUATION_API_KEY")
@@ -166,17 +174,38 @@ def generate_predictions(dataset_path, participant_model: UserModel, output_file
     ):
         batch_ground_truths = batch.pop("answer")  # Remove answers from batch and store them
         batch_predictions, _ = participant_model.batch_generate_answer(batch)
+        batch_tool_calls = getattr(participant_model, "last_batch_tool_calls", None)
+        if not isinstance(batch_tool_calls, list) or len(batch_tool_calls) != len(batch_predictions):
+            batch_tool_calls = [None] * len(batch_predictions)
+        batch_subagent_activations = getattr(
+            participant_model, "last_batch_subagent_activations", None
+        )
+        if (
+            not isinstance(batch_subagent_activations, list)
+            or len(batch_subagent_activations) != len(batch_predictions)
+        ):
+            batch_subagent_activations = [None] * len(batch_predictions)
 
         queries.extend(batch["query"])
         ground_truths.extend(batch_ground_truths)
         predictions.extend(batch_predictions)
 
         # append to output file incrementally
-        for q, gt, pred in zip(
-            batch["query"], batch_ground_truths, batch_predictions, strict=False
+        for q, gt, pred, tool_calls, subagent_activations in zip(
+            batch["query"],
+            batch_ground_truths,
+            batch_predictions,
+            batch_tool_calls,
+            batch_subagent_activations,
+            strict=False,
         ):
             with open(output_file, "a") as f:
-                json_line = json.dumps({"query": q, "ground_truth": gt, "prediction": pred})
+                row = {"query": q, "ground_truth": gt, "prediction": pred}
+                if tool_calls is not None:
+                    row["tool_calls"] = tool_calls
+                if subagent_activations is not None:
+                    row["subagent_activations"] = subagent_activations
+                json_line = json.dumps(row)
                 f.write(json_line + "\n")
 
         time.sleep(1)  # avoid rate limiting
@@ -299,10 +328,10 @@ if __name__ == "__main__":
     model_id = "raglite"
     participant_model = RAGLiteModel(
         TASK,
-        use_self_query=True,
+        use_self_query=False,
         use_rerank=False,
         use_hybrid_search=False,
-        use_agentic_rag=False,
+        use_agentic_rag=True,
     )
     # participant_model.ingest_documents()
 
@@ -314,7 +343,7 @@ if __name__ == "__main__":
     )
 
     #### Evaluate Predictions
-    save_file_name = f"{datetime.now(tz=tz).strftime('%Y%m%d-%H%M%S')}_{model_id}_selfQ_newMeta.jsonl"
+    save_file_name = f"{datetime.now(tz=tz).strftime('%Y%m%d-%H%M%S')}_{model_id}_agentic.jsonl"
     evaluation_results = evaluate_predictions(
         queries, ground_truths, predictions, EVALUATION_MODEL_NAME, save_file_name
     )

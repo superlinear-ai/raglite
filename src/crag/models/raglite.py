@@ -7,12 +7,12 @@
 import os
 import time
 from dataclasses import replace
-from pathlib import Path
-from typing import Any, Annotated
 from enum import Enum
-from pydantic import Field
+from pathlib import Path
+from typing import Annotated, Any
 
 from dotenv import load_dotenv
+from pydantic import Field
 from rerankers import Reranker
 from tqdm import tqdm
 
@@ -105,6 +105,10 @@ class RAGLiteModel:
         self.use_rerank = use_rerank
         self.use_hybrid_search = use_hybrid_search
         self.use_agentic_rag = use_agentic_rag
+        self.tool_calls_per_question: list[int] = []
+        self.last_batch_tool_calls: list[int] = []
+        self.subagent_activations_per_question: list[list[dict[str, Any]]] = []
+        self.last_batch_subagent_activations: list[list[dict[str, Any]]] = []
 
         # set up RAGLite configuration
         self.config = RAGLiteConfig(
@@ -267,6 +271,8 @@ class RAGLiteModel:
 
         answers = []
         chunks = []
+        batch_tool_calls: list[int] = []
+        batch_subagent_activations: list[list[dict[str, Any]]] = []
         for query, query_time in tqdm(
             zip(queries, query_times, strict=True),
             desc="Batch processing...",
@@ -302,12 +308,35 @@ class RAGLiteModel:
                 messages.append(add_context(user_prompt=query, context=chunk_spans, config=self.config))
 
             # Stream the RAG response and append it to the message history
-            stream = rag(messages, config=self.config, on_retrieval=lambda x: chunk_spans.extend(x) if self.use_agentic_rag else None)
+            query_subagent_activations: list[dict[str, Any]] = []
+            stream = rag(
+                messages,
+                config=self.config,
+                on_retrieval=(
+                    (
+                        lambda retrieved_chunk_spans, query_chunk_spans=chunk_spans: query_chunk_spans.extend(
+                            retrieved_chunk_spans
+                        )
+                    )
+                    if self.use_agentic_rag
+                    else None
+                ),
+                on_subagent_activation=(
+                    query_subagent_activations.append if self.use_agentic_rag else None
+                ),
+            )
             answer = ""
             for update in stream:
                 answer += update
 
             answers.append(answer)
             chunks.append(chunk_spans)
+            batch_tool_calls.append(sum(message.get("role") == "tool" for message in messages))
+            batch_subagent_activations.append(query_subagent_activations)
+
+        self.last_batch_tool_calls = batch_tool_calls
+        self.tool_calls_per_question.extend(batch_tool_calls)
+        self.last_batch_subagent_activations = batch_subagent_activations
+        self.subagent_activations_per_question.extend(batch_subagent_activations)
 
         return answers, chunks

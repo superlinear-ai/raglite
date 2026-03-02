@@ -1,6 +1,7 @@
 """Test RAGLite's RAG functionality."""
 
 import json
+from types import SimpleNamespace
 
 from raglite import (
     RAGLiteConfig,
@@ -8,7 +9,7 @@ from raglite import (
     retrieve_context,
 )
 from raglite._database import ChunkSpan
-from raglite._rag import rag
+from raglite._rag import _extract_tool_query, _run_tools, rag
 
 
 def test_rag_manual(raglite_test_config: RAGLiteConfig) -> None:
@@ -78,3 +79,56 @@ def test_retrieve_context_self_query(raglite_test_config: RAGLiteConfig) -> None
         assert chunk_span.document.metadata_.get("author") == ["Albert Einstein"], (
             f"Expected author='Albert Einstein', got {chunk_span.document.metadata_.get('author')}"
         )
+
+
+def test_extract_tool_query() -> None:
+    """Extract tool query from serialized function arguments."""
+    assert _extract_tool_query('{"query":"When was Einstein born?"}') == "When was Einstein born?"
+    assert _extract_tool_query('{"query": 123}') is None
+    assert _extract_tool_query("{") is None
+
+
+def test_run_tools_calls_on_subagent_activation(monkeypatch) -> None:
+    """Trigger callback once per search subagent activation."""
+    subagent_activation = {
+        "subagent": "search_knowledge_base",
+        "activation_id": "search_call",
+        "entry_query": "Where was Einstein born?",
+        "tool_call_count": 2,
+        "questions": ["Where was Einstein born?", "What city is Ulm in?"],
+    }
+
+    def fake_run_tool(tool_call, config):  # noqa: ANN001
+        if tool_call.function.name == "search_knowledge_base":
+            return tool_call.id, [], subagent_activation
+        return tool_call.id, [], None
+
+    monkeypatch.setattr("raglite._rag._run_tool", fake_run_tool)
+    config = RAGLiteConfig(llm="gpt-4o-mini", embedder="text-embedding-3-small", reranker=None)
+
+    tool_calls = [
+        SimpleNamespace(
+            id="search_call",
+            function=SimpleNamespace(
+                name="search_knowledge_base", arguments='{"query":"Where was Einstein born?"}'
+            ),
+        ),
+        SimpleNamespace(
+            id="direct_query_call",
+            function=SimpleNamespace(name="query_knowledge_base", arguments='{"query":"Ulm"}'),
+        ),
+    ]
+    recorded_subagent_activations: list[dict[str, object]] = []
+
+    tool_messages = _run_tools(
+        tool_calls,  # type: ignore[arg-type]
+        on_retrieval=None,
+        config=config,
+        messages=[],
+        on_subagent_activation=recorded_subagent_activations.append,
+        max_workers=1,
+    )
+
+    expected_tool_messages = 2
+    assert len(tool_messages) == expected_tool_messages
+    assert recorded_subagent_activations == [subagent_activation]

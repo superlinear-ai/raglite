@@ -35,7 +35,7 @@ def run_raglite(
     stdout_capture = StringIO()
     stderr_capture = StringIO()
 
-    def _execute() -> tuple[list[Any], str]:
+    def _execute() -> tuple[list[Any], str, int, list[dict[str, Any]]]:
         messages = [
             {
                 "role": "system",
@@ -58,20 +58,23 @@ def run_raglite(
             messages.append(add_context(user_prompt=query, context=chunk_spans, config=model.config))
 
         answer = ""
+        subagent_activations: list[dict[str, Any]] = []
         stream = rag(
             messages,
             config=model.config,
             on_retrieval=chunk_spans.extend if model.use_agentic_rag else None,
+            on_subagent_activation=subagent_activations.append if model.use_agentic_rag else None,
         )
         for update in stream:
             answer += update
-        return chunk_spans, answer
+        tool_calls = sum(message.get("role") == "tool" for message in messages)
+        return chunk_spans, answer, tool_calls, subagent_activations
 
     if capture_logs:
         with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
-            chunk_spans, answer = _execute()
+            chunk_spans, answer, tool_calls, subagent_activations = _execute()
     else:
-        chunk_spans, answer = _execute()
+        chunk_spans, answer, tool_calls, subagent_activations = _execute()
 
     chunks: list[Any]
     if serialize_chunks:
@@ -85,6 +88,8 @@ def run_raglite(
         "hybrid_search": hybrid_search,
         "agentic_rag": agentic_rag,
         "answer": answer,
+        "tool_calls": tool_calls,
+        "subagent_activations": subagent_activations,
         "chunks": chunks,
         "stdout": stdout_capture.getvalue() if capture_logs else "",
         "stderr": stderr_capture.getvalue() if capture_logs else "",
