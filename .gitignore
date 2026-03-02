@@ -78,3 +78,6 @@ uv.lock
 
 # VS Code
 .vscode/
+
+# evals
+evals/
