@@ -259,3 +259,26 @@ def test_sub_agent_deduplicates_chunk_spans_by_chunk_id(
         [chunk.id for chunk in chunk_span.chunks] for chunk_span in chunk_spans
     ]
     assert actual_chunk_id_sequences == [["A", "B"], ["B", "C"]]
+
+
+def test_rag_does_not_mutate_caller_messages_on_stream_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep caller messages unchanged when an exception happens mid-rag."""
+    config = RAGLiteConfig(
+        llm="gpt-5-mini",
+        embedder="text-embedding-3-small",
+        db_url="duckdb:///:memory:",
+    )
+    messages = [{"role": "user", "content": "Hello"}]
+    original_messages = list(messages)
+
+    def fake_stream(*_: Any, **__: Any) -> Any:
+        error_message = "stream failure"
+        raise RuntimeError(error_message)
+
+    monkeypatch.setattr("raglite._rag._stream_rag_response", fake_stream)
+
+    with pytest.raises(RuntimeError, match="stream failure"):
+        list(rag(messages, config=config))
+    assert messages == original_messages

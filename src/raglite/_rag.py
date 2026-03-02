@@ -510,27 +510,28 @@ def rag(
     config: RAGLiteConfig,
 ) -> Iterator[str]:
     """Run retrieval-augmented generation with the given messages and config."""
-    chunks = yield from _stream_rag_response(messages, config)
-    response = stream_chunk_builder(chunks, messages)
-    messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+    working = list(messages)
+    chunks = yield from _stream_rag_response(working, config)
+    response = stream_chunk_builder(chunks, working)
+    working.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
     tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
 
     if tool_calls:
-        messages.extend(
+        working.extend(
             _run_tools(
                 tool_calls,
                 on_retrieval,
                 config,
-                messages=messages,
+                messages=working,
                 metadata_filter=metadata_filter,
             )
         )
-        messages.append({"role": "system", "content": NO_TOOLS_FOLLOW_UP_PROMPT})
-        chunks = yield from _stream_rag_response(messages, config, use_tools=False)
-        response = stream_chunk_builder(chunks, messages)
-        messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
-    else:
-        messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+        follow_up_messages = [*working, {"role": "system", "content": NO_TOOLS_FOLLOW_UP_PROMPT}]
+        chunks = yield from _stream_rag_response(follow_up_messages, config, use_tools=False)
+        response = stream_chunk_builder(chunks, follow_up_messages)
+        working.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+
+    messages.extend(working[len(messages) :])
 
 
 async def async_rag(
@@ -542,11 +543,12 @@ async def async_rag(
 ) -> AsyncIterator[str]:
     # If the final message does not contain RAG context, get a tool to search the knowledge base.
     max_tokens = get_context_size(config)
-    tools, tool_choice = _get_tools(messages, config)
+    working = list(messages)
+    tools, tool_choice = _get_tools(working, config)
     # Asynchronously stream the LLM response, which is either a tool call or an assistant response.
     async_stream = await acompletion(
         model=config.llm,
-        messages=_clip(messages, max_tokens),
+        messages=_clip(working, max_tokens),
         tools=tools,
         tool_choice=tool_choice,
         stream=True,
@@ -557,32 +559,32 @@ async def async_rag(
         if isinstance(token := chunk.choices[0].delta.content, str):
             yield token
     # Check if there are tools to be called.
-    response = stream_chunk_builder(chunks, messages)
+    response = stream_chunk_builder(chunks, working)
+    working.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
     tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
     if tool_calls:
-        # Add the tool call requests to the message array.
-        messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
         # Run the tool calls to retrieve the RAG context and append the output to the message array.
         # TODO: Make this async.
-        messages.extend(
+        working.extend(
             _run_tools(
                 tool_calls,
                 on_retrieval,
                 config,
-                messages=messages,
+                messages=working,
                 metadata_filter=metadata_filter,
             )
         )
-        messages.append({"role": "system", "content": NO_TOOLS_FOLLOW_UP_PROMPT})
+        follow_up_messages = [*working, {"role": "system", "content": NO_TOOLS_FOLLOW_UP_PROMPT}]
         # Asynchronously stream the assistant response.
         chunks = []
         async_stream = await acompletion(
-            model=config.llm, messages=_clip(messages, max_tokens), stream=True
+            model=config.llm, messages=_clip(follow_up_messages, max_tokens), stream=True
         )
         async for chunk in async_stream:
             chunks.append(chunk)
             if isinstance(token := chunk.choices[0].delta.content, str):
                 yield token
-    # Append the assistant response to the message array.
-    response = stream_chunk_builder(chunks, messages)
-    messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+        response = stream_chunk_builder(chunks, follow_up_messages)
+        working.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+
+    messages.extend(working[len(messages) :])
