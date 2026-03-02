@@ -360,8 +360,9 @@ def _run_tool(
             },
         }
 
-        # start iterating
-        chunk_spans = []
+        # Start iterating and keep only chunk spans that introduce at least one new chunk ID.
+        chunk_spans: list[ChunkSpan] = []
+        seen_chunk_ids: set[str] = set()
         iterations = 0
         while True:
             iterations += 1
@@ -376,18 +377,25 @@ def _run_tool(
 
             # check if the tool call is valid
             if tool_calls is not None:
-                new_spans: list[ChunkSpan] = []
+                retrieved_chunk_spans: list[ChunkSpan] = []
                 messages.extend(
                     _run_tools(
                         tool_calls,
-                        new_spans.extend,
+                        retrieved_chunk_spans.extend,
                         config,
                         messages=messages,
                         metadata_filter=metadata_filter,
                     )
                 )
-                # check new chunks and extend chunk_spans without duplicates
-                chunk_spans.extend([span for span in new_spans if span not in chunk_spans])
+                # Keep a span if it contains at least one chunk we have not seen before.
+                novel_chunk_spans = [
+                    chunk_span
+                    for chunk_span in retrieved_chunk_spans
+                    if any(chunk.id not in seen_chunk_ids for chunk in chunk_span.chunks)
+                ]
+                chunk_spans.extend(novel_chunk_spans)
+                for chunk_span in novel_chunk_spans:
+                    seen_chunk_ids.update(chunk.id for chunk in chunk_span.chunks)
             else:
                 break
 

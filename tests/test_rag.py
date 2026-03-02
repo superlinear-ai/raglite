@@ -191,3 +191,71 @@ def test_query_tool_call_passes_metadata_filter_to_retrieve_context(
     assert tool_id == "query_call_id"
     assert chunk_spans == []
     assert observed_kwargs["metadata_filter"] == metadata_filter
+
+
+def test_sub_agent_deduplicates_chunk_spans_by_chunk_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Drop fully redundant spans and keep partially novel spans in sub-agent search."""
+    config = RAGLiteConfig(
+        llm="gpt-5-mini",
+        embedder="text-embedding-3-small",
+        db_url="duckdb:///:memory:",
+    )
+    search_tool_call = SimpleNamespace(
+        function=SimpleNamespace(
+            name="search_knowledge_base",
+            arguments=json.dumps({"query": "Explain relativity."}),
+        ),
+        id="search_call_id",
+    )
+
+    def _make_response(tool_calls: list[Any] | None) -> Any:
+        message = SimpleNamespace(
+            tool_calls=tool_calls,
+            to_dict=lambda: {"role": "assistant", "content": ""},
+        )
+        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+    nested_tool_call = SimpleNamespace(
+        function=SimpleNamespace(
+            name="query_knowledge_base",
+            arguments=json.dumps({"query": "Q"}),
+        ),
+        id="query_call_id",
+    )
+    completion_responses = [
+        _make_response([nested_tool_call]),
+        _make_response([nested_tool_call]),
+        _make_response(None),
+    ]
+
+    def fake_completion(**_: Any) -> Any:
+        return completion_responses.pop(0)
+
+    def make_chunk_span(*chunk_ids: str) -> Any:
+        return SimpleNamespace(chunks=[SimpleNamespace(id=chunk_id) for chunk_id in chunk_ids])
+
+    first_iteration_spans = [
+        make_chunk_span("A", "B"),
+    ]
+    second_iteration_spans = [
+        make_chunk_span("A", "B"),
+        make_chunk_span("B", "C"),
+    ]
+    tool_results_by_iteration = [first_iteration_spans, second_iteration_spans]
+
+    def fake_run_tools(*args: Any, **_: Any) -> list[dict[str, Any]]:
+        on_retrieval = args[1]
+        on_retrieval(tool_results_by_iteration.pop(0))
+        return []
+
+    monkeypatch.setattr("raglite._rag.completion", fake_completion)
+    monkeypatch.setattr("raglite._rag._run_tools", fake_run_tools)
+
+    _, chunk_spans = _run_tool(search_tool_call, config)
+
+    actual_chunk_id_sequences = [
+        [chunk.id for chunk in chunk_span.chunks] for chunk_span in chunk_spans
+    ]
+    assert actual_chunk_id_sequences == [["A", "B"], ["B", "C"]]
