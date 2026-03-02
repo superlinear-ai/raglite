@@ -48,7 +48,7 @@ from raglite._typing import (
 MetadataJSON = JSON().with_variant(JSONB(), "postgresql")
 
 
-def _adapt_metadata(metadata: Any) -> dict[str, MetadataValue | list[MetadataValue]]:
+def _adapt_metadata(metadata: Any) -> dict[str, list[MetadataValue]]:
     """Adapt metadata to the format expected by the database."""
     if not metadata:
         return {}

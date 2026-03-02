@@ -1,7 +1,6 @@
 """Search and retrieve chunks."""
 
 import contextlib
-import json
 import logging
 import re
 import string
@@ -12,7 +11,6 @@ from typing import Any, ClassVar
 import numpy as np
 from langdetect import LangDetectException, detect
 from pydantic import BaseModel, Field, create_model
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import joinedload
 from sqlmodel import Session, and_, col, func, or_, select, text
 
@@ -28,6 +26,7 @@ from raglite._database import (
 from raglite._embed import embed_strings
 from raglite._extract import extract_with_llm
 from raglite._insert import _get_database_metadata
+from raglite._metadata_filter import build_metadata_filter_condition, build_metadata_filter_sql
 from raglite._typing import BasicSearchMethod, ChunkId, FloatVector, MetadataFilter, MetadataValue
 
 logger = logging.getLogger(__name__)
@@ -80,18 +79,12 @@ def vector_search(
         else:
 
             def _apply_metadata_filter(query_builder: Any) -> Any:
-                if (dialect := session.get_bind().dialect.name) == "postgresql":
-                    # Always cast to JSONB before using @> operator.
-                    return query_builder.where(
-                        col(Chunk.metadata_).cast(JSONB).op("@>")(metadata_filter)  # type: ignore[attr-defined]
-                    )
-                if dialect == "duckdb":
-                    return query_builder.where(
-                        func.json_contains(
-                            col(Chunk.metadata_), func.json(json.dumps(metadata_filter))
-                        )
-                    )
-                return query_builder
+                condition = build_metadata_filter_condition(
+                    Chunk.metadata_,
+                    metadata_filter,
+                    dialect=session.get_bind().dialect.name,
+                )
+                return query_builder.where(condition) if condition is not None else query_builder
 
             # Count how many results match the given metadata filter.
             metadata_count_query = _apply_metadata_filter(
@@ -188,9 +181,11 @@ def keyword_search(
 
             params = {"tsv_query": tsv_query, "limit": num_results}
             if metadata_filter:
-                # Always cast to JSONB before using @> operator
-                base_sql += " AND metadata::jsonb @> :metadata_filter"
-                params["metadata_filter"] = json.dumps(metadata_filter)
+                metadata_filter_sql, metadata_filter_params = build_metadata_filter_sql(
+                    metadata_filter, dialect="postgresql"
+                )
+                base_sql += metadata_filter_sql
+                params.update(metadata_filter_params)
 
             base_sql += """
                 ORDER BY score DESC
@@ -211,8 +206,11 @@ def keyword_search(
 
             params = {"query": query, "limit": num_results}
             if metadata_filter:
-                base_sql += " AND json_contains(metadata, JSON(:metadata_filter))"
-                params["metadata_filter"] = json.dumps(metadata_filter)
+                metadata_filter_sql, metadata_filter_params = build_metadata_filter_sql(
+                    metadata_filter, dialect="duckdb"
+                )
+                base_sql += metadata_filter_sql
+                params.update(metadata_filter_params)
 
             base_sql += """
                 ) sq
@@ -434,23 +432,32 @@ def search_and_rerank_chunk_spans(  # noqa: PLR0913
 
 
 SELF_QUERY_PROMPT = """
-You are an assistant that extracts metadata filters from user queries to help search a knowledge base.
+You are an expert assistant that extracts metadata filters from user queries to help search a knowledge base.
 
 Instructions:
-1. For each metadata field, only populate it if the query explicitly and unambiguously mentions a specific allowed value.
-2. If the query is general, ambiguous, or does not mention a field, set it to None.
-3. Do NOT infer values from common knowledge or context.
-4. For each field, return ONLY the numeric ID(s) from the allowed options below. Do NOT return labels or text.
+1. For each metadata field, populate it only if the query can be reasonably mapped to one or more allowed values.
+2. If a field clearly matches multiple allowed values, return all corresponding numeric IDs for that field.
+3. If the query is general, ambiguous, or does not clearly map to any allowed value for a field, return None for that field.
+4. For each populated field, return only the numeric ID(s) defined in the allowed options. Do not return text labels. Do not infer or invent IDs.
 5. Output your answer as a JSON object with field names as keys and lists of IDs or None as values.
 
-Example:
+Examples:
+
 Allowed options:
 - category: {0: "Technology", 1: "Health", 2: "Finance"}
 - region: {0: "Europe", 1: "Asia", 2: "Americas"}
 
-Query: "Show me the latest news in Technology from Asia."
-Output:
-{"category": [0], "region": [1]}
+Query: "Show me the latest news in Technology from Asia and Europe."
+Reasoning: The query explicitly mentions "Technology", which matches category ID 0. It also explicitly mentions "Asia" (region ID 1) and "Europe" (region ID 0). Both fields have clear matches.
+Output: {"category": [0], "region": [1, 0]}
+
+Query: "Show me Health articles."
+Reasoning: The query explicitly mentions "Health", which matches category ID 1. The query does not mention any region, so region is None.
+Output: {"category": [1], "region": null}
+
+Query: "What is the price of a Bugatti Chiron?"
+Reasoning: The query does not mention any category ("Technology", "Health", or "Finance") or any region ("Europe", "Asia", or "Americas"). No fields match.
+Output: {"category": null, "region": null}
 """.strip()
 
 
@@ -495,19 +502,24 @@ def _self_query(
             return_type=metadata_filter_model,
             user_prompt=query,
             config=config,
-            temperature=0,
+            temperature=0.0,  # Deterministic output if the model allows
         )
     except ValueError as e:
         logger.debug("Failed to extract metadata filter: %s", e)
         return {}
     else:
-        metadata_filter = result.model_dump(exclude_none=True)
-        # Convert from field IDs to actual metadata values.
-        for field, value_ids in metadata_filter.items():
-            if field in field_ids_mapping:
-                metadata_filter[field] = [
-                    field_ids_mapping[field].get(value_id)
+        # Convert the extracted metadata filter from IDs back to actual metadata values.
+        metadata_filter_by_id = result.model_dump(exclude_none=True)
+        metadata_filter: dict[str, list[MetadataValue] | MetadataValue] = {}
+        for field, value_ids in metadata_filter_by_id.items():
+            value_mapping = field_ids_mapping.get(field, {})
+            metadata_values = list(
+                dict.fromkeys(
+                    value_mapping[value_id]
                     for value_id in value_ids
-                    if value_id in field_ids_mapping[field]
-                ]
+                    if value_id in value_mapping  # handle potential out-of-range IDs gracefully
+                )
+            )
+            if metadata_values:
+                metadata_filter[field] = metadata_values
         return metadata_filter
