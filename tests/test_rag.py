@@ -1,6 +1,10 @@
 """Test RAGLite's RAG functionality."""
 
 import json
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any
+
+import pytest
 
 from raglite import (
     RAGLiteConfig,
@@ -8,7 +12,10 @@ from raglite import (
     retrieve_context,
 )
 from raglite._database import ChunkSpan
-from raglite._rag import rag
+from raglite._rag import _run_tool, rag
+
+if TYPE_CHECKING:
+    from raglite._typing import MetadataFilter
 
 
 def test_rag_manual(raglite_test_config: RAGLiteConfig) -> None:
@@ -83,3 +90,104 @@ def test_retrieve_context_self_query(raglite_test_config: RAGLiteConfig) -> None
         assert chunk_span.document.metadata_.get("author") == ["Albert Einstein"], (
             f"Expected author='Albert Einstein', got {chunk_span.document.metadata_.get('author')}"
         )
+
+
+def test_agentic_search_threads_metadata_filter_to_nested_tool_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pass metadata filters from search_knowledge_base down to nested tool calls."""
+    config = RAGLiteConfig(
+        llm="gpt-5-mini",
+        embedder="text-embedding-3-small",
+        db_url="duckdb:///:memory:",
+    )
+    metadata_filter: MetadataFilter = {"topic": ["Physics"]}
+    nested_tool_call = SimpleNamespace(
+        function=SimpleNamespace(
+            name="query_knowledge_base",
+            arguments=json.dumps({"query": "What is time dilation?"}),
+        ),
+        id="query_call_id",
+    )
+    search_tool_call = SimpleNamespace(
+        function=SimpleNamespace(
+            name="search_knowledge_base",
+            arguments=json.dumps({"query": "Explain Einstein's time dilation."}),
+        ),
+        id="search_call_id",
+    )
+
+    def _make_response(
+        tool_calls: list[Any] | None,
+    ) -> Any:
+        message = SimpleNamespace(
+            tool_calls=tool_calls,
+            to_dict=lambda: {"role": "assistant", "content": ""},
+        )
+        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+    completion_responses = [
+        _make_response([nested_tool_call]),
+        _make_response(None),
+    ]
+
+    def fake_completion(**_: Any) -> Any:
+        return completion_responses.pop(0)
+
+    observed_metadata_filters: list[MetadataFilter | None] = []
+
+    def fake_run_tools(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        tool_calls = args[0]
+        assert len(tool_calls) == 1
+        assert tool_calls[0].function.name == "query_knowledge_base"
+        observed_metadata_filters.append(kwargs.get("metadata_filter"))
+        return []
+
+    monkeypatch.setattr("raglite._rag.completion", fake_completion)
+    monkeypatch.setattr("raglite._rag._run_tools", fake_run_tools)
+
+    tool_id, chunk_spans = _run_tool(
+        search_tool_call,
+        config,
+        metadata_filter=metadata_filter,
+    )
+
+    assert tool_id == "search_call_id"
+    assert chunk_spans == []
+    assert observed_metadata_filters == [metadata_filter]
+
+
+def test_query_tool_call_passes_metadata_filter_to_retrieve_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pass metadata_filter to retrieve_context when running query_knowledge_base."""
+    config = RAGLiteConfig(
+        llm="gpt-5-mini",
+        embedder="text-embedding-3-small",
+        db_url="duckdb:///:memory:",
+    )
+    metadata_filter: MetadataFilter = {"type": ["Paper"], "author": ["Albert Einstein"]}
+    tool_call = SimpleNamespace(
+        function=SimpleNamespace(
+            name="query_knowledge_base",
+            arguments=json.dumps({"query": "How is simultaneity defined?"}),
+        ),
+        id="query_call_id",
+    )
+    observed_kwargs: dict[str, Any] = {}
+
+    def fake_retrieve_context(**kwargs: Any) -> list[ChunkSpan]:
+        observed_kwargs.update(kwargs)
+        return []
+
+    monkeypatch.setattr("raglite._rag.retrieve_context", fake_retrieve_context)
+
+    tool_id, chunk_spans = _run_tool(
+        tool_call,
+        config,
+        metadata_filter=metadata_filter,
+    )
+
+    assert tool_id == "query_call_id"
+    assert chunk_spans == []
+    assert observed_kwargs["metadata_filter"] == metadata_filter

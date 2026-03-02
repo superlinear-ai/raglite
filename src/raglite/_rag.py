@@ -314,6 +314,8 @@ def _get_tools(
 def _run_tool(
     tool_call: ChatCompletionMessageToolCall,
     config: RAGLiteConfig,
+    *,
+    metadata_filter: MetadataFilter | None = None,
 ) -> tuple[str, list[ChunkSpan]]:
     """
     Run a single tool to search the knowledge base.
@@ -375,7 +377,15 @@ def _run_tool(
             # check if the tool call is valid
             if tool_calls is not None:
                 new_spans: list[ChunkSpan] = []
-                messages.extend(_run_tools(tool_calls, new_spans.extend, config, messages=messages))
+                messages.extend(
+                    _run_tools(
+                        tool_calls,
+                        new_spans.extend,
+                        config,
+                        messages=messages,
+                        metadata_filter=metadata_filter,
+                    )
+                )
                 # check new chunks and extend chunk_spans without duplicates
                 chunk_spans.extend([span for span in new_spans if span not in chunk_spans])
             else:
@@ -391,6 +401,8 @@ def _run_tool(
     if tool_call.function.name == "query_knowledge_base":
         kwargs = json.loads(tool_call.function.arguments)
         kwargs["config"] = config
+        if metadata_filter is not None:
+            kwargs["metadata_filter"] = metadata_filter
         chunk_spans = retrieve_context(**kwargs)
         # Return ID and data so the main function can aggregate and limit them
         return tool_call.id, chunk_spans
@@ -404,15 +416,18 @@ def _run_tools(
     config: RAGLiteConfig,
     *,
     messages: list[dict[str, str]] | None,
-    max_workers: int | None = None,
+    metadata_filter: MetadataFilter | None = None,
 ) -> list[dict[str, Any]]:
     """Run tools in parallel, limit the total context, then format messages."""
     tool_chunk_spans: dict[str, list[ChunkSpan]] = {}
 
     # 1. Parallel Execution
     # We use the _run_tool helper to fetch data concurrently
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(_run_tool, tool_call, config) for tool_call in tool_calls]
+    with ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(_run_tool, tool_call, config, metadata_filter=metadata_filter)
+            for tool_call in tool_calls
+        ]
 
         # Collect results as they finish
         try:
@@ -483,6 +498,7 @@ def rag(
     messages: list[dict[str, str]],
     *,
     on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
+    metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig,
 ) -> Iterator[str]:
     """Run retrieval-augmented generation with the given messages and config."""
@@ -492,7 +508,15 @@ def rag(
     tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
 
     if tool_calls:
-        messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
+        messages.extend(
+            _run_tools(
+                tool_calls,
+                on_retrieval,
+                config,
+                messages=messages,
+                metadata_filter=metadata_filter,
+            )
+        )
         messages.append({"role": "system", "content": NO_TOOLS_FOLLOW_UP_PROMPT})
         chunks = yield from _stream_rag_response(messages, config, use_tools=False)
         response = stream_chunk_builder(chunks, messages)
@@ -505,6 +529,7 @@ async def async_rag(
     messages: list[dict[str, str]],
     *,
     on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
+    metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig,
 ) -> AsyncIterator[str]:
     # If the final message does not contain RAG context, get a tool to search the knowledge base.
@@ -531,7 +556,15 @@ async def async_rag(
         messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
         # Run the tool calls to retrieve the RAG context and append the output to the message array.
         # TODO: Make this async.
-        messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
+        messages.extend(
+            _run_tools(
+                tool_calls,
+                on_retrieval,
+                config,
+                messages=messages,
+                metadata_filter=metadata_filter,
+            )
+        )
         messages.append({"role": "system", "content": NO_TOOLS_FOLLOW_UP_PROMPT})
         # Asynchronously stream the assistant response.
         chunks = []
