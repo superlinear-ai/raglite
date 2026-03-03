@@ -90,14 +90,13 @@ def retrieve_context(
         query, num_results=num_chunks, metadata_filter=metadata_filter, config=config
     )
     # Convert results to chunk spans.
-    chunk_spans = []
     if isinstance(results, tuple):
-        chunk_spans = retrieve_chunk_spans(results[0], config=config)
-    elif all(isinstance(result, Chunk) for result in results):
-        chunk_spans = retrieve_chunk_spans(results, config=config)  # type: ignore[arg-type]
-    elif all(isinstance(result, ChunkSpan) for result in results):
-        chunk_spans = results  # type: ignore[assignment]
-    return chunk_spans
+        return retrieve_chunk_spans(results[0], config=config)
+    if all(isinstance(result, Chunk) for result in results):
+        return retrieve_chunk_spans(results, config=config)  # type: ignore[arg-type]
+    if all(isinstance(result, ChunkSpan) for result in results):
+        return list(results)  # type: ignore[arg-type]
+    return []
 
 
 def _count_tokens(item: str) -> int:
@@ -138,20 +137,15 @@ def _cutoff_idx(token_counts: list[int], max_tokens: int, *, reverse: bool = Fal
 
 def _get_token_counts(items: Sequence[str | ChunkSpan | Mapping[str, str]]) -> list[int]:
     """Compute token counts for a list of items."""
-    return [
-        (
-            _count_tokens(item.to_xml())
-            if isinstance(item, ChunkSpan)
-            else (
-                _count_tokens(json.dumps(item, ensure_ascii=False))
-                if isinstance(item, dict)
-                else _count_tokens(item)
-                if isinstance(item, str)
-                else 0
-            )
-        )
-        for item in items
-    ]
+    token_counts: list[int] = []
+    for item in items:
+        if isinstance(item, ChunkSpan):
+            token_counts.append(_count_tokens(item.to_xml()))
+        elif isinstance(item, Mapping):
+            token_counts.append(_count_tokens(json.dumps(item, ensure_ascii=False)))
+        else:
+            token_counts.append(_count_tokens(item))
+    return token_counts
 
 
 def _limit_chunkspans(
@@ -327,9 +321,7 @@ def _run_tool(
         messages = [
             {
                 "role": "system",
-                "content": SEARCH_AGENT_PROMPT.format(
-                    allowed_iterations=config.allowed_iterations, max_questions_per_iteration=3
-                ),
+                "content": SEARCH_AGENT_PROMPT,
             },
             {
                 "role": "user",
@@ -363,14 +355,12 @@ def _run_tool(
         # Start iterating and keep only chunk spans that introduce at least one new chunk ID.
         chunk_spans: list[ChunkSpan] = []
         seen_chunk_ids: set[str] = set()
-        iterations = 0
-        while True:
-            iterations += 1
+        for iteration_index in range(max(1, config.allowed_iterations)):
             response = completion(
                 model=config.llm,
                 messages=messages,
                 tools=[tool],
-                tool_choice="required" if iterations == 1 else "auto",
+                tool_choice="required" if iteration_index == 0 else "auto",
             )
             messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
             tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
@@ -397,10 +387,6 @@ def _run_tool(
                 for chunk_span in novel_chunk_spans:
                     seen_chunk_ids.update(chunk.id for chunk in chunk_span.chunks)
             else:
-                break
-
-            # check if we've reached the maximum number of allowed iterations
-            if iterations >= config.allowed_iterations:
                 break
 
         # Return ID and data so the main function can aggregate and limit them
@@ -459,14 +445,13 @@ def _run_tools(
         chunk_spans = tool_chunk_spans.get(tool_id, [])
 
         # Create the final message structure
+        documents = ", ".join(
+            chunk_span.to_json(index=i + 1) for i, chunk_span in enumerate(chunk_spans)
+        )
         tool_messages.append(
             {
                 "role": "tool",
-                "content": '{{"documents": [{elements}]}}'.format(
-                    elements=", ".join(
-                        chunk_span.to_json(index=i + 1) for i, chunk_span in enumerate(chunk_spans)
-                    )
-                ),
+                "content": f'{{"documents": [{documents}]}}',
                 "tool_call_id": tool_id,
             }
         )
