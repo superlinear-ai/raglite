@@ -60,6 +60,7 @@ Always consider prior asked questions before asking a new one:
 - "What is the population of City A?" followed by "What is the population of City A?" (same question twice, not strategic)
 - "When did David Gilmour join Pink Floyd and when did Syd Barrett leave? give months/years and reason" (multi-faceted, too complex)
 - "Timeline of The Offspring band lineup changes drummers bassists guitarists with years (James Lilja, Ron Welty, Atom Willard, Pete Parada, Josh Freese, Brandon Pertzborn, Greg K., Todd Morse, Noodles)" (multi-faceted, too complex)
+- "Has X ever had consecutive Billboard Hot 100 number-one singles? List any runs of consecutive Hot 100 #1 singles (song titles and dates) and the length of her longest such streak (as of August 26, 2024)." (multi-faceted, not precise, not optimized for retrieval)
 
 ## Example of good questions:
 - "When did David Gilmour join Pink Floyd?" (single-faceted, precise)
@@ -72,7 +73,7 @@ NO_TOOLS_FOLLOW_UP_PROMPT = """
 Tools are unavailable for this step.
 Do not call or reference any tool/function.
 Try to answer the question to the best of your ability using only the context provided and your general knowledge.
-If that is not possible, unknowledge it.
+If that is not possible, acknowledge it.
 """.strip()
 
 
@@ -175,7 +176,7 @@ def _limit_chunkspans(
         total_tokens += tool_total
         total_chunk_spans += len(chunk_spans)
     # Early exit if we're already under the limit
-    if total_tokens <= max_tokens:
+    if total_tokens == 0 or total_tokens <= max_tokens:
         return tool_chunk_spans
     # Allocate tokens proportionally and truncate
     new_total_chunk_spans = 0
@@ -264,7 +265,7 @@ def _get_tools(
 ) -> tuple[list[dict[str, Any]] | None, dict[str, Any] | str | None]:
     """Get tools to search the knowledge base if no RAG context is provided in the messages."""
     # Check if messages already contain RAG context or if the LLM supports tool use.
-    final_message = messages[-1].get("content", "")
+    final_message = messages[-1].get("content") or ""
     messages_contain_rag_context = any(
         s in final_message for s in ("<context>", "<document>", "from_chunk_id")
     )
@@ -289,7 +290,7 @@ def _get_tools(
                         "properties": {
                             "query": {
                                 "type": "string",
-                                "description": "The exact user question. Only add current date information.",
+                                "description": "The exact user question. Add current date information if relevant.",
                             },
                         },
                         "required": ["query"],
@@ -355,7 +356,7 @@ def _run_tool(
         # Start iterating and keep only chunk spans that introduce at least one new chunk ID.
         chunk_spans: list[ChunkSpan] = []
         seen_chunk_ids: set[str] = set()
-        for iteration_index in range(max(1, config.allowed_iterations)):
+        for iteration_index in range(max(1, config.agentic_iterations)):
             response = completion(
                 model=config.llm,
                 messages=messages,
