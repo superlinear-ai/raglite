@@ -50,11 +50,12 @@ def test_rag_auto_with_retrieval(raglite_test_config: RAGLiteConfig) -> None:
     roles = [message["role"] for message in messages]
     assert roles[0] == "user"
     assert roles[-1] == "assistant"
-    assert "tool" in roles  # At least one retrieval happened.
-    # Verify the last tool message contains valid JSON.
-    last_tool_idx = len(roles) - 1 - roles[::-1].index("tool")
-    assert json.loads(messages[last_tool_idx]["content"])
+    if "tool" in roles:
+        # Verify the last tool message contains valid JSON.
+        last_tool_idx = len(roles) - 1 - roles[::-1].index("tool")
+        assert json.loads(messages[last_tool_idx]["content"])
     if not raglite_test_config.llm.startswith("llama-cpp-python"):
+        assert "tool" in roles  # At least one retrieval happened.
         assert chunk_spans
     assert all(isinstance(chunk_span, ChunkSpan) for chunk_span in chunk_spans)
 

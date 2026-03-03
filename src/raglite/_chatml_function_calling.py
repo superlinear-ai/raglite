@@ -400,7 +400,9 @@ def chatml_function_calling_with_streaming(
 
     # Case 2: Automatic or fixed tool choice
     # Case 2 step 1: Determine whether to respond with a message or a tool call
-    assert (isinstance(tool_choice, str) and tool_choice == "auto") or isinstance(tool_choice, dict)
+    assert (isinstance(tool_choice, str) and tool_choice in ("auto", "required")) or isinstance(
+        tool_choice, dict
+    )
     if isinstance(tool_choice, dict):
         tools = [t for t in tools if t["function"]["name"] == tool_choice["function"]["name"]]
         assert tools
