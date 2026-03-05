@@ -281,16 +281,15 @@ def _get_tools(
                 "function": {
                     "name": "search_knowledge_base",
                     "description": (
-                        "Search the knowledge base for contextual information needed to answer the user question.\n"
-                        "Use the exact user question as the query to the knowledge base. Only rephrase if necessary for clarity.\n"
-                        "IMPORTANT: You MAY not use this function if the question can be answered with common knowledge or straightforward reasoning.\n"
+                        "Search the knowledge base for contextual information needed to answer a user question.\n"
+                        "IMPORTANT: You MAY NOT use this function if the question can be answered with common knowledge or straightforward reasoning.\n"
                     ),
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "query": {
                                 "type": "string",
-                                "description": "The exact user question. Add current date information if relevant.",
+                                "description": "The exact user question, only rephrase if necessary for clarity. Add current date information if relevant.",
                             },
                         },
                         "required": ["query"],

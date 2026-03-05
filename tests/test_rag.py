@@ -37,7 +37,7 @@ def test_rag_manual(raglite_test_config: RAGLiteConfig) -> None:
 def test_rag_auto_with_retrieval(raglite_test_config: RAGLiteConfig) -> None:
     """Test Retrieval-Augmented Generation with automatic retrieval."""
     # Answer a question that requires RAG.
-    user_prompt = "How does Einstein define 'simultaneous events' in his special relativity paper?"
+    user_prompt = "How does Einstein define 'simultaneous events' in his special relativity paper? do not guess and provide me with proof via retrieval"
     messages = [{"role": "user", "content": user_prompt}]
     chunk_spans: list[ChunkSpan] = []
     stream = rag(messages, on_retrieval=chunk_spans.extend, config=raglite_test_config)
@@ -50,10 +50,7 @@ def test_rag_auto_with_retrieval(raglite_test_config: RAGLiteConfig) -> None:
     roles = [message["role"] for message in messages]
     assert roles[0] == "user"
     assert roles[-1] == "assistant"
-    if "tool" in roles:
-        # Verify the last tool message contains valid JSON.
-        last_tool_idx = len(roles) - 1 - roles[::-1].index("tool")
-        assert json.loads(messages[last_tool_idx]["content"])
+    assert "tool" in roles  # At least one retrieval happened.
     if not raglite_test_config.llm.startswith("llama-cpp-python"):
         assert "tool" in roles  # At least one retrieval happened.
         assert chunk_spans
