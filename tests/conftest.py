@@ -83,10 +83,10 @@ def database(request: pytest.FixtureRequest) -> str:
     params=[
         pytest.param(
             (
-                "llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192",  # mistralai/Ministral-3-3B-Instruct-2512
+                "llama-cpp-python/unsloth/Qwen3.5-4B-GGUF/*Q4_K_M.gguf@6144",  # 8192 exceeds Metal GPU memory when embedding model is co-loaded.
                 "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@512",  # More context degrades performance.
             ),
-            id="qwen3_4B-bge_m3",
+            id="qwen3.5_4B-bge_m3",
         ),
         pytest.param(
             ("gpt-4o-mini", "text-embedding-3-small"),

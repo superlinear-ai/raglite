@@ -63,10 +63,10 @@ def is_accelerator_available() -> bool:
 @pytest.mark.parametrize(
     "llm_repo_id",
     [
-        pytest.param("unsloth/Qwen3-4B-GGUF", id="qwen3_4B"),
+        pytest.param("unsloth/Qwen3.5-4B-GGUF", id="qwen3.5_4B"),
         pytest.param(
-            "unsloth/Qwen3-8B-GGUF",
-            id="qwen3_8B",
+            "unsloth/Qwen3.5-9B-GGUF",
+            id="qwen3.5_9B",
             marks=pytest.mark.skipif(
                 not is_accelerator_available(), reason="Accelerator not available"
             ),

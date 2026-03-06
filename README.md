@@ -117,7 +117,7 @@ my_config = RAGLiteConfig(
 # Example 'local' config with a DuckDB database and a llama.cpp LLM:
 my_config = RAGLiteConfig(
     db_url="duckdb:///raglite.db",
-    llm="llama-cpp-python/unsloth/Qwen3-8B-GGUF/*Q4_K_M.gguf@8192",
+    llm="llama-cpp-python/unsloth/Qwen3.5-9B-GGUF/*Q4_K_M.gguf@8192",
     embedder="llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512", # More than 512 tokens degrades bge-m3's performance
 )
 ```
@@ -377,7 +377,7 @@ RAGLite comes with an [MCP server](https://modelcontextprotocol.io) implemented 
 ```
 raglite \
     --db-url duckdb:///raglite.db \
-    --llm llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192 \
+    --llm llama-cpp-python/unsloth/Qwen3.5-4B-GGUF/*Q4_K_M.gguf@8192 \
     --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512 \
     mcp install
 ```
@@ -413,7 +413,7 @@ You can specify the database URL, LLM, and embedder directly in the Chainlit fro
 ```sh
 raglite \
     --db-url duckdb:///raglite.db \
-    --llm llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192 \
+    --llm llama-cpp-python/unsloth/Qwen3.5-4B-GGUF/*Q4_K_M.gguf@8192 \
     --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512 \
     chainlit
 ```

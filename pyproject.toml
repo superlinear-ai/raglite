@@ -79,7 +79,7 @@ dev = [
 # Frontend:
 chainlit = ["chainlit (>=2.0.0)"]
 # Large Language Models:
-llama-cpp-python = ["llama-cpp-python (>=0.3.9)"]
+llama-cpp-python = ["llama-cpp-python (>=0.3.16)"]  # Qwen 3.5 support
 # Markdown conversion:
 mistral-ocr = ["mistralai (>=1.10.1)"]
 pandoc = ["pypandoc-binary (>=1.13)"]
