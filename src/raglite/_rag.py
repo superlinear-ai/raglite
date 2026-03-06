@@ -152,6 +152,14 @@ def _limit_chunkspans(
     # Early exit if we're already under the limit
     if total_tokens <= max_tokens:
         return tool_chunk_spans
+    # If the context window is completely exhausted, return empty spans.
+    if max_tokens <= 0 or total_tokens == 0:
+        logger.warning(
+            "RAG context was limited to 0 out of %d chunks due to context window size. "
+            "Consider using a model with a bigger context window or reducing the number of retrieved chunks.",
+            total_chunk_spans,
+        )
+        return {tool_id: [] for tool_id in tool_chunk_spans}
     # Allocate tokens proportionally and truncate
     new_total_chunk_spans = 0
     scale_ratio = max_tokens / total_tokens
