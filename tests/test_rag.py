@@ -2,7 +2,7 @@
 
 import json
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import pytest
 
@@ -13,9 +13,7 @@ from raglite import (
 )
 from raglite._database import ChunkSpan
 from raglite._rag import _run_tool, rag
-
-if TYPE_CHECKING:
-    from raglite._typing import MetadataFilter
+from raglite._typing import MetadataFilter  # noqa: TC001
 
 
 def test_rag_manual(raglite_test_config: RAGLiteConfig) -> None:
@@ -52,7 +50,6 @@ def test_rag_auto_with_retrieval(raglite_test_config: RAGLiteConfig) -> None:
     assert roles[-1] == "assistant"
     assert "tool" in roles  # At least one retrieval happened.
     if not raglite_test_config.llm.startswith("llama-cpp-python"):
-        assert "tool" in roles  # At least one retrieval happened.
         assert chunk_spans
     assert all(isinstance(chunk_span, ChunkSpan) for chunk_span in chunk_spans)
 

@@ -317,7 +317,11 @@ def _run_tool(
     Returns the tool_id and the raw chunk_spans (before formatting/limiting).
     """
     if tool_call.function.name == "search_knowledge_base":
-        query = json.loads(tool_call.function.arguments)["query"]
+        try:
+            query = json.loads(tool_call.function.arguments)["query"]
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            msg = f"Invalid arguments for 'search_knowledge_base': {exc}"
+            raise ValueError(msg) from exc
         messages = [
             {
                 "role": "system",
@@ -355,10 +359,13 @@ def _run_tool(
         # Start iterating and keep only chunk spans that introduce at least one new chunk ID.
         chunk_spans: list[ChunkSpan] = []
         seen_chunk_ids: set[str] = set()
+        context_size = get_context_size(config)
+        max_output_tokens = min(2048, context_size // 4)
+        max_input_tokens = context_size - max_output_tokens
         for iteration_index in range(max(1, config.agentic_iterations)):
             response = completion(
                 model=config.llm,
-                messages=messages,
+                messages=_clip(messages, max_input_tokens),
                 tools=[tool],
                 tool_choice="required" if iteration_index == 0 else "auto",
             )
@@ -366,7 +373,7 @@ def _run_tool(
             tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
 
             # check if the tool call is valid
-            if tool_calls is not None:
+            if tool_calls:
                 retrieved_chunk_spans: list[ChunkSpan] = []
                 messages.extend(
                     _run_tools(
