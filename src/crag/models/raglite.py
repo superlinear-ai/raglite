@@ -6,6 +6,7 @@
 
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from enum import Enum
 from pathlib import Path
@@ -22,6 +23,7 @@ from raglite._database import ChunkSpan
 from raglite._extract import expand_document_metadata
 
 load_dotenv()
+
 
 class _Domain(str, Enum):
     sports = "sports"
@@ -65,7 +67,8 @@ METADATA_FIELDS = {
             max_length=2,
             description="Main subjects of the page in lowercase (max 2). An entity can be a person, place, thing, concept, etc. "
             "It should be specific enough to distinguish the page from others, but not so specific that it only applies to a single page. "
-            "Example entities: 'lebron james', 'guitar pedals', 'hiking', 'national park'."),
+            "Example entities: 'lebron james', 'guitar pedals', 'hiking', 'national park'.",
+        ),
     ],
     "content_type": Annotated[
         _ContentKind | None,
@@ -98,7 +101,9 @@ class RAGLiteModel:
             "comparison",
             "condition",
         ], "Task must be either 'set', 'comparison', or 'condition'."
-        assert not (use_agentic_rag and use_rerank), "Agentic RAG and reranking cannot be currently used together."
+        assert not (
+            use_agentic_rag and use_rerank
+        ), "Agentic RAG and reranking cannot be currently used together."
 
         self.task = task
         self.use_self_query = use_self_query
@@ -107,8 +112,6 @@ class RAGLiteModel:
         self.use_agentic_rag = use_agentic_rag
         self.tool_calls_per_question: list[int] = []
         self.last_batch_tool_calls: list[int] = []
-        self.subagent_activations_per_question: list[list[dict[str, Any]]] = []
-        self.last_batch_subagent_activations: list[list[dict[str, Any]]] = []
 
         # set up RAGLite configuration
         self.config = RAGLiteConfig(
@@ -186,7 +189,7 @@ class RAGLiteModel:
                         )
                         for doc in chunk
                     ]
-                    docs = list(expand_document_metadata(docs, METADATA_FIELDS, config=self.config, strict=False)) # type: ignore
+                    docs = list(expand_document_metadata(docs, METADATA_FIELDS, config=self.config, strict=False))  # type: ignore
                     insert_documents(docs, config=self.config)
                     time.sleep(0.5)  # avoid rate limiting
                 ingested_n += 1
@@ -197,7 +200,9 @@ class RAGLiteModel:
 
         return ingested
 
-    def get_chunks_via_rerank(self, query: str, num_chunks: int, oversample_factor: int = 4) -> list[ChunkSpan]:
+    def get_chunks_via_rerank(
+        self, query: str, num_chunks: int, oversample_factor: int = 4
+    ) -> list[ChunkSpan]:
         """
         Retrieve relevant chunk spans for a given query using vector search and reranking.
 
@@ -210,7 +215,9 @@ class RAGLiteModel:
         from raglite import rerank_chunks, retrieve_chunk_spans, retrieve_chunks, vector_search
 
         # Step 1: Perform vector search to retrieve initial candidate chunks
-        chunk_ids_vector, _ = vector_search(query, num_results=num_chunks * oversample_factor, config=self.config)
+        chunk_ids_vector, _ = vector_search(
+            query, num_results=num_chunks * oversample_factor, config=self.config
+        )
 
         # Step 2: Retrieve the content and metadata of the candidate chunks
         chunk_spans = retrieve_chunks(chunk_ids_vector, config=self.config)
@@ -236,7 +243,7 @@ class RAGLiteModel:
                  queries should be processed together in a single batch. It can be dynamic
                  across different batch_generate_answer calls, or stay a static value.
         """
-        self.batch_size = 1
+        self.batch_size = 4
         return self.batch_size
 
     def batch_generate_answer(self, batch: dict[str, Any]) -> tuple[list[str], list[list]]:
@@ -269,17 +276,7 @@ class RAGLiteModel:
         _ = batch["search_results"]
         query_times = batch["query_time"]
 
-        answers = []
-        chunks = []
-        batch_tool_calls: list[int] = []
-        batch_subagent_activations: list[list[dict[str, Any]]] = []
-        for query, query_time in tqdm(
-            zip(queries, query_times, strict=True),
-            desc="Batch processing...",
-            leave=False,
-            total=len(queries),
-        ):
-
+        def process_single(query: str, query_time: str) -> tuple[str, list, int]:
             messages = [
                 {
                     "role": "system",
@@ -288,27 +285,20 @@ class RAGLiteModel:
                 }
             ]
 
-            # from raglite import search_and_rerank_chunk_spans
-            # replace(self.config, search_method=partial(search_and_rerank_chunk_spans, num_chunks=5, config=self.config))
-
             chunk_spans = []
             if self.use_agentic_rag:
-                # If using agentic RAG, we start with just the user query and allow the model to iteratively retrieve chunks as needed.
                 messages.append({"role": "user", "content": query})
             else:
-                # If not using agentic RAG, we retrieve relevant chunks upfront (optionally with reranking) and provide them to the model in one go.
                 if self.use_rerank:
                     chunk_spans = self.get_chunks_via_rerank(query=query, num_chunks=5)
                 else:
                     from raglite import retrieve_context
 
                     chunk_spans = retrieve_context(query=query, num_chunks=5, config=self.config)
+                messages.append(
+                    add_context(user_prompt=query, context=chunk_spans, config=self.config)
+                )
 
-                # Add retrieved context to the message history for RAG
-                messages.append(add_context(user_prompt=query, context=chunk_spans, config=self.config))
-
-            # Stream the RAG response and append it to the message history
-            query_subagent_activations: list[dict[str, Any]] = []
             stream = rag(
                 messages,
                 config=self.config,
@@ -321,22 +311,25 @@ class RAGLiteModel:
                     if self.use_agentic_rag
                     else None
                 ),
-                on_subagent_activation=(
-                    query_subagent_activations.append if self.use_agentic_rag else None
-                ),
             )
-            answer = ""
-            for update in stream:
-                answer += update
+            answer = "".join(stream)
+            tool_call_count = sum(message.get("role") == "tool" for message in messages)
+            return answer, chunk_spans, tool_call_count
 
-            answers.append(answer)
-            chunks.append(chunk_spans)
-            batch_tool_calls.append(sum(message.get("role") == "tool" for message in messages))
-            batch_subagent_activations.append(query_subagent_activations)
+        with ThreadPoolExecutor(max_workers=len(queries)) as executor:
+            results = list(
+                tqdm(
+                    executor.map(process_single, queries, query_times),
+                    desc="Batch processing...",
+                    leave=False,
+                    total=len(queries),
+                )
+            )
+
+        answers = [r[0] for r in results]
+        chunks = [r[1] for r in results]
+        batch_tool_calls = [r[2] for r in results]
 
         self.last_batch_tool_calls = batch_tool_calls
         self.tool_calls_per_question.extend(batch_tool_calls)
-        self.last_batch_subagent_activations = batch_subagent_activations
-        self.subagent_activations_per_question.extend(batch_subagent_activations)
-
         return answers, chunks

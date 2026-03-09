@@ -4,7 +4,8 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-INSTRUCTIONS = """Assume you are an expert in grading predictions given by a model.
+COMPARISON_INSTRUCTIONS = """
+Assume you are an expert in grading predictions given by a model.
 You are given a Question, a Ground Truth answer (always correct), and a Prediction.
 Your job is to output one label: correct, missing, or incorrect.
 
@@ -57,7 +58,120 @@ Your job is to output one label: correct, missing, or incorrect.
   - "label": one of "correct", "missing", "incorrect"
 """
 
-IN_CONTEXT_EXAMPLES = """Here are some examples to help you make the judgment.
+SET_INSTRUCTIONS = """
+You are an expert evaluator. Your task is to classify a prediction against a ground truth answer for a given question.
+You must classify the prediction as one of three labels: **correct**, **missing**, or **incorrect**.
+
+---
+
+## Definitions
+
+### CORRECT
+The prediction answers the question and matches the ground truth.
+- Formatting differences are acceptable (e.g., case, punctuation, unit formatting).
+- For unordered sets, order does not matter.
+- Still correct if:
+  - The question asked for a subset and the prediction provides a valid subset (e.g., "name 3 of the 7 wonders" → any 3 correct wonders even if not the same as ground truth).
+  - The prediction includes extra explanatory notes that are factually justified (e.g., "X is also sometimes considered..."). Extra items presented as full members of the required set are not acceptable.
+
+### MISSING
+The prediction does not fully answer the question.
+- Contains only a subset of required items without justification.
+- Provides no answer at all, including:
+  - Explicit abstentions ("I don't know", "not enough information")
+  - Refusals or avoidances
+  - Empty or near-empty responses
+- Provides correct but irrelevant information that does not answer the question.
+
+### INCORRECT
+The prediction contains wrong or unjustified content.
+- Includes items that are factually wrong and not justified.
+- Missing required items AND justifies the omission with wrong facts or reasoning.
+- Self-contradictory answers.
+
+---
+
+## Special Cases
+
+### Sets (lists of items)
+- Ignore trivial formatting differences.
+- Do NOT treat duplicates as extra items.
+- If multiple lists are provided, evaluate each separately, then aggregate:
+  - If **any** list is correct → overall: **correct**
+  - If **any** list is missing (and none correct) → overall: **missing**
+  - If **all** lists are incorrect → overall: **incorrect**
+
+### Subset questions with incomplete ground truths
+If the question asks for a subset of a larger set (e.g., "list 5 of X"),
+the ground truth may not be exhaustive. If the prediction contains items
+not present in the ground truth, the judge should use its own knowledge
+to verify whether those items are valid members of the set.
+- If all predicted items are verifiably correct → correct
+- If some predicted items cannot be verified or are wrong → incorrect
+"""
+
+SET_IN_CONTEXT_EXAMPLES = """
+Here are some examples to help you make the judgment.
+
+Examples:
+Question: "who are current band members of maroon 5?"
+Ground Truth: "adam Levine, jesse carmichael, james valentine, matt flynn, pj morton, sam farrar"
+Prediction: "they are jesse carmichael, matt flynn, adam levine, pj morton, sam farrar, and james valentine."
+Output: {"label": "correct", "explanation": "Same set of members (order differs)."}
+
+Question: "which movies comprise the matrix franchise?"
+Ground Truth: "the matrix, the matrix reloaded, the matrix revolutions, the matrix resurrections"
+Prediction: "the matrix, the matrix reloaded, the matrix revolutions, the animatrix, and the matrix resurrections."
+Output: {"label": "incorrect", "explanation": "Set includes an extra item (the animatrix)."}
+
+Question: "on which days did xxx distribute dividends in the last year?"
+Ground Truth: "2023-01-24, 2023-04-25, 2023-07-25, 2023-10-24"
+Prediction: "the company distributed dividends on october 24, 2023 and january 24, 2023."
+Output: {"label": "incorrect", "explanation": "The prediction is missing some required items (April 25 and July 25)."}
+
+Question: "which movies comprise the matrix franchise?"
+Ground Truth: "the matrix, the matrix reloaded, the matrix revolutions, the matrix resurrections"
+Prediction: "the matrix, the matrix reloaded, the matrix revolutions, and the matrix resurrections. Some also consider the animatrix part of the franchise."
+Output: {"label": "correct", "explanation": "All required items are present; the animatrix is noted as optional context, not asserted as a required member."}
+
+Questions: "list 3 of the old testament's 10 plagues."
+Ground Truth: "1. water turning into blood, 2. lice, 3. locusts"
+Prediction: "1. water turning into blood, 2. hail, 3. death of the firstborn."
+Output: {"label": "correct", "explanation": "The prediction includes 3 correct items, even though they are different items than the ground truth, which is acceptable since the question only asked for 3 of the 10 plagues."}
+
+Questions: "who are the original members of the beatles?"
+Ground Truth: "john lennon, paul mccartney, george harrison, and ringo starr. pete best was also an original member before being replaced by ringo starr."
+Prediction: "the original members of the beatles were john lennon, paul mccartney, george harrison, and ringo starr."
+Output: {"label": "correct", "explanation": "The prediction includes all required items; the information about Pete Best is additional but does not contradict the ground truth."}
+
+# missing
+Question: "who are the original members of the beatles?"
+Ground Truth: "john lennon, paul mccartney, george harrison, and ringo starr."
+Prediction: "the original members of the beatles were john lennon, paul mccartney, and george harrison."
+Output: {"label": "missing", "explanation": "The prediction is missing a required item (Ringo Starr) with no justification."}
+
+Question: "who are the original members of the beatles?"
+Ground Truth: "john lennon, paul mccartney, george harrison, and ringo starr."
+Prediction: "the original members of the beatles were john lennon, paul mccartney, george harrison. Ringo starr was not an original member."
+Output: {"label": "incorrect", "explanation": "The prediction is missing a required item (Ringo Starr) and justifies the missing item with incorrect information."}
+
+Question: "In order, which 3 countries have the largest population in the world?"
+Ground Truth: "1. China, 2. India, 3. United States"
+Prediction: "1. India, 2. China, 3. United States."
+Output: {"label": "incorrect", "explanation": "The order of the items is important in this question, and the prediction has the wrong order."}
+
+Question: "In order, which 3 countries have the largest population in the world?"
+Ground Truth: "1. China, 2. India, 3. United States"
+Prediction: "1. India, 2. China, 3. United States. As of 2026, India has surpassed China as the most populous country, but this is a recent change and some may still consider China as the most populous country."
+Output: {"label": "correct", "explanation": "The prediction provides additional context about recent population changes, which is acceptable."}
+
+Question: "list 5 movies that stan lee makes a cameo in."
+Ground Truth: "iron man (2008), the incredible hulk (2008), ... [long list]"
+Prediction: "X-Men (2000), Spider-Man (2002), Fantastic Four (2005), Iron Man (2008), Avengers: Endgame (2019)"
+Output: {"label": "correct", "explanation": "The question asks for any 5 valid cameos. All 5 predicted films are verifiably correct Stan Lee cameos, even though most are not in the ground truth list."}
+"""
+
+COMPARISON_IN_CONTEXT_EXAMPLES = """Here are some examples to help you make the judgment.
 Examples:
 Question: "which company has higher eps, btu or cma?"
 Ground Truth: "cma"

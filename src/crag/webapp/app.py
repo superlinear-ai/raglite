@@ -3,7 +3,12 @@ from typing import Any
 
 import streamlit as st
 
-from crag.prompts.templates import IN_CONTEXT_EXAMPLES, INSTRUCTIONS
+from crag.prompts.templates import (
+    COMPARISON_IN_CONTEXT_EXAMPLES,
+    COMPARISON_INSTRUCTIONS,
+    SET_IN_CONTEXT_EXAMPLES,
+    SET_INSTRUCTIONS,
+)
 from crag.webapp.services.judge_service import CRAGLabel, run_judge_once
 from crag.webapp.services.openai_service import run_openai
 from crag.webapp.services.raglite_service import run_raglite
@@ -21,6 +26,12 @@ from crag.webapp.utils.dataset import load_dataset_file
 @st.cache_data(show_spinner=False)
 def load_dataset_cached(path: str) -> list[dict[str, Any]]:
     return load_dataset_file(path)
+
+
+def _get_judge_prompt_defaults(task: str) -> tuple[str, str]:
+    if task == "set":
+        return SET_INSTRUCTIONS, SET_IN_CONTEXT_EXAMPLES
+    return COMPARISON_INSTRUCTIONS, COMPARISON_IN_CONTEXT_EXAMPLES
 
 
 def _clear_prediction_and_judge_state() -> None:
@@ -408,6 +419,7 @@ def main() -> None:
                     embedder=raglite_embedder,
                     llm=raglite_llm,
                     hybrid_search=raglite_hybrid_search,
+                    agentic_rag=True,
                 )
                 st.session_state["raglite_result"] = raglite_result
             except Exception as exc:
@@ -457,18 +469,24 @@ def main() -> None:
     st.divider()
     st.subheader("Judge Evaluation")
 
+    default_judge_instructions, default_judge_examples = _get_judge_prompt_defaults(task)
+    judge_instructions_key = f"judge_instructions_{task}"
+    judge_examples_key = f"judge_examples_{task}"
+    if judge_instructions_key not in st.session_state:
+        st.session_state[judge_instructions_key] = default_judge_instructions
+    if judge_examples_key not in st.session_state:
+        st.session_state[judge_examples_key] = default_judge_examples
+
     with st.expander("Judge Prompt", expanded=False):
         judge_instructions = st.text_area(
             "Judge Instructions",
-            value=INSTRUCTIONS,
+            key=judge_instructions_key,
             height=200,
-            key="judge_instructions",
         )
         judge_examples = st.text_area(
             "Judge In-Context Examples",
-            value=IN_CONTEXT_EXAMPLES,
+            key=judge_examples_key,
             height=300,
-            key="judge_examples",
         )
 
     system_message = build_judge_system_message(judge_instructions, judge_examples)

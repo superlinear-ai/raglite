@@ -88,20 +88,10 @@ def test_extract_tool_query() -> None:
     assert _extract_tool_query("{") is None
 
 
-def test_run_tools_calls_on_subagent_activation(monkeypatch) -> None:
-    """Trigger callback once per search subagent activation."""
-    subagent_activation = {
-        "subagent": "search_knowledge_base",
-        "activation_id": "search_call",
-        "entry_query": "Where was Einstein born?",
-        "tool_call_count": 2,
-        "questions": ["Where was Einstein born?", "What city is Ulm in?"],
-    }
-
-    def fake_run_tool(tool_call, config):  # noqa: ANN001
-        if tool_call.function.name == "search_knowledge_base":
-            return tool_call.id, [], subagent_activation
-        return tool_call.id, [], None
+def test_run_tools_returns_message_per_tool_call(monkeypatch) -> None:
+    """Return one tool message per tool call."""
+    def fake_run_tool(tool_call, config):
+        return tool_call.id, []
 
     monkeypatch.setattr("raglite._rag._run_tool", fake_run_tool)
     config = RAGLiteConfig(llm="gpt-4o-mini", embedder="text-embedding-3-small", reranker=None)
@@ -118,17 +108,13 @@ def test_run_tools_calls_on_subagent_activation(monkeypatch) -> None:
             function=SimpleNamespace(name="query_knowledge_base", arguments='{"query":"Ulm"}'),
         ),
     ]
-    recorded_subagent_activations: list[dict[str, object]] = []
-
     tool_messages = _run_tools(
         tool_calls,  # type: ignore[arg-type]
         on_retrieval=None,
         config=config,
         messages=[],
-        on_subagent_activation=recorded_subagent_activations.append,
         max_workers=1,
     )
 
     expected_tool_messages = 2
     assert len(tool_messages) == expected_tool_messages
-    assert recorded_subagent_activations == [subagent_activation]
