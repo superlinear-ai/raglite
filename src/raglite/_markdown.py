@@ -75,7 +75,7 @@ def parsed_pdf_to_markdown(pages: list[dict[str, Any]]) -> list[str]:  # noqa: C
                         span_font_size = extract_font_size(span)
                         if span_font_size < mode_font_size:
                             idx = 7
-                        elif span_font_size == mode_font_size or len(heading_font_sizes) == 0:
+                        elif len(heading_font_sizes) == 0 or span_font_size == mode_font_size:
                             idx = 6
                         else:
                             idx = np.argmin(np.abs(heading_font_sizes - span_font_size))  # type: ignore[assignment]
