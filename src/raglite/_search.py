@@ -1,6 +1,7 @@
 """Search and retrieve chunks."""
 
 import contextlib
+import contextvars
 import logging
 import re
 import string
@@ -31,6 +32,9 @@ from raglite._typing import BasicSearchMethod, ChunkId, FloatVector, MetadataFil
 
 logger = logging.getLogger(__name__)
 
+# Context variable to report self-query filters without modifying search function signatures.
+_on_self_query: contextvars.ContextVar[Any] = contextvars.ContextVar("_on_self_query", default=None)
+
 
 def vector_search(
     query: str | FloatVector,
@@ -48,6 +52,10 @@ def vector_search(
     # If self_query is enabled, extract metadata filters from the query.
     if config.self_query and isinstance(query, str):
         self_query_filter = _self_query(query, config=config)
+        if self_query_filter:
+            callback = _on_self_query.get(None)
+            if callable(callback):
+                callback(self_query_filter)
         metadata_filter = {**self_query_filter, **(metadata_filter or {})}
     # Embed the query.
     query_embedding = (
@@ -162,6 +170,10 @@ def keyword_search(
     # If self_query is enabled, extract metadata filters from the query.
     if config.self_query and isinstance(query, str):
         self_query_filter = _self_query(query, config=config)
+        if self_query_filter:
+            callback = _on_self_query.get(None)
+            if callable(callback):
+                callback(self_query_filter)
         metadata_filter = {**self_query_filter, **(metadata_filter or {})}
     # Connect to the database.
     with Session(create_database_engine(config)) as session:

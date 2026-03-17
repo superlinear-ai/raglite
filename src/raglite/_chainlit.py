@@ -1,21 +1,26 @@
 """Chainlit frontend for RAGLite."""
 
+import json
 import os
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import chainlit as cl
-from chainlit.input_widget import Switch, TextInput
+warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
-from raglite import (
+import chainlit as cl  # noqa: E402
+from chainlit.input_widget import Slider, Switch, TextInput  # noqa: E402
+
+from raglite import (  # noqa: E402
     Document,
     RAGLiteConfig,
+    ToolCallEvent,
     async_rag,
     hybrid_search,
     insert_documents,
     rerank_chunks,
 )
-from raglite._markdown import document_to_markdown
+from raglite._markdown import document_to_markdown  # noqa: E402
 
 if TYPE_CHECKING:
     from raglite._database import ChunkSpan
@@ -43,6 +48,15 @@ async def start_chat() -> None:
             TextInput(id="llm", label="LLM", initial=config.llm),
             TextInput(id="embedder", label="Embedder", initial=config.embedder),
             Switch(id="vector_search_query_adapter", label="Query adapter", initial=True),
+            Switch(id="self_query", label="Self-Query", initial=False),
+            Slider(
+                id="agentic_iterations",
+                label="Agentic Iterations",
+                initial=3,
+                min=1,
+                max=3,
+                step=1,
+            ),
         ]
     ).send()
     await update_config(settings)
@@ -57,6 +71,8 @@ async def update_config(settings: cl.ChatSettings) -> None:
         llm=settings["llm"],  # type: ignore[index]
         embedder=settings["embedder"],  # type: ignore[index]
         vector_search_query_adapter=settings["vector_search_query_adapter"],  # type: ignore[index]
+        self_query=settings["self_query"],  # type: ignore[index]
+        agentic_iterations=int(settings["agentic_iterations"]),  # type: ignore[index]
     )
     cl.user_session.set("config", config)  # type: ignore[no-untyped-call]
     # Run a search to prime the pipeline if it's a local pipeline.
@@ -67,7 +83,7 @@ async def update_config(settings: cl.ChatSettings) -> None:
 
 
 @cl.on_message
-async def handle_message(user_message: cl.Message) -> None:
+async def handle_message(user_message: cl.Message) -> None:  # noqa: C901
     """Respond to a user message."""
     # Get the config and message history from the user session.
     config: RAGLiteConfig = cl.user_session.get("config")  # type: ignore[no-untyped-call]
@@ -94,13 +110,34 @@ async def handle_message(user_message: cl.Message) -> None:
         + f"\n\n{user_message.content}"
     ).strip()
     # Stream the LLM response.
-    assistant_message = cl.Message(content="")
     chunk_spans: list[ChunkSpan] = []
     messages: list[dict[str, str]] = cl.chat_context.to_openai()[:-1]  # type: ignore[no-untyped-call]
     messages.append({"role": "user", "content": user_prompt})
-    async for token in async_rag(messages, on_retrieval=chunk_spans.extend, config=config):
+
+    async def on_tool_call(event: ToolCallEvent) -> None:
+        """Display a tool call as a Chainlit Step before the answer streams."""
+        async with cl.Step(name=event["name"], type="tool", show_input="json") as step:
+            step.input = json.dumps(event.get("arguments", {}), ensure_ascii=False)
+            if event.get("self_query_filter"):
+                step.output = json.dumps(event["self_query_filter"], ensure_ascii=False)
+            step.language = "json"
+
+    assistant_message: cl.Message | None = None
+    async for token in async_rag(
+        messages,
+        on_retrieval=chunk_spans.extend,
+        on_tool_call=on_tool_call,
+        config=config,
+    ):
+        if assistant_message is None:
+            assistant_message = cl.Message(content="")
+            await assistant_message.send()  # type: ignore[no-untyped-call]
+        assert assistant_message is not None
         await assistant_message.stream_token(token)
     # Append RAG sources, if any.
+    if assistant_message is None:
+        assistant_message = cl.Message(content="")
+        await assistant_message.send()  # type: ignore[no-untyped-call]
     if chunk_spans:
         rag_sources: dict[str, list[str]] = {}
         for chunk_span in chunk_spans:

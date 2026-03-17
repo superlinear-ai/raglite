@@ -76,6 +76,8 @@ dev = [
 ]
 
 [project.optional-dependencies]  # https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#dependencies-optional-dependencies
+# Demo
+demo = ["chainlit (>=2.0.0)", "markdownify>=1.2.2"]
 # Frontend:
 chainlit = ["chainlit (>=2.0.0)"]
 # Large Language Models:

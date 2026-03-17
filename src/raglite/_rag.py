@@ -2,9 +2,18 @@
 
 import json
 import logging
-from collections.abc import AsyncIterator, Callable, Generator, Iterator, Mapping, Sequence
+from collections.abc import (
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Generator,
+    Iterator,
+    Mapping,
+    Sequence,
+)
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
+from inspect import isawaitable
+from typing import Any, TypedDict
 
 import numpy as np
 from litellm import (  # type: ignore[attr-defined]
@@ -18,10 +27,19 @@ from litellm import (  # type: ignore[attr-defined]
 from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, ChunkSpan
 from raglite._litellm import get_context_size
-from raglite._search import retrieve_chunk_spans
+from raglite._search import _on_self_query, retrieve_chunk_spans
 from raglite._typing import MetadataFilter
 
 logger = logging.getLogger(__name__)
+
+
+class ToolCallEvent(TypedDict, total=False):
+    """Event emitted when a tool call is executed during RAG."""
+
+    name: str
+    arguments: dict[str, Any]
+    self_query_filter: MetadataFilter
+
 
 # The default RAG instruction template follows Anthropic's best practices [1].
 # [1] https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips
@@ -305,11 +323,39 @@ def _get_tools(
     return tools, tool_choice
 
 
+def _run_query_knowledge_base(
+    tool_call: ChatCompletionMessageToolCall,
+    config: RAGLiteConfig,
+    *,
+    metadata_filter: MetadataFilter | None = None,
+    on_tool_call: Callable[[ToolCallEvent], None] | None = None,
+) -> tuple[str, list[ChunkSpan]]:
+    """Run a query_knowledge_base tool call with self-query filter capture."""
+    arguments = json.loads(tool_call.function.arguments)
+    # Set the self-query context var to capture any filters extracted during search.
+    self_query_filters: list[MetadataFilter] = []
+    token = _on_self_query.set(self_query_filters.append)
+    try:
+        kwargs: dict[str, Any] = {"config": config, **arguments}
+        if metadata_filter is not None:
+            kwargs["metadata_filter"] = metadata_filter
+        chunk_spans = retrieve_context(**kwargs)
+    finally:
+        _on_self_query.reset(token)
+    if callable(on_tool_call):
+        event = ToolCallEvent(name="query_knowledge_base", arguments=arguments)
+        if self_query_filters:
+            event["self_query_filter"] = self_query_filters[0]
+        on_tool_call(event)
+    return tool_call.id, chunk_spans
+
+
 def _run_tool(
     tool_call: ChatCompletionMessageToolCall,
     config: RAGLiteConfig,
     *,
     metadata_filter: MetadataFilter | None = None,
+    on_tool_call: Callable[[ToolCallEvent], None] | None = None,
 ) -> tuple[str, list[ChunkSpan]]:
     """
     Run a single tool to search the knowledge base.
@@ -322,6 +368,8 @@ def _run_tool(
         except (json.JSONDecodeError, KeyError, TypeError) as exc:
             msg = f"Invalid arguments for 'search_knowledge_base': {exc}"
             raise ValueError(msg) from exc
+        if callable(on_tool_call):
+            on_tool_call(ToolCallEvent(name="search_knowledge_base", arguments={"query": query}))
         messages = [
             {
                 "role": "system",
@@ -372,7 +420,6 @@ def _run_tool(
             messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
             tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
 
-            # check if the tool call is valid
             if tool_calls:
                 retrieved_chunk_spans: list[ChunkSpan] = []
                 messages.extend(
@@ -382,6 +429,7 @@ def _run_tool(
                         config,
                         messages=messages,
                         metadata_filter=metadata_filter,
+                        on_tool_call=on_tool_call,
                     )
                 )
                 # Keep a span if it contains at least one chunk we have not seen before.
@@ -400,24 +448,21 @@ def _run_tool(
         return tool_call.id, chunk_spans
 
     if tool_call.function.name == "query_knowledge_base":
-        kwargs = json.loads(tool_call.function.arguments)
-        kwargs["config"] = config
-        if metadata_filter is not None:
-            kwargs["metadata_filter"] = metadata_filter
-        chunk_spans = retrieve_context(**kwargs)
-        # Return ID and data so the main function can aggregate and limit them
-        return tool_call.id, chunk_spans
+        return _run_query_knowledge_base(
+            tool_call, config, metadata_filter=metadata_filter, on_tool_call=on_tool_call
+        )
     error_message = f"Unknown function {tool_call.function.name}."
     raise ValueError(error_message)
 
 
-def _run_tools(
+def _run_tools(  # noqa: PLR0913
     tool_calls: list[ChatCompletionMessageToolCall],
     on_retrieval: Callable[[list[ChunkSpan]], None] | None,
     config: RAGLiteConfig,
     *,
     messages: list[dict[str, str]] | None,
     metadata_filter: MetadataFilter | None = None,
+    on_tool_call: Callable[[ToolCallEvent], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Run tools in parallel, limit the total context, then format messages."""
     tool_chunk_spans: dict[str, list[ChunkSpan]] = {}
@@ -426,7 +471,13 @@ def _run_tools(
     # We use the _run_tool helper to fetch data concurrently
     with ThreadPoolExecutor() as executor:
         futures = [
-            executor.submit(_run_tool, tool_call, config, metadata_filter=metadata_filter)
+            executor.submit(
+                _run_tool,
+                tool_call,
+                config,
+                metadata_filter=metadata_filter,
+                on_tool_call=on_tool_call,
+            )
             for tool_call in tool_calls
         ]
 
@@ -524,6 +575,7 @@ def rag(
     messages: list[dict[str, str]],
     *,
     on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
+    on_tool_call: Callable[[ToolCallEvent], None] | None = None,
     metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig,
 ) -> Iterator[str]:
@@ -542,6 +594,7 @@ def rag(
                 config,
                 messages=working,
                 metadata_filter=metadata_filter,
+                on_tool_call=on_tool_call,
             )
         )
         follow_up_messages = [*working, {"role": "system", "content": NO_TOOLS_FOLLOW_UP_PROMPT}]
@@ -556,6 +609,7 @@ async def async_rag(
     messages: list[dict[str, str]],
     *,
     on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
+    on_tool_call: Callable[[ToolCallEvent], None | Awaitable[None]] | None = None,
     metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig,
 ) -> AsyncIterator[str]:
@@ -569,6 +623,8 @@ async def async_rag(
     tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
 
     if tool_calls:
+        # Collect events internally via sync callback, then surface them via on_tool_call.
+        collected_events: list[ToolCallEvent] = []
         working.extend(
             _run_tools(
                 tool_calls,
@@ -576,8 +632,15 @@ async def async_rag(
                 config,
                 messages=working,
                 metadata_filter=metadata_filter,
+                on_tool_call=collected_events.append,
             )
         )
+        # Call user callback (sync or async) before streaming the follow-up answer.
+        if callable(on_tool_call):
+            for event in collected_events:
+                result = on_tool_call(event)
+                if isawaitable(result):
+                    await result
         follow_up_messages = [*working, {"role": "system", "content": NO_TOOLS_FOLLOW_UP_PROMPT}]
         chunks = []
         async for token in _async_stream_rag_response(
