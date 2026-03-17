@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import re
 import sys
 import time
@@ -224,17 +225,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--db-url",
-        required=True,
+        default=os.getenv("RAGLITE_DB_DEMO"),
         help="SQLAlchemy database URL (e.g. postgresql://user:pass@host/db).",
     )
     parser.add_argument(
         "--embedder",
-        required=True,
+        default=os.getenv("RAGLITE_EMBEDDER"),
         help="Embedder to use for metadata expansion (default: azure/text-embedding-3-large).",
     )
     parser.add_argument(
         "--llm",
-        default="azure/gpt-5-mini",
+        default=os.getenv("RAGLITE_LLM"),
         help="LLM to use for metadata expansion (default: azure/gpt-5-mini).",
     )
     return parser.parse_args(argv)

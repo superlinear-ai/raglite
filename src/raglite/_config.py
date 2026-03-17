@@ -28,6 +28,29 @@ DEFAULT_IMAGE_TYPES = frozenset(
 )
 
 
+def default_db_url() -> str:
+    """Return the default database URL."""
+    return f"duckdb:///{(cache_path / 'raglite.db').as_posix()}"
+
+
+def default_llm() -> str:
+    """Return the default LLM."""
+    return (
+        "llama-cpp-python/unsloth/Qwen3-8B-GGUF/*Q4_K_M.gguf@8192"
+        if llama_supports_gpu_offload()
+        else "llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192"
+    )
+
+
+def default_embedder() -> str:
+    """Return the default embedder."""
+    return (  # Nomic-embed may be better if only English is used.
+        "llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512"
+        if llama_supports_gpu_offload() or (os.cpu_count() or 1) >= 4  # noqa: PLR2004
+        else "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@512"
+    )
+
+
 @dataclass(frozen=True)
 class MistralOCRConfig:
     """Configuration for MistralOCR document processor."""
@@ -64,24 +87,12 @@ class RAGLiteConfig:
     """RAGLite config."""
 
     # Database config.
-    db_url: str | URL = f"duckdb:///{(cache_path / 'raglite.db').as_posix()}"
+    db_url: str | URL = default_db_url()
     # LLM config used for generation.
-    llm: str = field(
-        default_factory=lambda: (
-            "llama-cpp-python/unsloth/Qwen3-8B-GGUF/*Q4_K_M.gguf@8192"
-            if llama_supports_gpu_offload()
-            else "llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192"
-        )
-    )
+    llm: str = field(default_factory=default_llm)
     llm_max_tries: int = 4
     # Embedder config used for indexing.
-    embedder: str = field(
-        default_factory=lambda: (  # Nomic-embed may be better if only English is used.
-            "llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512"
-            if llama_supports_gpu_offload() or (os.cpu_count() or 1) >= 4  # noqa: PLR2004
-            else "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@512"
-        )
-    )
+    embedder: str = field(default_factory=default_embedder)
     embedder_normalize: bool = True
     # Chunk config used to partition documents into chunks.
     chunk_max_size: int = 2048  # Max number of characters per chunk.

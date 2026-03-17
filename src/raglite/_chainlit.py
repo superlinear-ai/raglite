@@ -20,6 +20,7 @@ from raglite import (  # noqa: E402
     insert_documents,
     rerank_chunks,
 )
+from raglite._config import default_db_url, default_embedder, default_llm  # noqa: E402
 from raglite._markdown import document_to_markdown  # noqa: E402
 
 if TYPE_CHECKING:
@@ -36,11 +37,10 @@ async def start_chat() -> None:
     # Set tokenizers parallelism to avoid a deadlock warning.
     os.environ["TOKENIZERS_PARALLELISM"] = "true"
     # Add Chainlit settings with which the user can configure the RAGLite config.
-    default_config = RAGLiteConfig()
     config = RAGLiteConfig(
-        db_url=os.environ.get("RAGLITE_DB_URL", default_config.db_url),
-        llm=os.environ.get("RAGLITE_LLM", default_config.llm),
-        embedder=os.environ.get("RAGLITE_EMBEDDER", default_config.embedder),
+        db_url=os.environ.get("RAGLITE_DB_URL") or default_db_url(),
+        llm=os.environ.get("RAGLITE_LLM") or default_llm(),
+        embedder=os.environ.get("RAGLITE_EMBEDDER") or default_embedder(),
     )
     settings = await cl.ChatSettings(  # type: ignore[no-untyped-call]
         [

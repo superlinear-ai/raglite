@@ -7,7 +7,7 @@ from typing import ClassVar
 import typer
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from raglite._config import RAGLiteConfig
+from raglite._config import RAGLiteConfig, default_db_url, default_embedder, default_llm
 
 
 class RAGLiteCLIConfig(BaseSettings):
@@ -18,9 +18,9 @@ class RAGLiteCLIConfig(BaseSettings):
     )
 
     mcp_server_name: str = "RAGLite"
-    db_url: str = str(RAGLiteConfig().db_url)
-    llm: str = RAGLiteConfig().llm
-    embedder: str = RAGLiteConfig().embedder
+    db_url: str | None = None
+    llm: str | None = None
+    embedder: str | None = None
 
 
 cli = typer.Typer()
@@ -30,12 +30,17 @@ cli.add_typer(mcp_cli := typer.Typer(), name="mcp")
 @cli.callback()
 def main(
     ctx: typer.Context,
-    db_url: str = typer.Option(RAGLiteCLIConfig().db_url, help="Database URL"),
-    llm: str = typer.Option(RAGLiteCLIConfig().llm, help="LiteLLM LLM"),
-    embedder: str = typer.Option(RAGLiteCLIConfig().embedder, help="LiteLLM embedder"),
+    db_url: str | None = typer.Option(None, help="Database URL"),
+    llm: str | None = typer.Option(None, help="LiteLLM LLM"),
+    embedder: str | None = typer.Option(None, help="LiteLLM embedder"),
 ) -> None:
     """RAGLite CLI."""
-    ctx.obj = {"db_url": db_url, "llm": llm, "embedder": embedder}
+    cli_config = RAGLiteCLIConfig(db_url=db_url, llm=llm, embedder=embedder)
+    ctx.obj = {
+        "db_url": cli_config.db_url or default_db_url(),
+        "llm": cli_config.llm or default_llm(),
+        "embedder": cli_config.embedder or default_embedder(),
+    }
 
 
 @cli.command()
@@ -58,7 +63,7 @@ def chainlit(ctx: typer.Context) -> None:
 @mcp_cli.command("install")
 def install_mcp_server(
     ctx: typer.Context,
-    server_name: str = typer.Option(RAGLiteCLIConfig().mcp_server_name, help="MCP server name"),
+    server_name: str = typer.Option("RAGLite", help="MCP server name"),
 ) -> None:
     """Install MCP server in the Claude desktop app."""
     from fastmcp.cli.claude import get_claude_config_path
@@ -106,7 +111,7 @@ def install_mcp_server(
 @mcp_cli.command("run")
 def run_mcp_server(
     ctx: typer.Context,
-    server_name: str = typer.Option(RAGLiteCLIConfig().mcp_server_name, help="MCP server name"),
+    server_name: str = typer.Option("RAGLite", help="MCP server name"),
 ) -> None:
     """Run MCP server."""
     from raglite._mcp import create_mcp_server
