@@ -8,6 +8,7 @@ import warnings
 from collections.abc import AsyncIterator, Callable, Iterator
 from functools import cache
 from io import StringIO
+from threading import Lock
 from typing import Any, ClassVar, cast
 
 import httpx
@@ -62,8 +63,9 @@ class LlamaCppPythonLLM(CustomLLM):
     ```
     """
 
-    # Create a lock to prevent concurrent access to llama-cpp-python models.
+    # Create locks to prevent concurrent access to llama-cpp-python models.
     streaming_lock: ClassVar[asyncio.Lock] = asyncio.Lock()
+    completion_lock: ClassVar[Lock] = Lock()
 
     # The set of supported OpenAI parameters is the intersection of [1] and [2]. Not included:
     # max_completion_tokens, stream_options, n, user, logprobs, top_logprobs, extra_headers.
@@ -198,10 +200,11 @@ class LlamaCppPythonLLM(CustomLLM):
         llm = self.llm(model)
         llama_cpp_python_params = self._translate_openai_params(optional_params)
         llama_cpp_python_params = self._add_recommended_model_params(model, llama_cpp_python_params)
-        response = cast(
-            "llama_types.CreateChatCompletionResponse",
-            llm.create_chat_completion(messages=messages, **llama_cpp_python_params),
-        )
+        with LlamaCppPythonLLM.completion_lock:
+            response = cast(
+                "llama_types.CreateChatCompletionResponse",
+                llm.create_chat_completion(messages=messages, **llama_cpp_python_params),
+            )
         litellm_model_response: ModelResponse = convert_to_model_response_object(
             response_object=response,
             model_response_object=model_response,

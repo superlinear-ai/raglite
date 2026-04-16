@@ -103,3 +103,4 @@ class RAGLiteConfig:
     # list[Chunk], or list[ChunkSpan].
     search_method: SearchMethod = field(default=_vector_search, compare=False)
     self_query: bool = False
+    agentic_iterations: int = 3

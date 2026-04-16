@@ -2,6 +2,7 @@
 
 import dataclasses
 from typing import Any
+from uuid import uuid4
 
 import numpy as np
 from sqlmodel import Session, SQLModel
@@ -75,6 +76,61 @@ def test_delete_by_metadata(raglite_test_config: RAGLiteConfig) -> None:
                 f"After deletion, Table '{table_name}' does not match state before insertion.\n"
             )
         assert state_after.keys() == state_before.keys()
+
+
+def test_delete_by_metadata_multiple_values_match_any(
+    isolated_raglite_test_config: RAGLiteConfig,
+) -> None:
+    """Delete documents when a multi-value metadata filter matches multiple values."""
+    unique_topic = f"delete-topic-{uuid4().hex}"
+    document_open = Document.from_text(
+        "Open domain document for delete test.",
+        id=f"{unique_topic}-open",
+        domain=["open"],
+        topic=unique_topic,
+    )
+    document_sports = Document.from_text(
+        "Sports domain document for delete test.",
+        id=f"{unique_topic}-sports",
+        domain=["sports"],
+        topic=unique_topic,
+    )
+    document_open_and_movie = Document.from_text(
+        "Open and movie domain document for delete test.",
+        id=f"{unique_topic}-open-movie",
+        domain=["open", "movie"],  # test that multiple values are handled correctly
+        topic=unique_topic,
+    )
+    document_movie = Document.from_text(
+        "Movie domain document for delete test.",
+        id=f"{unique_topic}-movie",
+        domain=["movie"],  # test that single values in a list are handled correctly
+        topic=unique_topic,
+    )
+    insert_documents(
+        [document_open, document_sports, document_open_and_movie, document_movie],
+        config=isolated_raglite_test_config,
+    )
+
+    deleted_count = delete_documents_by_metadata(
+        {"topic": unique_topic, "domain": ["sports", "movie"]},
+        config=isolated_raglite_test_config,
+    )
+    assert (
+        deleted_count == 3  # noqa: PLR2004
+    ), "Expected OR metadata filter to delete the documents with domain='sports' or domain='movie'."
+
+    with Session(create_database_engine(isolated_raglite_test_config)) as session:
+        remaining_document = session.get(Document, document_open.id)
+        assert remaining_document is not None
+        deleted_document = session.get(Document, document_sports.id)
+        assert deleted_document is None
+        deleted_document = session.get(Document, document_open_and_movie.id)
+        assert deleted_document is None
+        deleted_document = session.get(Document, document_movie.id)
+        assert deleted_document is None
+
+    delete_documents([document_open.id], config=isolated_raglite_test_config)
 
 
 def test_delete_with_multivector_disabled(raglite_test_config: RAGLiteConfig) -> None:

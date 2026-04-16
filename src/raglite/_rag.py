@@ -2,7 +2,7 @@
 
 import json
 import logging
-from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Generator, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -39,6 +39,43 @@ Provide a direct answer to the question without referencing how the information 
 {user_prompt}
 """.strip()
 
+SEARCH_AGENT_PROMPT = """
+You are an expert research assistant that helps retrieve the necessary information to answer a user's question.
+You need to use a search tool that queries a knowledge base of documents. Each time you call the tool, you will receive a set of relevant document chunks as context.
+You can use this context to iteratively refine your search and gather more information until you have enough to answer the user's question.
+Once you do, respond with "Context is sufficient" and stop iterating.
+*IMPORTANT*: You MUST iterate AS FEW TIMES AS POSSIBLE. Be strategic and efficient in your retrieval process.
+
+## Query guidelines (tool calls)
+- Each query must be a short, simple, precise question (single facet).
+- Optimize questions for document retrieval: use keywords, explicit nouns/entities names, dates ...
+- When a tool call does not return any relevant information, pivot your line of questioning.
+Always consider prior asked questions before asking a new one:
+    - DO NOT ask the same question twice.
+    - DO NOT ask semantically overlapping questions.
+
+## Example of bad questions:
+- "What is the population of City A and City B?" (multi-faceted, not precise)
+- "What is the population of City A?" followed by "What about City B?" (vague question, not optimized for retrieval)
+- "What is the population of City A?" followed by "What is the population of City A?" (same question twice, not strategic)
+- "When did David Gilmour join Pink Floyd and when did Syd Barrett leave? give months/years and reason" (multi-faceted, too complex)
+- "Timeline of The Offspring band lineup changes drummers bassists guitarists with years (James Lilja, Ron Welty, Atom Willard, Pete Parada, Josh Freese, Brandon Pertzborn, Greg K., Todd Morse, Noodles)" (multi-faceted, too complex)
+- "Has X ever had consecutive Billboard Hot 100 number-one singles? List any runs of consecutive Hot 100 #1 singles (song titles and dates) and the length of her longest such streak (as of August 26, 2024)." (multi-faceted, not precise, not optimized for retrieval)
+
+## Example of good questions:
+- "When did David Gilmour join Pink Floyd?" (single-faceted, precise)
+- "Timeline of the Offspring" (optimized for retrieval, can be followed by more specific questions if needed)
+- "What is the population of City A?" in parallel with "What is the population of City B?" (single-faceted, precise, non-repetitive)
+- "When was X born?" instead of "How old is X?" (optimized for retrieval, as age depends on current date)
+""".strip()
+
+NO_TOOLS_FOLLOW_UP_PROMPT = """
+Tools are unavailable for this step.
+Do not call or reference any tool/function.
+Try to answer the question to the best of your ability using only the context provided and your general knowledge.
+If that is not possible, acknowledge it.
+""".strip()
+
 
 def retrieve_context(
     query: str,
@@ -54,14 +91,13 @@ def retrieve_context(
         query, num_results=num_chunks, metadata_filter=metadata_filter, config=config
     )
     # Convert results to chunk spans.
-    chunk_spans = []
     if isinstance(results, tuple):
-        chunk_spans = retrieve_chunk_spans(results[0], config=config)
-    elif all(isinstance(result, Chunk) for result in results):
-        chunk_spans = retrieve_chunk_spans(results, config=config)  # type: ignore[arg-type]
-    elif all(isinstance(result, ChunkSpan) for result in results):
-        chunk_spans = results  # type: ignore[assignment]
-    return chunk_spans
+        return retrieve_chunk_spans(results[0], config=config)
+    if all(isinstance(result, Chunk) for result in results):
+        return retrieve_chunk_spans(results, config=config)  # type: ignore[arg-type]
+    if all(isinstance(result, ChunkSpan) for result in results):
+        return list(results)  # type: ignore[arg-type]
+    return []
 
 
 def _count_tokens(item: str) -> int:
@@ -79,22 +115,14 @@ def _get_last_message_idx(messages: list[dict[str, str]], role: str) -> int | No
 
 def _calculate_buffer_tokens(
     messages: list[dict[str, str]] | None,
-    roles: list[str],
     user_prompt: str | None,
     template: str,
 ) -> int:
-    """Calculate the number of tokens used by other messages."""
-    # Calculate already used tokens (buffer)
-    buffer = 0
-    # Triggered when using tool calls
+    """Calculate the number of tokens used by existing messages."""
+    # Triggered when using tool calls: count all messages.
     if messages:
-        # Count used tokens by the last message of each role
-        for role in roles:
-            idx = _get_last_message_idx(messages, role)
-            if idx is not None:
-                buffer += _count_tokens(json.dumps(messages[idx]))
-        return buffer
-    # Triggered when using add_context
+        return sum(_count_tokens(json.dumps(m, ensure_ascii=False)) for m in messages)
+    # Triggered when using add_context: count template overhead.
     if user_prompt:
         return _count_tokens(template.format(context="", user_prompt=user_prompt))
     return 0
@@ -110,16 +138,15 @@ def _cutoff_idx(token_counts: list[int], max_tokens: int, *, reverse: bool = Fal
 
 def _get_token_counts(items: Sequence[str | ChunkSpan | Mapping[str, str]]) -> list[int]:
     """Compute token counts for a list of items."""
-    return [
-        _count_tokens(item.to_xml())
-        if isinstance(item, ChunkSpan)
-        else _count_tokens(json.dumps(item, ensure_ascii=False))
-        if isinstance(item, dict)
-        else _count_tokens(item)
-        if isinstance(item, str)
-        else 0
-        for item in items
-    ]
+    token_counts: list[int] = []
+    for item in items:
+        if isinstance(item, ChunkSpan):
+            token_counts.append(_count_tokens(item.to_xml()))
+        elif isinstance(item, Mapping):
+            token_counts.append(_count_tokens(json.dumps(item, ensure_ascii=False)))
+        else:
+            token_counts.append(_count_tokens(item))
+    return token_counts
 
 
 def _limit_chunkspans(
@@ -132,11 +159,10 @@ def _limit_chunkspans(
 ) -> dict[str, list[ChunkSpan]]:
     """Limit chunk spans to fit within the context window."""
     # Calculate already used tokens (buffer)
-    buffer = _calculate_buffer_tokens(
-        messages, ["user", "system", "assistant"], user_prompt, template
-    )
-    # Determine max tokens available for context
-    max_tokens = get_context_size(config) - buffer
+    buffer = _calculate_buffer_tokens(messages, user_prompt, template)
+    # Determine max tokens available for context, reserving space for the LLM's response.
+    max_output_tokens = min(2048, get_context_size(config) // 4)
+    max_tokens = get_context_size(config) - buffer - max_output_tokens
     # Compute token counts for all chunk spans per tool
     tool_tokens_list: dict[str, list[int]] = {}
     tool_total_tokens: dict[str, int] = {}
@@ -150,7 +176,7 @@ def _limit_chunkspans(
         total_tokens += tool_total
         total_chunk_spans += len(chunk_spans)
     # Early exit if we're already under the limit
-    if total_tokens <= max_tokens:
+    if total_tokens == 0 or total_tokens <= max_tokens:
         return tool_chunk_spans
     # If the context window is completely exhausted, return empty spans.
     if max_tokens <= 0 or total_tokens == 0:
@@ -226,7 +252,8 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
             max_tokens,
         )
         # Try to include both last system and user messages if they fit together.
-        # If not, include just user if it fits, else return empty.
+        # If not, always preserve at least the last user message — the token estimate
+        # is approximate, and dropping all messages guarantees a crash.
         idx_system = _get_last_message_idx(messages, "system")
         if (
             idx_user is not None
@@ -235,9 +262,9 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
             and token_counts[idx_user] + token_counts[idx_system] <= max_tokens
         ):
             return [messages[idx_system], messages[idx_user]]
-        if idx_user is not None and token_counts[idx_user] <= max_tokens:
+        if idx_user is not None:
             return [messages[idx_user]]
-        return []
+        return messages[-1:]
     return messages[cutoff_idx:]
 
 
@@ -246,7 +273,7 @@ def _get_tools(
 ) -> tuple[list[dict[str, Any]] | None, dict[str, Any] | str | None]:
     """Get tools to search the knowledge base if no RAG context is provided in the messages."""
     # Check if messages already contain RAG context or if the LLM supports tool use.
-    final_message = messages[-1].get("content", "")
+    final_message = messages[-1].get("content") or ""
     messages_contain_rag_context = any(
         s in final_message for s in ("<context>", "<document>", "from_chunk_id")
     )
@@ -262,19 +289,15 @@ def _get_tools(
                 "function": {
                     "name": "search_knowledge_base",
                     "description": (
-                        "Search the knowledge base.\n"
+                        "Search the knowledge base for contextual information needed to answer a user question.\n"
                         "IMPORTANT: You MAY NOT use this function if the question can be answered with common knowledge or straightforward reasoning.\n"
-                        "For multi-faceted questions, call this function once for each facet."
                     ),
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "query": {
                                 "type": "string",
-                                "description": (
-                                    "The `query` string MUST be a precise single-faceted question in the user's language.\n"
-                                    "The `query` string MUST resolve all pronouns to explicit nouns."
-                                ),
+                                "description": "The exact user question, only rephrase if necessary for clarity. Add current date information if relevant.",
                             },
                         },
                         "required": ["query"],
@@ -293,6 +316,8 @@ def _get_tools(
 def _run_tool(
     tool_call: ChatCompletionMessageToolCall,
     config: RAGLiteConfig,
+    *,
+    metadata_filter: MetadataFilter | None = None,
 ) -> tuple[str, list[ChunkSpan]]:
     """
     Run a single tool to search the knowledge base.
@@ -300,8 +325,93 @@ def _run_tool(
     Returns the tool_id and the raw chunk_spans (before formatting/limiting).
     """
     if tool_call.function.name == "search_knowledge_base":
+        try:
+            query = json.loads(tool_call.function.arguments)["query"]
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            msg = f"Invalid arguments for 'search_knowledge_base': {exc}"
+            raise ValueError(msg) from exc
+        messages = [
+            {
+                "role": "system",
+                "content": SEARCH_AGENT_PROMPT,
+            },
+            {
+                "role": "user",
+                "content": query,
+            },
+        ]
+        tool = {
+            "type": "function",
+            "function": {
+                "name": "query_knowledge_base",
+                "description": (
+                    "Search the knowledge base with a single faceted question. "
+                    "Multi-faceted questions are not allowed and should be broken down into multiple calls. \n"
+                    "Example of a bad question: 'What is the population of City A and the GDP of Country B?'\n"
+                    "Example of good questions: 'What is the population of City A?', 'What is the GDP of Country B?'\n"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "A short, precise, single-faceted question.",
+                        },
+                    },
+                    "required": ["query"],
+                    "additionalProperties": False,
+                },
+            },
+        }
+
+        # Start iterating and keep only chunk spans that introduce at least one new chunk ID.
+        chunk_spans: list[ChunkSpan] = []
+        seen_chunk_ids: set[str] = set()
+        context_size = get_context_size(config)
+        max_output_tokens = min(2048, context_size // 4)
+        max_input_tokens = context_size - max_output_tokens
+        for iteration_index in range(max(1, config.agentic_iterations)):
+            response = completion(
+                model=config.llm,
+                messages=_clip(messages, max_input_tokens),
+                tools=[tool],
+                tool_choice="required" if iteration_index == 0 else "auto",
+            )
+            messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+            tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
+
+            # check if the tool call is valid
+            if tool_calls:
+                retrieved_chunk_spans: list[ChunkSpan] = []
+                messages.extend(
+                    _run_tools(
+                        tool_calls,
+                        retrieved_chunk_spans.extend,
+                        config,
+                        messages=messages,
+                        metadata_filter=metadata_filter,
+                    )
+                )
+                # Keep a span if it contains at least one chunk we have not seen before.
+                novel_chunk_spans = [
+                    chunk_span
+                    for chunk_span in retrieved_chunk_spans
+                    if any(chunk.id not in seen_chunk_ids for chunk in chunk_span.chunks)
+                ]
+                chunk_spans.extend(novel_chunk_spans)
+                for chunk_span in novel_chunk_spans:
+                    seen_chunk_ids.update(chunk.id for chunk in chunk_span.chunks)
+            else:
+                break
+
+        # Return ID and data so the main function can aggregate and limit them
+        return tool_call.id, chunk_spans
+
+    if tool_call.function.name == "query_knowledge_base":
         kwargs = json.loads(tool_call.function.arguments)
         kwargs["config"] = config
+        if metadata_filter is not None:
+            kwargs["metadata_filter"] = metadata_filter
         chunk_spans = retrieve_context(**kwargs)
         # Return ID and data so the main function can aggregate and limit them
         return tool_call.id, chunk_spans
@@ -315,15 +425,18 @@ def _run_tools(
     config: RAGLiteConfig,
     *,
     messages: list[dict[str, str]] | None,
-    max_workers: int | None = None,
+    metadata_filter: MetadataFilter | None = None,
 ) -> list[dict[str, Any]]:
     """Run tools in parallel, limit the total context, then format messages."""
     tool_chunk_spans: dict[str, list[ChunkSpan]] = {}
 
     # 1. Parallel Execution
     # We use the _run_tool helper to fetch data concurrently
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [executor.submit(_run_tool, tool_call, config) for tool_call in tool_calls]
+    with ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(_run_tool, tool_call, config, metadata_filter=metadata_filter)
+            for tool_call in tool_calls
+        ]
 
         # Collect results as they finish
         try:
@@ -347,14 +460,13 @@ def _run_tools(
         chunk_spans = tool_chunk_spans.get(tool_id, [])
 
         # Create the final message structure
+        documents = ", ".join(
+            chunk_span.to_json(index=i + 1) for i, chunk_span in enumerate(chunk_spans)
+        )
         tool_messages.append(
             {
                 "role": "tool",
-                "content": '{{"documents": [{elements}]}}'.format(
-                    elements=", ".join(
-                        chunk_span.to_json(index=i + 1) for i, chunk_span in enumerate(chunk_spans)
-                    )
-                ),
+                "content": f'{{"documents": [{documents}]}}',
                 "tool_call_id": tool_id,
             }
         )
@@ -366,88 +478,121 @@ def _run_tools(
     return tool_messages
 
 
+def _stream_rag_response(
+    messages: list[dict[str, str]], config: RAGLiteConfig, *, use_tools: bool = True
+) -> Generator[str, None, list[Any]]:
+    """Stream the RAG response, which may include tool calls for retrieval."""
+    context_size = get_context_size(config)
+    max_output_tokens = min(2048, context_size // 4)
+    max_input_tokens = context_size - max_output_tokens
+    tools, tool_choice = _get_tools(messages, config) if use_tools else (None, None)
+    local_chunks: list[Any] = []
+    stream = completion(
+        model=config.llm,
+        messages=_clip(messages, max_input_tokens),
+        tools=tools,
+        tool_choice=tool_choice,
+        stream=True,
+        max_tokens=max_output_tokens,
+    )
+    for chunk in stream:
+        local_chunks.append(chunk)
+        if isinstance(token := chunk.choices[0].delta.content, str):  # type: ignore[union-attr]
+            yield token
+    return local_chunks
+
+
+async def _async_stream_rag_response(
+    messages: list[dict[str, str]],
+    config: RAGLiteConfig,
+    response_chunks: list[Any],
+    *,
+    use_tools: bool = True,
+) -> AsyncIterator[str]:
+    """Async version of _stream_rag_response."""
+    context_size = get_context_size(config)
+    max_output_tokens = min(2048, context_size // 4)
+    max_input_tokens = context_size - max_output_tokens
+    tools, tool_choice = _get_tools(messages, config) if use_tools else (None, None)
+    async_stream = await acompletion(
+        model=config.llm,
+        messages=_clip(messages, max_input_tokens),
+        tools=tools,
+        tool_choice=tool_choice,
+        stream=True,
+        max_tokens=max_output_tokens,
+    )
+    async for chunk in async_stream:
+        response_chunks.append(chunk)
+        if isinstance(token := chunk.choices[0].delta.content, str):
+            yield token
+
+
 def rag(
     messages: list[dict[str, str]],
     *,
     on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
+    metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig,
 ) -> Iterator[str]:
-    # If the final message does not contain RAG context, get a tool to search the knowledge base.
-    max_tokens = get_context_size(config)
-    tools, tool_choice = _get_tools(messages, config)
-    # Stream the LLM response, which is either a tool call request or an assistant response.
-    stream = completion(
-        model=config.llm,
-        messages=_clip(messages, max_tokens),
-        tools=tools,
-        tool_choice=tool_choice,
-        stream=True,
-    )
-    chunks = []
-    for chunk in stream:
-        chunks.append(chunk)
-        if isinstance(token := chunk.choices[0].delta.content, str):
-            yield token
-    # Check if there are tools to be called.
-    response = stream_chunk_builder(chunks, messages)
+    """Run retrieval-augmented generation with the given messages and config."""
+    working = list(messages)
+    chunks = yield from _stream_rag_response(working, config)
+    response = stream_chunk_builder(chunks, working)
+    working.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
     tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
+
     if tool_calls:
-        # Add the tool call request to the message array.
-        messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
-        # Run the tool calls to retrieve the RAG context and append the output to the message array.
-        messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
-        # Stream the assistant response.
-        chunks = []
-        stream = completion(model=config.llm, messages=_clip(messages, max_tokens), stream=True)
-        for chunk in stream:
-            chunks.append(chunk)
-            if isinstance(token := chunk.choices[0].delta.content, str):
-                yield token
-    # Append the assistant response to the message array.
-    response = stream_chunk_builder(chunks, messages)
-    messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+        working.extend(
+            _run_tools(
+                tool_calls,
+                on_retrieval,
+                config,
+                messages=working,
+                metadata_filter=metadata_filter,
+            )
+        )
+        follow_up_messages = [*working, {"role": "system", "content": NO_TOOLS_FOLLOW_UP_PROMPT}]
+        chunks = yield from _stream_rag_response(follow_up_messages, config, use_tools=False)
+        response = stream_chunk_builder(chunks, follow_up_messages)
+        working.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+
+    messages.extend(working[len(messages) :])
 
 
 async def async_rag(
     messages: list[dict[str, str]],
     *,
     on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
+    metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig,
 ) -> AsyncIterator[str]:
-    # If the final message does not contain RAG context, get a tool to search the knowledge base.
-    max_tokens = get_context_size(config)
-    tools, tool_choice = _get_tools(messages, config)
-    # Asynchronously stream the LLM response, which is either a tool call or an assistant response.
-    async_stream = await acompletion(
-        model=config.llm,
-        messages=_clip(messages, max_tokens),
-        tools=tools,
-        tool_choice=tool_choice,
-        stream=True,
-    )
-    chunks = []
-    async for chunk in async_stream:
-        chunks.append(chunk)
-        if isinstance(token := chunk.choices[0].delta.content, str):
-            yield token
-    # Check if there are tools to be called.
-    response = stream_chunk_builder(chunks, messages)
+    """Run retrieval-augmented generation with the given messages and config."""
+    working = list(messages)
+    chunks: list[Any] = []
+    async for token in _async_stream_rag_response(working, config, chunks):
+        yield token
+    response = stream_chunk_builder(chunks, working)
+    working.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
     tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
+
     if tool_calls:
-        # Add the tool call requests to the message array.
-        messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
-        # Run the tool calls to retrieve the RAG context and append the output to the message array.
-        # TODO: Make this async.
-        messages.extend(_run_tools(tool_calls, on_retrieval, config, messages=messages))
-        # Asynchronously stream the assistant response.
-        chunks = []
-        async_stream = await acompletion(
-            model=config.llm, messages=_clip(messages, max_tokens), stream=True
+        working.extend(
+            _run_tools(
+                tool_calls,
+                on_retrieval,
+                config,
+                messages=working,
+                metadata_filter=metadata_filter,
+            )
         )
-        async for chunk in async_stream:
-            chunks.append(chunk)
-            if isinstance(token := chunk.choices[0].delta.content, str):
-                yield token
-    # Append the assistant response to the message array.
-    response = stream_chunk_builder(chunks, messages)
-    messages.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+        follow_up_messages = [*working, {"role": "system", "content": NO_TOOLS_FOLLOW_UP_PROMPT}]
+        chunks = []
+        async for token in _async_stream_rag_response(
+            follow_up_messages, config, chunks, use_tools=False
+        ):
+            yield token
+        response = stream_chunk_builder(chunks, follow_up_messages)
+        working.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
+
+    messages.extend(working[len(messages) :])

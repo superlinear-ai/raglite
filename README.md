@@ -201,6 +201,7 @@ insert_documents(documents, config=my_config)
 
 > [!TIP]
 > 📝 Documents can include metadata by passing keyword arguments to `Document.from_text()` or `Document.from_path()`. This metadata can later be used for filtering during retrieval.
+> For list values, metadata is stored as-is (e.g. `domain=["open", "music"]`).
 
 You may also want to expand the document metadata before insertion:
 
@@ -307,6 +308,14 @@ chunk_ids_keyword, _ = keyword_search(user_prompt, num_results=20, config=my_con
 chunk_ids_hybrid, _ = hybrid_search(
     user_prompt, num_results=20, metadata_filter={"topic": "physics"}, config=my_config
 )  # Filter results to only include chunks from documents with topic="physics" (works with any search method)
+
+# Multi-value filter in one field uses OR semantics:
+chunk_ids_or, _ = hybrid_search(
+    user_prompt,
+    num_results=20,
+    metadata_filter={"domain": ["open", "music"]},
+    config=my_config,
+)  # Returns chunks where domain includes "open" OR "music".
 
 # Retrieve chunks
 from raglite import retrieve_chunks

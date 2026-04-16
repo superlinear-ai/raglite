@@ -1,13 +1,16 @@
 """Test RAGLite's search functionality."""
 
 from typing import Any
+from uuid import uuid4
 
 import pytest
 
 from raglite import (
     Document,
     RAGLiteConfig,
+    delete_documents,
     hybrid_search,
+    insert_documents,
     keyword_search,
     retrieve_chunk_spans,
     retrieve_chunks,
@@ -125,6 +128,130 @@ def test_search_metadata_filter(
     assert len(chunk_ids_empty) == len(scores_empty) == 0, (
         "Expected no results when filtering for Mathematics papers"
     )
+
+
+def test_search_metadata_filter_multiple_values_match_any(
+    isolated_raglite_test_config: RAGLiteConfig, search_method: BasicSearchMethod
+) -> None:
+    """Match any value when a metadata field filter contains multiple values."""
+    topic = f"or-filter-topic-{uuid4().hex}"
+    document_ids = [f"{topic}-open", f"{topic}-music", f"{topic}-sports"]
+    documents = [
+        Document.from_text(
+            "A short note on piano and orchestra for open-domain retrieval.",
+            id=document_ids[0],
+            domain="open",
+            topic=topic,
+        ),
+        Document.from_text(
+            "A short note on piano and orchestra for music-domain retrieval.",
+            id=document_ids[1],
+            domain="music",
+            topic=topic,
+        ),
+        Document.from_text(
+            "A short note on football and basketball for sports-domain retrieval.",
+            id=document_ids[2],
+            domain="sports",
+            topic=topic,
+        ),
+    ]
+    insert_documents(documents, config=isolated_raglite_test_config)
+
+    try:
+        query = "piano orchestra retrieval"
+        metadata_filter: MetadataFilter = {"topic": topic, "domain": ["open", "music"]}
+        chunk_ids, _ = search_method(
+            query,
+            num_results=5,
+            metadata_filter=metadata_filter,
+            config=isolated_raglite_test_config,
+        )
+        assert chunk_ids, (
+            "Expected OR metadata filter to match documents with domain='open' and 'music'."
+        )
+
+        chunks = retrieve_chunks(chunk_ids, config=isolated_raglite_test_config)
+        for chunk in chunks:
+            assert chunk.metadata_.get("topic") == [topic]
+            assert any(
+                domain in {"open", "music"} for domain in chunk.metadata_.get("domain", [])
+            ), f"Expected OR match on domain values, got {chunk.metadata_.get('domain')}"
+    finally:
+        delete_documents(document_ids, config=isolated_raglite_test_config)
+
+
+def test_search_metadata_filter_matches_documents_with_list_metadata_values(
+    isolated_raglite_test_config: RAGLiteConfig, search_method: BasicSearchMethod
+) -> None:
+    """Match documents when metadata values are stored as lists with multiple elements."""
+    topic = f"list-domain-topic-{uuid4().hex}"
+    document_ids = [f"{topic}-open-news", f"{topic}-music-arts", f"{topic}-sports-health"]
+    documents = [
+        Document.from_text(
+            "Open and news coverage about orchestras and pianos in retrieval systems.",
+            id=document_ids[0],
+            domain=["open", "news"],
+            topic=topic,
+        ),
+        Document.from_text(
+            "Music and arts commentary about orchestras and pianos in retrieval systems.",
+            id=document_ids[1],
+            domain=["music", "arts"],
+            topic=topic,
+        ),
+        Document.from_text(
+            "Sports and health analysis about football training and recovery metrics.",
+            id=document_ids[2],
+            domain=["sports", "health"],
+            topic=topic,
+        ),
+    ]
+    insert_documents(documents, config=isolated_raglite_test_config)
+
+    try:
+        query = "piano orchestra retrieval systems"
+        metadata_filter: MetadataFilter = {"topic": topic, "domain": ["open", "music"]}
+        chunk_ids, _ = search_method(
+            query,
+            num_results=10,
+            metadata_filter=metadata_filter,
+            config=isolated_raglite_test_config,
+        )
+        assert chunk_ids, "Expected results for list metadata values in domain."
+
+        chunks = retrieve_chunks(chunk_ids, config=isolated_raglite_test_config)
+        matched_document_ids = {chunk.document.id for chunk in chunks}
+        assert matched_document_ids.issubset(set(document_ids[:2])), (
+            "Expected only documents whose domain list overlaps ['open', 'music'], "
+            f"got {matched_document_ids}."
+        )
+        assert matched_document_ids == set(document_ids[:2]), (
+            f"Expected both list-based domain matches to be returned, got {matched_document_ids}."
+        )
+    finally:
+        delete_documents(document_ids, config=isolated_raglite_test_config)
+
+
+def test_self_query_deduplicates_and_keeps_multiple_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep all relevant values in one metadata field for self-query output."""
+    from raglite._database import Metadata
+
+    class _Result:
+        def model_dump(self, *, exclude_none: bool) -> dict[str, list[int]]:
+            assert exclude_none
+            return {"domain": [0, 1, 0, 99]}
+
+    monkeypatch.setattr(
+        "raglite._search._get_database_metadata",
+        lambda **_: [Metadata(name="domain", values=["open", "music", "sports"])],
+    )
+    monkeypatch.setattr("raglite._search.extract_with_llm", lambda **_: _Result())
+
+    metadata_filter = _self_query("Find open and music results.")
+    assert metadata_filter == {"domain": ["open", "music"]}
 
 
 def test_self_query(raglite_test_config: RAGLiteConfig) -> None:
