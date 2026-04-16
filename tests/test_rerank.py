@@ -8,7 +8,7 @@ from rerankers.models.flashrank_ranker import FlashRankRanker
 from rerankers.models.ranker import BaseRanker
 from scipy.stats import kendalltau
 
-from raglite import RAGLiteConfig, hybrid_search, rerank_chunks, retrieve_chunks
+from raglite import RAGLiteConfig, rerank_chunks, retrieve_chunks, vector_search
 from raglite._database import Chunk
 
 T = TypeVar("T")
@@ -25,25 +25,25 @@ def kendall_tau(a: list[T], b: list[T]) -> float:
         pytest.param(None, id="no_reranker"),
         pytest.param(FlashRankRanker("ms-marco-MiniLM-L-12-v2", verbose=0), id="flashrank_english"),
         pytest.param(
-            (
-                ("en", FlashRankRanker("ms-marco-MiniLM-L-12-v2", verbose=0)),
-                ("other", FlashRankRanker("ms-marco-MultiBERT-L-12", verbose=0)),
-            ),
+            {
+                "en": FlashRankRanker("ms-marco-MiniLM-L-12-v2", verbose=0),
+                "other": FlashRankRanker("ms-marco-MultiBERT-L-12", verbose=0),
+            },
             id="flashrank_multilingual",
         ),
     ],
 )
 def reranker(
     request: pytest.FixtureRequest,
-) -> BaseRanker | tuple[tuple[str, BaseRanker], ...] | None:
+) -> BaseRanker | dict[str, BaseRanker] | None:
     """Get a reranker to test RAGLite with."""
-    reranker: BaseRanker | tuple[tuple[str, BaseRanker], ...] | None = request.param
+    reranker: BaseRanker | dict[str, BaseRanker] | None = request.param
     return reranker
 
 
 def test_reranker(
     raglite_test_config: RAGLiteConfig,
-    reranker: BaseRanker | tuple[tuple[str, BaseRanker], ...] | None,
+    reranker: BaseRanker | dict[str, BaseRanker] | None,
 ) -> None:
     """Test inserting a document, updating the indexes, and searching for a query."""
     # Update the config with the reranker.
@@ -52,7 +52,7 @@ def test_reranker(
     )
     # Search for a query.
     query = "What does it mean for two events to be simultaneous?"
-    chunk_ids, _ = hybrid_search(query, num_results=20, config=raglite_test_config)
+    chunk_ids, _ = vector_search(query, num_results=40, config=raglite_test_config)
     # Retrieve the chunks.
     chunks = retrieve_chunks(chunk_ids, config=raglite_test_config)
     assert all(isinstance(chunk, Chunk) for chunk in chunks)
@@ -67,7 +67,4 @@ def test_reranker(
             τ_search = kendall_tau(chunks, reranked_chunks)  # noqa: PLC2401
             τ_inverse = kendall_tau(chunks[::-1], reranked_chunks)  # noqa: PLC2401
             τ_random = kendall_tau(chunks_random, reranked_chunks)  # noqa: PLC2401
-            # TODO assert that τ_search >= τ_random >= τ_inverse
-            assert isinstance(τ_search, float)
-            assert isinstance(τ_inverse, float)
-            assert isinstance(τ_random, float)
+            assert τ_search >= τ_random >= τ_inverse

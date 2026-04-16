@@ -2,14 +2,25 @@
 
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import chainlit as cl
 from chainlit.input_widget import Switch, TextInput
 
-from raglite import RAGLiteConfig, async_rag, hybrid_search, insert_document, rerank_chunks
+from raglite import (
+    Document,
+    RAGLiteConfig,
+    async_rag,
+    hybrid_search,
+    insert_documents,
+    rerank_chunks,
+)
 from raglite._markdown import document_to_markdown
 
-async_insert_document = cl.make_async(insert_document)
+if TYPE_CHECKING:
+    from raglite._database import ChunkSpan
+
+async_insert_documents = cl.make_async(insert_documents)
 async_hybrid_search = cl.make_async(hybrid_search)
 async_rerank_chunks = cl.make_async(rerank_chunks)
 
@@ -49,9 +60,7 @@ async def update_config(settings: cl.ChatSettings) -> None:
     )
     cl.user_session.set("config", config)  # type: ignore[no-untyped-call]
     # Run a search to prime the pipeline if it's a local pipeline.
-    # TODO: Don't do this for SQLite once we switch from PyNNDescent to sqlite-vec.
-    if str(config.db_url).startswith("sqlite") or config.embedder.startswith("llama-cpp-python"):
-        # async with cl.Step(name="initialize", type="retrieval"):
+    if config.embedder.startswith("llama-cpp-python"):
         query = "Hello world"
         chunk_ids, _ = await async_hybrid_search(query=query, config=config)
         _ = await async_rerank_chunks(query=query, chunk_ids=chunk_ids, config=config)
@@ -66,7 +75,7 @@ async def handle_message(user_message: cl.Message) -> None:
     inline_attachments = []
     for file in user_message.elements:
         if file.path:
-            doc_md = document_to_markdown(Path(file.path))
+            doc_md = document_to_markdown(Path(file.path), config=config)
             if len(doc_md) // 3 <= 5 * (config.chunk_max_size // 3):
                 # Document is small enough to attach to the context.
                 inline_attachments.append(f"{Path(file.path).name}:\n\n{doc_md}")
@@ -74,7 +83,8 @@ async def handle_message(user_message: cl.Message) -> None:
                 # Document is too large and must be inserted into the database.
                 async with cl.Step(name="insert", type="run") as step:
                     step.input = Path(file.path).name
-                    await async_insert_document(Path(file.path), config=config)
+                    document = Document.from_path(Path(file.path), config=config)
+                    await async_insert_documents([document], config=config)
     # Append any inline attachments to the user prompt.
     user_prompt = (
         "\n\n".join(
@@ -85,12 +95,10 @@ async def handle_message(user_message: cl.Message) -> None:
     ).strip()
     # Stream the LLM response.
     assistant_message = cl.Message(content="")
-    chunk_spans = []
+    chunk_spans: list[ChunkSpan] = []
     messages: list[dict[str, str]] = cl.chat_context.to_openai()[:-1]  # type: ignore[no-untyped-call]
     messages.append({"role": "user", "content": user_prompt})
-    async for token in async_rag(
-        messages, on_retrieval=lambda x: chunk_spans.extend(x), config=config
-    ):
+    async for token in async_rag(messages, on_retrieval=chunk_spans.extend, config=config):
         await assistant_message.stream_token(token)
     # Append RAG sources, if any.
     if chunk_spans:

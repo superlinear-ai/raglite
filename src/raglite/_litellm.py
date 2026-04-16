@@ -8,6 +8,7 @@ import warnings
 from collections.abc import AsyncIterator, Callable, Iterator
 from functools import cache
 from io import StringIO
+from threading import Lock
 from typing import Any, ClassVar, cast
 
 import httpx
@@ -55,15 +56,16 @@ class LlamaCppPythonLLM(CustomLLM):
     from litellm import completion
 
     response = completion(
-        model="llama-cpp-python/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/*Q4_K_M.gguf@4092",
+        model="llama-cpp-python/unsloth/Qwen3-8B-GGUF/*Q4_K_M.gguf@8192",
         messages=[{"role": "user", "content": "Hello world!"}],
         # stream=True
     )
     ```
     """
 
-    # Create a lock to prevent concurrent access to llama-cpp-python models.
+    # Create locks to prevent concurrent access to llama-cpp-python models.
     streaming_lock: ClassVar[asyncio.Lock] = asyncio.Lock()
+    completion_lock: ClassVar[Lock] = Lock()
 
     # The set of supported OpenAI parameters is the intersection of [1] and [2]. Not included:
     # max_completion_tokens, stream_options, n, user, logprobs, top_logprobs, extra_headers.
@@ -165,6 +167,17 @@ class LlamaCppPythonLLM(CustomLLM):
             }
         return llama_cpp_python_params
 
+    def _add_recommended_model_params(
+        self, model: str, llama_cpp_python_params: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Add recommended model settings."""
+        recommended_settings = {}
+        if "qwen3" in model.lower():
+            # Add the official recommended 'thinking mode' settings [1].
+            # [1] https://docs.unsloth.ai/basics/qwen3-how-to-run-and-fine-tune#official-recommended-settings
+            recommended_settings = {"temperature": 0.6, "min_p": 0.0, "top_p": 0.95, "top_k": 20}
+        return {**recommended_settings, **llama_cpp_python_params}
+
     def completion(  # noqa: PLR0913
         self,
         model: str,
@@ -186,10 +199,12 @@ class LlamaCppPythonLLM(CustomLLM):
     ) -> ModelResponse:
         llm = self.llm(model)
         llama_cpp_python_params = self._translate_openai_params(optional_params)
-        response = cast(
-            "llama_types.CreateChatCompletionResponse",
-            llm.create_chat_completion(messages=messages, **llama_cpp_python_params),
-        )
+        llama_cpp_python_params = self._add_recommended_model_params(model, llama_cpp_python_params)
+        with LlamaCppPythonLLM.completion_lock:
+            response = cast(
+                "llama_types.CreateChatCompletionResponse",
+                llm.create_chat_completion(messages=messages, **llama_cpp_python_params),
+            )
         litellm_model_response: ModelResponse = convert_to_model_response_object(
             response_object=response,
             model_response_object=model_response,
@@ -219,6 +234,7 @@ class LlamaCppPythonLLM(CustomLLM):
     ) -> Iterator[GenericStreamingChunk]:
         llm = self.llm(model)
         llama_cpp_python_params = self._translate_openai_params(optional_params)
+        llama_cpp_python_params = self._add_recommended_model_params(model, llama_cpp_python_params)
         stream = cast(
             "Iterator[llama_types.CreateChatCompletionStreamResponse]",
             llm.create_chat_completion(messages=messages, **llama_cpp_python_params, stream=True),
@@ -227,8 +243,8 @@ class LlamaCppPythonLLM(CustomLLM):
             choices = chunk.get("choices")
             if not choices:
                 continue
-            text = choices[0].get("delta", {}).get("content", None)
-            tool_calls = choices[0].get("delta", {}).get("tool_calls", None)
+            text = choices[0].get("delta", {}).get("content", None)  # type: ignore[call-overload]
+            tool_calls = choices[0].get("delta", {}).get("tool_calls", None)  # type: ignore[call-overload]
             tool_use = (
                 ChatCompletionToolCallChunk(
                     id=tool_calls[0]["id"],  # type: ignore[index]
@@ -349,13 +365,13 @@ def get_embedding_dim(config: RAGLiteConfig, *, fallback: bool = True) -> int:
         return embedding_dim
     # If that fails, fall back to embedding a single sentence and reading its embedding dimension.
     if fallback:
-        from raglite._embed import embed_sentences
+        from raglite._embed import embed_strings
 
         warnings.warn(
             f"Could not determine the embedding dimension of {config.embedder} from LiteLLM's model_info, using fallback.",
             stacklevel=2,
         )
-        fallback_embeddings = embed_sentences(["Hello world"], config=config)
+        fallback_embeddings = embed_strings(["Hello world"], config=config)
         return fallback_embeddings.shape[1]
     error_message = f"Could not determine the embedding dimension of {config.embedder}."
     raise ValueError(error_message)

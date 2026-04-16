@@ -1,17 +1,18 @@
 """Search and retrieve chunks."""
 
 import contextlib
+import logging
 import re
 import string
 from collections import defaultdict
-from collections.abc import Sequence
 from itertools import groupby
+from typing import Any, ClassVar
 
 import numpy as np
 from langdetect import LangDetectException, detect
-from sqlalchemy.engine import make_url
+from pydantic import BaseModel, Field, create_model
 from sqlalchemy.orm import joinedload
-from sqlmodel import Session, and_, col, or_, select, text
+from sqlmodel import Session, and_, col, func, or_, select, text
 
 from raglite._config import RAGLiteConfig
 from raglite._database import (
@@ -19,134 +20,208 @@ from raglite._database import (
     ChunkEmbedding,
     ChunkSpan,
     IndexMetadata,
+    _adapt_metadata,
     create_database_engine,
 )
-from raglite._embed import embed_sentences
-from raglite._typing import ChunkId, FloatMatrix
+from raglite._embed import embed_strings
+from raglite._extract import extract_with_llm
+from raglite._insert import _get_database_metadata
+from raglite._metadata_filter import build_metadata_filter_condition, build_metadata_filter_sql
+from raglite._typing import BasicSearchMethod, ChunkId, FloatVector, MetadataFilter, MetadataValue
+
+logger = logging.getLogger(__name__)
 
 
 def vector_search(
-    query: str | FloatMatrix,
+    query: str | FloatVector,
     *,
     num_results: int = 3,
-    oversample: int = 8,
+    oversample: int = 4,
+    metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig | None = None,
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks using ANN vector search."""
     # Read the config.
     config = config or RAGLiteConfig()
-    db_backend = make_url(config.db_url).get_backend_name()
-    # Get the index metadata (including the query adapter, and in the case of SQLite, the index).
-    index_metadata = IndexMetadata.get("default", config=config)
+    # Normalize metadata filter values to lists.
+    metadata_filter = _adapt_metadata(metadata_filter)
+    # If self_query is enabled, extract metadata filters from the query.
+    if config.self_query and isinstance(query, str):
+        self_query_filter = _self_query(query, config=config)
+        metadata_filter = {**self_query_filter, **(metadata_filter or {})}
     # Embed the query.
     query_embedding = (
-        embed_sentences([query], config=config)[0, :] if isinstance(query, str) else np.ravel(query)
+        embed_strings([query], config=config)[0, :] if isinstance(query, str) else np.ravel(query)
     )
     # Apply the query adapter to the query embedding.
-    Q = index_metadata.get("query_adapter")  # noqa: N806
-    if config.vector_search_query_adapter and Q is not None:
+    if (
+        config.vector_search_query_adapter
+        and (Q := IndexMetadata.get("default", config=config).get("query_adapter"))  # noqa: N806
+        is not None
+    ):
         query_embedding = (Q @ query_embedding).astype(query_embedding.dtype)
-    # Search for the multi-vector chunk embeddings that are most similar to the query embedding.
-    if db_backend == "postgresql":
-        # Check that the selected metric is supported by pgvector.
-        metrics = {"cosine": "<=>", "dot": "<#>", "euclidean": "<->", "l1": "<+>", "l2": "<->"}
-        if config.vector_search_index_metric not in metrics:
-            error_message = f"Unsupported metric {config.vector_search_index_metric}."
-            raise ValueError(error_message)
-        # With pgvector, we can obtain the nearest neighbours and similarities with a single query.
-        engine = create_database_engine(config)
-        with Session(engine) as session:
-            distance_func = getattr(
-                ChunkEmbedding.embedding, f"{config.vector_search_index_metric}_distance"
-            )
-            distance = distance_func(query_embedding).label("distance")
-            results = session.exec(
-                select(ChunkEmbedding.chunk_id, distance)
-                .order_by(distance)
-                .limit(oversample * num_results)
-            )
-            results = list(results)  # type: ignore[assignment]
-            chunk_ids = np.asarray([result[0] for result in results])
-            similarity = 1.0 - np.asarray([result[1] for result in results])
-    elif db_backend == "sqlite":
-        # Load the NNDescent index.
-        index = index_metadata.get("index")
-        ids = np.asarray(index_metadata.get("chunk_ids", []))
-        cumsum = np.cumsum(np.asarray(index_metadata.get("chunk_sizes", [])))
-        # Find the neighbouring multi-vector indices.
-        from pynndescent import NNDescent
+    # Rank the chunks by relevance according to the L∞ norm of the similarities of the multi-vector
+    # chunk embeddings to the query embedding with a single query.
+    with Session(create_database_engine(config)) as session:
+        corrected_oversample = oversample * config.chunk_max_size / RAGLiteConfig.chunk_max_size
+        num_hits = round(corrected_oversample) * max(num_results, 10)
 
-        if isinstance(index, NNDescent) and len(ids) and len(cumsum):
-            # Query the index.
-            multi_vector_indices, distance = index.query(
-                query_embedding[np.newaxis, :], k=oversample * num_results
+        dist = ChunkEmbedding.embedding.distance(  # type: ignore[attr-defined]
+            query_embedding, metric=config.vector_search_distance_metric
+        ).label("dist")
+        sim = (1.0 - dist).label("sim")
+
+        # Build the query that retrieves the top chunk embeddings.
+        if not metadata_filter:
+            # No metadata filter: use an index to get the top results by distance.
+            top_vectors = (
+                select(ChunkEmbedding.chunk_id, sim, dist).order_by(dist).limit(num_hits).subquery()
             )
-            similarity = 1 - distance[0, :]
-            # Transform the multi-vector indices into chunk indices, and then to chunk ids.
-            chunk_indices = np.searchsorted(cumsum, multi_vector_indices[0, :], side="right") + 1
-            chunk_ids = np.asarray([ids[chunk_index - 1] for chunk_index in chunk_indices])
         else:
-            # Empty result set if there is no index or if no chunks are indexed.
-            chunk_ids, similarity = np.array([], dtype=np.intp), np.array([])
-    # Exit early if there are no search results.
-    if not len(chunk_ids):
-        return [], []
-    # Score each unique chunk id as the mean similarity of its multi-vector hits. Chunk ids with
-    # fewer hits are padded with the minimum similarity of the result set.
-    unique_chunk_ids, counts = np.unique(chunk_ids, return_counts=True)
-    score = np.full(
-        (len(unique_chunk_ids), np.max(counts)), np.min(similarity), dtype=similarity.dtype
-    )
-    for i, (unique_chunk_id, count) in enumerate(zip(unique_chunk_ids, counts, strict=True)):
-        score[i, :count] = similarity[chunk_ids == unique_chunk_id]
-    pooled_similarity = np.mean(score, axis=1)
-    # Sort the chunk ids by their adjusted similarity.
-    sorted_indices = np.argsort(pooled_similarity)[::-1]
-    unique_chunk_ids = unique_chunk_ids[sorted_indices][:num_results]
-    pooled_similarity = pooled_similarity[sorted_indices][:num_results]
-    return unique_chunk_ids.tolist(), pooled_similarity.tolist()
+
+            def _apply_metadata_filter(query_builder: Any) -> Any:
+                condition = build_metadata_filter_condition(
+                    Chunk.metadata_,
+                    metadata_filter,
+                    dialect=session.get_bind().dialect.name,
+                )
+                return query_builder.where(condition) if condition is not None else query_builder
+
+            # Count how many results match the given metadata filter.
+            metadata_count_query = _apply_metadata_filter(
+                select(func.count(col(ChunkEmbedding.chunk_id))).join(
+                    Chunk,
+                    ChunkEmbedding.chunk_id == Chunk.id,  # type: ignore[arg-type]
+                )
+            )
+            metadata_count = session.exec(metadata_count_query).one()
+
+            if metadata_count <= 100_000:  # noqa: PLR2004
+                # Metadata filter produces few results: filter first, then order by distance.
+                filtered_chunks_subquery = _apply_metadata_filter(
+                    select(ChunkEmbedding.chunk_id).join(
+                        Chunk,
+                        ChunkEmbedding.chunk_id == Chunk.id,  # type: ignore[arg-type]
+                    )
+                )
+                top_vectors = (
+                    select(ChunkEmbedding.chunk_id, sim, dist)
+                    .where(col(ChunkEmbedding.chunk_id).in_(filtered_chunks_subquery))
+                    .order_by(dist)
+                    .limit(num_hits)
+                    .subquery()
+                )
+            else:
+                # Metadata filter produces many results: first order by distance, then filter.
+                top_by_distance = (
+                    select(ChunkEmbedding.chunk_id, sim, dist)
+                    .order_by(dist)
+                    .limit(1_000_000)
+                    .subquery()
+                )
+                top_vectors = (
+                    _apply_metadata_filter(
+                        select(
+                            top_by_distance.c.chunk_id,
+                            top_by_distance.c.sim,
+                            top_by_distance.c.dist,
+                        ).select_from(
+                            top_by_distance.join(Chunk, top_by_distance.c.chunk_id == Chunk.id)
+                        )
+                    )
+                    .order_by(top_by_distance.c.dist)
+                    .limit(num_hits)
+                    .subquery()
+                )
+
+        sim_norm = func.max(top_vectors.c.sim).label("sim_norm")
+        statement = (
+            select(top_vectors.c.chunk_id, sim_norm)
+            .group_by(top_vectors.c.chunk_id)
+            .order_by(sim_norm.desc())
+            .limit(num_results)
+        )
+        rows = session.exec(statement).all()
+        chunk_ids = [row[0] for row in rows]
+        similarity = [float(row[1]) for row in rows]
+    return chunk_ids, similarity
 
 
 def keyword_search(
-    query: str, *, num_results: int = 3, config: RAGLiteConfig | None = None
+    query: str,
+    *,
+    num_results: int = 3,
+    metadata_filter: MetadataFilter | None = None,
+    config: RAGLiteConfig | None = None,
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks using BM25 keyword search."""
     # Read the config.
     config = config or RAGLiteConfig()
-    db_backend = make_url(config.db_url).get_backend_name()
+    # Normalize metadata filter values to lists.
+    metadata_filter = _adapt_metadata(metadata_filter)
+    # If self_query is enabled, extract metadata filters from the query.
+    if config.self_query and isinstance(query, str):
+        self_query_filter = _self_query(query, config=config)
+        metadata_filter = {**self_query_filter, **(metadata_filter or {})}
     # Connect to the database.
-    engine = create_database_engine(config)
-    with Session(engine) as session:
-        if db_backend == "postgresql":
+    with Session(create_database_engine(config)) as session:
+        dialect = session.get_bind().dialect.name
+
+        if dialect == "postgresql":
             # Convert the query to a tsquery [1].
             # [1] https://www.postgresql.org/docs/current/textsearch-controls.html
             query_escaped = re.sub(f"[{re.escape(string.punctuation)}]", " ", query)
             tsv_query = " | ".join(query_escaped.split())
-            # Perform keyword search with tsvector.
-            statement = text("""
-                SELECT id as chunk_id, ts_rank(to_tsvector('simple', body), to_tsquery('simple', :query)) AS score
+
+            base_sql = """
+                SELECT id as chunk_id,
+                       ts_rank(to_tsvector('simple', body), to_tsquery('simple', :tsv_query)) as score
                 FROM chunk
-                WHERE to_tsvector('simple', body) @@ to_tsquery('simple', :query)
+                WHERE to_tsvector('simple', body) @@ to_tsquery('simple', :tsv_query)
+            """
+
+            params = {"tsv_query": tsv_query, "limit": num_results}
+            if metadata_filter:
+                metadata_filter_sql, metadata_filter_params = build_metadata_filter_sql(
+                    metadata_filter, dialect="postgresql"
+                )
+                base_sql += metadata_filter_sql
+                params.update(metadata_filter_params)
+
+            base_sql += """
                 ORDER BY score DESC
                 LIMIT :limit;
-                """)
-            results = session.execute(statement, params={"query": tsv_query, "limit": num_results})
-        elif db_backend == "sqlite":
-            # Convert the query to an FTS5 query [1].
-            # [1] https://www.sqlite.org/fts5.html#full_text_query_syntax
-            query_escaped = re.sub(f"[{re.escape(string.punctuation)}]", " ", query)
-            fts5_query = " OR ".join(query_escaped.split())
-            # Perform keyword search with FTS5. In FTS5, BM25 scores are negative [1], so we
-            # negate them to make them positive.
-            # [1] https://www.sqlite.org/fts5.html#the_bm25_function
-            statement = text("""
-                SELECT chunk.id as chunk_id, -bm25(keyword_search_chunk_index) as score
-                FROM chunk JOIN keyword_search_chunk_index ON chunk.rowid = keyword_search_chunk_index.rowid
-                WHERE keyword_search_chunk_index MATCH :match
+            """
+
+            statement = text(base_sql)
+            results = session.execute(statement, params)
+
+        elif dialect == "duckdb":
+            base_sql = """
+                SELECT chunk_id, score
+                FROM (
+                    SELECT id AS chunk_id, fts_main_chunk.match_bm25(id, :query) AS score
+                    FROM chunk
+                    WHERE 1=1
+            """
+
+            params = {"query": query, "limit": num_results}
+            if metadata_filter:
+                metadata_filter_sql, metadata_filter_params = build_metadata_filter_sql(
+                    metadata_filter, dialect="duckdb"
+                )
+                base_sql += metadata_filter_sql
+                params.update(metadata_filter_params)
+
+            base_sql += """
+                ) sq
+                WHERE score IS NOT NULL
                 ORDER BY score DESC
                 LIMIT :limit;
-                """)
-            results = session.execute(statement, params={"match": fts5_query, "limit": num_results})
+            """
+
+            statement = text(base_sql)
+            results = session.execute(statement, params)
         # Unpack the results.
         results = list(results)  # type: ignore[assignment]
         chunk_ids = [result.chunk_id for result in results]
@@ -155,16 +230,19 @@ def keyword_search(
 
 
 def reciprocal_rank_fusion(
-    rankings: list[list[ChunkId]], *, k: int = 60
+    rankings: list[list[ChunkId]], *, k: int = 60, weights: list[float] | None = None
 ) -> tuple[list[ChunkId], list[float]]:
     """Reciprocal Rank Fusion."""
+    if weights is None:
+        weights = [1.0] * len(rankings)
+    if len(weights) != len(rankings):
+        error = "The number of weights must match the number of rankings."
+        raise ValueError(error)
     # Compute the RRF score.
-    chunk_ids = {chunk_id for ranking in rankings for chunk_id in ranking}
     chunk_id_score: defaultdict[str, float] = defaultdict(float)
-    for ranking in rankings:
-        chunk_id_index = {chunk_id: i for i, chunk_id in enumerate(ranking)}
-        for chunk_id in chunk_ids:
-            chunk_id_score[chunk_id] += 1 / (k + chunk_id_index.get(chunk_id, len(chunk_id_index)))
+    for ranking, weight in zip(rankings, weights, strict=True):
+        for i, chunk_id in enumerate(ranking):
+            chunk_id_score[chunk_id] += weight / (k + i)
     # Exit early if there are no results to fuse.
     if not chunk_id_score:
         return [], []
@@ -175,15 +253,28 @@ def reciprocal_rank_fusion(
     return list(rrf_chunk_ids), list(rrf_score)
 
 
-def hybrid_search(
-    query: str, *, num_results: int = 3, oversample: int = 4, config: RAGLiteConfig | None = None
+def hybrid_search(  # noqa: PLR0913
+    query: str,
+    *,
+    num_results: int = 3,
+    oversample: int = 2,
+    vector_search_weight: float = 0.75,
+    keyword_search_weight: float = 0.25,
+    metadata_filter: MetadataFilter | None = None,
+    config: RAGLiteConfig | None = None,
 ) -> tuple[list[ChunkId], list[float]]:
     """Search chunks by combining ANN vector search with BM25 keyword search."""
     # Run both searches.
-    vs_chunk_ids, _ = vector_search(query, num_results=oversample * num_results, config=config)
-    ks_chunk_ids, _ = keyword_search(query, num_results=oversample * num_results, config=config)
+    vs_chunk_ids, _ = vector_search(
+        query, num_results=oversample * num_results, metadata_filter=metadata_filter, config=config
+    )
+    ks_chunk_ids, _ = keyword_search(
+        query, num_results=oversample * num_results, metadata_filter=metadata_filter, config=config
+    )
     # Combine the results with Reciprocal Rank Fusion (RRF).
-    chunk_ids, hybrid_score = reciprocal_rank_fusion([vs_chunk_ids, ks_chunk_ids])
+    chunk_ids, hybrid_score = reciprocal_rank_fusion(
+        [vs_chunk_ids, ks_chunk_ids], weights=[vector_search_weight, keyword_search_weight]
+    )
     chunk_ids, hybrid_score = chunk_ids[:num_results], hybrid_score[:num_results]
     return chunk_ids, hybrid_score
 
@@ -194,9 +285,7 @@ def retrieve_chunks(
     """Retrieve chunks by their ids."""
     if not chunk_ids:
         return []
-    config = config or RAGLiteConfig()
-    engine = create_database_engine(config)
-    with Session(engine) as session:
+    with Session(create_database_engine(config := config or RAGLiteConfig())) as session:
         chunks = list(
             session.exec(
                 select(Chunk)
@@ -206,42 +295,6 @@ def retrieve_chunks(
             ).all()
         )
     chunks = sorted(chunks, key=lambda chunk: chunk_ids.index(chunk.id))
-    return chunks
-
-
-def rerank_chunks(
-    query: str, chunk_ids: list[ChunkId] | list[Chunk], *, config: RAGLiteConfig | None = None
-) -> list[Chunk]:
-    """Rerank chunks according to their relevance to a given query."""
-    # Retrieve the chunks.
-    config = config or RAGLiteConfig()
-    chunks: list[Chunk] = (
-        retrieve_chunks(chunk_ids, config=config)  # type: ignore[arg-type,assignment]
-        if all(isinstance(chunk_id, ChunkId) for chunk_id in chunk_ids)
-        else chunk_ids
-    )
-    # Exit early if no reranker is configured or if the input is empty.
-    if not config.reranker or not chunks:
-        return chunks
-    # Select the reranker.
-    if isinstance(config.reranker, Sequence):
-        # Detect the languages of the chunks and queries.
-        with contextlib.suppress(LangDetectException):
-            langs = {detect(str(chunk)) for chunk in chunks}
-            langs.add(detect(query))
-        # If all chunks and the query are in the same language, use a language-specific reranker.
-        rerankers = dict(config.reranker)
-        if len(langs) == 1 and (lang := next(iter(langs))) in rerankers:
-            reranker = rerankers[lang]
-        else:
-            reranker = rerankers.get("other")
-    else:
-        # A specific reranker was configured.
-        reranker = config.reranker
-    # Rerank the chunks.
-    if reranker:
-        results = reranker.rank(query=query, docs=[str(chunk) for chunk in chunks])
-        chunks = [chunks[result.doc_id] for result in results.results]
     return chunks
 
 
@@ -269,8 +322,7 @@ def retrieve_chunk_spans(
     # Assign a reciprocal ranking score to each chunk based on its position in the original list.
     chunk_id_to_score = {chunk.id: 1 / (i + 1) for i, chunk in enumerate(chunks)}
     # Extend the chunks with their neighbouring chunks.
-    engine = create_database_engine(config)
-    with Session(engine) as session:
+    with Session(create_database_engine(config)) as session:
         if neighbors:
             neighbor_conditions = [
                 and_(Chunk.document_id == chunk.document_id, Chunk.index == chunk.index + offset)
@@ -306,3 +358,170 @@ def retrieve_chunk_spans(
         reverse=True,
     )
     return chunk_spans
+
+
+def rerank_chunks(
+    query: str, chunk_ids: list[ChunkId] | list[Chunk], *, config: RAGLiteConfig | None = None
+) -> list[Chunk]:
+    """Rerank chunks according to their relevance to a given query."""
+    # Retrieve the chunks.
+    config = config or RAGLiteConfig()
+    chunks: list[Chunk] = (
+        retrieve_chunks(chunk_ids, config=config)  # type: ignore[arg-type,assignment]
+        if all(isinstance(chunk_id, ChunkId) for chunk_id in chunk_ids)
+        else chunk_ids
+    )
+    # Exit early if no reranker is configured or if the input is empty.
+    if not config.reranker or not chunks:
+        return chunks
+    # Select the reranker.
+    if isinstance(config.reranker, dict):
+        # Detect the languages of the chunks and queries.
+        with contextlib.suppress(LangDetectException):
+            langs = {detect(str(chunk)) for chunk in chunks}
+            langs.add(detect(query))
+        # If all chunks and the query are in the same language, use a language-specific reranker.
+        rerankers = config.reranker
+        if len(langs) == 1 and (lang := next(iter(langs))) in rerankers:
+            reranker = rerankers[lang]
+        else:
+            reranker = rerankers.get("other")
+    else:
+        # A specific reranker was configured.
+        reranker = config.reranker
+    # Rerank the chunks.
+    if reranker:
+        results = reranker.rank(query=query, docs=[str(chunk) for chunk in chunks])
+        chunks = [chunks[result.doc_id] for result in results.results]
+    return chunks
+
+
+def search_and_rerank_chunks(  # noqa: PLR0913
+    query: str,
+    *,
+    num_results: int = 8,
+    oversample: int = 4,
+    search: BasicSearchMethod = hybrid_search,
+    config: RAGLiteConfig | None = None,
+    metadata_filter: MetadataFilter | None = None,
+) -> list[Chunk]:
+    """Search and rerank chunks."""
+    chunk_ids, _ = search(
+        query, num_results=oversample * num_results, metadata_filter=metadata_filter, config=config
+    )
+    chunks = rerank_chunks(query, chunk_ids, config=config)[:num_results]
+    return chunks
+
+
+def search_and_rerank_chunk_spans(  # noqa: PLR0913
+    query: str,
+    *,
+    num_results: int = 8,
+    oversample: int = 4,
+    neighbors: tuple[int, ...] | None = (-1, 1),
+    search: BasicSearchMethod = hybrid_search,
+    config: RAGLiteConfig | None = None,
+    metadata_filter: MetadataFilter | None = None,
+) -> list[ChunkSpan]:
+    """Search and rerank chunks, and then collate into chunk spans."""
+    chunk_ids, _ = search(
+        query, num_results=oversample * num_results, metadata_filter=metadata_filter, config=config
+    )
+    chunks = rerank_chunks(query, chunk_ids, config=config)[:num_results]
+    chunk_spans = retrieve_chunk_spans(chunks, neighbors=neighbors, config=config)
+    return chunk_spans
+
+
+SELF_QUERY_PROMPT = """
+You are an expert assistant that extracts metadata filters from user queries to help search a knowledge base.
+
+Instructions:
+1. For each metadata field, populate it only if the query can be reasonably mapped to one or more allowed values.
+2. If a field clearly matches multiple allowed values, return all corresponding numeric IDs for that field.
+3. If the query is general, ambiguous, or does not clearly map to any allowed value for a field, return None for that field.
+4. For each populated field, return only the numeric ID(s) defined in the allowed options. Do not return text labels. Do not infer or invent IDs.
+5. Output your answer as a JSON object with field names as keys and lists of IDs or None as values.
+
+Examples:
+
+Allowed options:
+- category: {0: "Technology", 1: "Health", 2: "Finance"}
+- region: {0: "Europe", 1: "Asia", 2: "Americas"}
+
+Query: "Show me the latest news in Technology from Asia and Europe."
+Reasoning: The query explicitly mentions "Technology", which matches category ID 0. It also explicitly mentions "Asia" (region ID 1) and "Europe" (region ID 0). Both fields have clear matches.
+Output: {"category": [0], "region": [1, 0]}
+
+Query: "Show me Health articles."
+Reasoning: The query explicitly mentions "Health", which matches category ID 1. The query does not mention any region, so region is None.
+Output: {"category": [1], "region": null}
+
+Query: "What is the price of a Bugatti Chiron?"
+Reasoning: The query does not mention any category ("Technology", "Health", or "Finance") or any region ("Europe", "Asia", or "Americas"). No fields match.
+Output: {"category": null, "region": null}
+""".strip()
+
+
+def _self_query(
+    query: str,
+    *,
+    system_prompt: str = SELF_QUERY_PROMPT,
+    config: RAGLiteConfig | None = None,
+) -> MetadataFilter:
+    """Extract metadata filters from a natural language query."""
+    config = config or RAGLiteConfig()
+    # Retrieve the available metadata from the database.
+    metadata_records = _get_database_metadata(config=config)
+    if not metadata_records:
+        return {}
+    # Create dynamic Pydantic model for the metadata filter
+    field_ids_mapping: dict[str, dict[int, MetadataValue]] = {}
+    field_definitions: dict[str, Any] = {}
+    field_definitions["system_prompt"] = (ClassVar[str], system_prompt)
+    # Note:
+    # The LLM tends to return escaped Unicode or hexadecimal strings when asked to output
+    # labels directly. By assigning each allowed metadata value a numeric ID and asking
+    # the model to return only IDs, we avoid encoding issues and reliably map results
+    # back to their actual metadata values afterward.
+    for record in metadata_records:
+        field_ids_mapping[record.name] = dict(enumerate(record.values))
+        # Store the mapping in
+        description = (
+            "Return ONLY IDs from this set (use IDs, not labels). "
+            f"Allowed options: {field_ids_mapping[record.name]}"
+        )
+        field_definitions[record.name] = (
+            list[int] | None,
+            Field(default=None, description=description),
+        )
+    metadata_filter_model = create_model(
+        "MetadataFilterModel", **field_definitions, __base__=BaseModel
+    )
+    # Call extract_with_llm
+    try:
+        result = extract_with_llm(
+            return_type=metadata_filter_model,
+            user_prompt=query,
+            config=config,
+            temperature=0.0,  # Deterministic output if the model allows
+            drop_params=True,
+        )
+    except ValueError as e:
+        logger.debug("Failed to extract metadata filter: %s", e)
+        return {}
+    else:
+        # Convert the extracted metadata filter from IDs back to actual metadata values.
+        metadata_filter_by_id = result.model_dump(exclude_none=True)
+        metadata_filter: dict[str, list[MetadataValue] | MetadataValue] = {}
+        for field, value_ids in metadata_filter_by_id.items():
+            value_mapping = field_ids_mapping.get(field, {})
+            metadata_values = list(
+                dict.fromkeys(
+                    value_mapping[value_id]
+                    for value_id in value_ids
+                    if value_id in value_mapping  # handle potential out-of-range IDs gracefully
+                )
+            )
+            if metadata_values:
+                metadata_filter[field] = metadata_values
+        return metadata_filter

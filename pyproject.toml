@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]  # https://packaging.python.org/en/latest/specifications/pyproject-toml/
 name = "raglite"
-version = "0.7.0"
-description = "A Python toolkit for Retrieval-Augmented Generation (RAG) with SQLite or PostgreSQL."
+version = "1.0.0"
+description = "A Python toolkit for Retrieval-Augmented Generation (RAG) with DuckDB or PostgreSQL."
 readme = "README.md"
 authors = [
   { name = "Laurent Sorber", email = "laurent@superlinear.eu" },
@@ -17,34 +17,30 @@ dependencies = [
   # Markdown conversion:
   "pdftext (>=0.4.1)",
   "scikit-learn (>=1.4.2)",
-  # Markdown formatting:
-  "markdown-it-py (>=3.0.0)",
-  "mdformat-gfm (>=0.3.6)",
   # Sentence and chunk splitting:
+  "markdown-it-py (>=3.0.0)",
   "numpy (>=1.26.4,<2.0.0)",
+  "onnxruntime (<1.24.0); python_version < '3.11'",  # 1.24+ drops Python 3.10 support
   "scipy (>=1.11.2,!=1.15.0.*,!=1.15.1,!=1.15.2)",
   "wtpsplit-lite (>=0.1.0)",
   # Large Language Models:
-  "huggingface-hub (>=0.22.0)",
+  "huggingface-hub (>=0.31.2)",
   "litellm (>=1.60.2)",
   "pydantic (>=2.7.0)",
-  # Approximate Nearest Neighbors:
-  "pynndescent (>=0.5.12)",
-  "numba (>=0.60.0)",
   # Reranking:
   "langdetect (>=1.0.9)",
-  "rerankers[flashrank] (>=0.6.0)",
+  "rerankers[api,flashrank] (>=0.10.0)",
   # Storage:
+  "duckdb (>=1.1.3,!=1.4.0)",
+  "duckdb-engine (>=0.16.0)",
   "pg8000 (>=1.31.2)",
   "sqlmodel-slim (>=0.0.21)",
   # Progress:
   "tqdm (>=4.66.0)",
-  # Evaluation:
-  "pandas (>=2.1.1)",
   # CLI:
   "typer (>=0.15.1)",
   # Model Context Protocol:
-  "fastmcp (>=0.4.1)",
+  "fastmcp (>=2.0.0)",
   # Utilities:
   "packaging (>=23.0)",
 ]
@@ -67,13 +63,14 @@ dev = [
   "ipykernel (>=6.29.4)",
   "ipython (>=8.18.0)",
   "ipywidgets (>=8.1.2)",
-  "mypy (>=1.14.1)",
+  "mypy (>=1.18.2)",
   "pdoc (>=15.0.1)",
   "poethepoet (>=0.32.1)",
   "pre-commit (>=4.0.1)",
   "pytest (>=8.3.4)",
   "pytest-mock (>=3.14.0)",
   "pytest-xdist (>=3.6.1)",
+  "python-dotenv (>=1.0.0)",
   "ruff (>=0.10.0)",
   "typeguard (>=4.4.1)",
 ]
@@ -82,11 +79,23 @@ dev = [
 # Frontend:
 chainlit = ["chainlit (>=2.0.0)"]
 # Large Language Models:
-llama-cpp-python = ["llama-cpp-python (>=0.3.3)"]
+llama-cpp-python = ["llama-cpp-python (>=0.3.9)"]
 # Markdown conversion:
+mistral-ocr = ["mistralai (>=1.10.1)"]
 pandoc = ["pypandoc-binary (>=1.13)"]
 # Evaluation:
-ragas = ["ragas (>=0.1.12)"]
+ragas = ["pandas (>=2.1.1)", "ragas (>=0.3.3)"]
+# Benchmarking:
+bench = [
+  "faiss-cpu (>=1.11.0)",
+  "ir_datasets (>=0.5.10)",
+  "ir_measures (>=0.3.7)",
+  "llama-index (>=0.12.39)",
+  "llama-index-vector-stores-faiss (>=0.4.0)",
+  "openai (>=1.75.0)",
+  "pandas (>=2.1.1)",
+  "python-slugify (>=8.0.4)",
+]
 
 [tool.commitizen]  # https://commitizen-tools.github.io/commitizen/config/
 bump_message = "bump: v$current_version → v$new_version"
@@ -120,10 +129,12 @@ show_column_numbers = true
 show_error_codes = true
 show_error_context = true
 warn_unreachable = true
+warn_unused_ignores = false
 
 [tool.pytest.ini_options]  # https://docs.pytest.org/en/latest/reference/reference.html#ini-options-ref
 addopts = "--color=yes --doctest-modules --ignore=src/raglite/_chainlit.py --exitfirst --failed-first --strict-config --strict-markers --verbosity=2 --junitxml=reports/pytest.xml"
-filterwarnings = ["error", "ignore::DeprecationWarning", "ignore::pytest.PytestUnraisableExceptionWarning"]
+filterwarnings = ["error", "ignore::DeprecationWarning", "ignore::pytest.PytestUnraisableExceptionWarning", "ignore:The `local_dir_use_symlinks` argument is deprecated:UserWarning:huggingface_hub"]
+markers = ["slow: mark test as slow"]
 testpaths = ["src", "tests"]
 xfail_strict = true
 
@@ -138,7 +149,7 @@ docstring-code-format = true
 
 [tool.ruff.lint]
 select = ["A", "ASYNC", "B", "BLE", "C4", "C90", "D", "DTZ", "E", "EM", "ERA", "F", "FBT", "FLY", "FURB", "G", "I", "ICN", "INP", "INT", "ISC", "LOG", "N", "NPY", "PERF", "PGH", "PIE", "PL", "PT", "PTH", "PYI", "Q", "RET", "RSE", "RUF", "S", "SIM", "SLF", "SLOT", "T10", "T20", "TCH", "TID", "TRY", "UP", "W", "YTT"]
-ignore = ["D203", "D213", "E501", "RET504", "RUF002", "RUF022", "S101", "S307", "TC004"]
+ignore = ["D203", "D213", "E501", "PLC0415", "RET504", "RUF002", "RUF022", "S101", "S307", "TC004"]
 unfixable = ["ERA001", "F401", "F841", "T201", "T203"]
 
 [tool.ruff.lint.flake8-tidy-imports]

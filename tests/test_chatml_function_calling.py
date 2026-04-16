@@ -19,7 +19,11 @@ from raglite._lazy_llama import (
 
 def is_accelerator_available() -> bool:
     """Check if an accelerator is available."""
-    return llama_supports_gpu_offload() or (os.cpu_count() or 1) >= 8  # noqa: PLR2004
+    if llama_supports_gpu_offload():
+        return True
+    if os.environ.get("CI"):
+        return False
+    return (os.cpu_count() or 1) >= 8  # noqa: PLR2004
 
 
 @pytest.mark.parametrize(
@@ -59,16 +63,17 @@ def is_accelerator_available() -> bool:
 @pytest.mark.parametrize(
     "llm_repo_id",
     [
-        pytest.param("bartowski/Llama-3.2-3B-Instruct-GGUF", id="llama_3.2_3B"),
+        pytest.param("unsloth/Qwen3-4B-GGUF", id="qwen3_4B"),
         pytest.param(
-            "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF",
-            id="llama_3.1_8B",
+            "unsloth/Qwen3-8B-GGUF",
+            id="qwen3_8B",
             marks=pytest.mark.skipif(
                 not is_accelerator_available(), reason="Accelerator not available"
             ),
         ),
     ],
 )
+@pytest.mark.slow
 def test_llama_cpp_python_tool_use(
     llm_repo_id: str,
     user_prompt_expected_tool_calls: tuple[str, int],
@@ -82,7 +87,7 @@ def test_llama_cpp_python_tool_use(
     llm = Llama.from_pretrained(
         repo_id=llm_repo_id,
         filename="*Q4_K_M.gguf",
-        n_ctx=4096,
+        n_ctx=8192,
         n_gpu_layers=-1,
         verbose=False,
         chat_handler=chatml_function_calling_with_streaming,

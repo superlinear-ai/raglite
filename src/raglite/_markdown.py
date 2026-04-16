@@ -1,14 +1,18 @@
 """Convert any document to Markdown."""
 
+import logging
 import re
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-import mdformat
 import numpy as np
 from pdftext.extraction import dictionary_output
 from sklearn.cluster import KMeans
+
+from raglite._config import MistralOCRConfig, RAGLiteConfig
+
+logger = logging.getLogger(__name__)
 
 
 def parsed_pdf_to_markdown(pages: list[dict[str, Any]]) -> list[str]:  # noqa: C901, PLR0915
@@ -71,7 +75,7 @@ def parsed_pdf_to_markdown(pages: list[dict[str, Any]]) -> list[str]:  # noqa: C
                         span_font_size = extract_font_size(span)
                         if span_font_size < mode_font_size:
                             idx = 7
-                        elif span_font_size == mode_font_size:
+                        elif span_font_size == mode_font_size or len(heading_font_sizes) == 0:
                             idx = 6
                         else:
                             idx = np.argmin(np.abs(heading_font_sizes - span_font_size))  # type: ignore[assignment]
@@ -195,14 +199,14 @@ def parsed_pdf_to_markdown(pages: list[dict[str, Any]]) -> list[str]:  # noqa: C
     return pages_md
 
 
-def document_to_markdown(doc_path: Path) -> str:
-    """Convert any document to GitHub Flavored Markdown."""
+def _default_document_to_markdown(doc_path: Path) -> str:
+    """Convert any document to GitHub Flavored Markdown using pdftext/pandoc."""
     # Convert the file's content to GitHub Flavored Markdown.
     if doc_path.suffix == ".pdf":
         # Parse the PDF with pdftext and convert it to Markdown.
         pages = dictionary_output(doc_path, sort=True, keep_chars=False)
         doc = "\n\n".join(parsed_pdf_to_markdown(pages))
-    elif doc_path.suffix == ".md":
+    elif doc_path.suffix in (".md", ".txt"):
         # Read the Markdown file.
         doc = doc_path.read_text()
     else:
@@ -219,6 +223,35 @@ def document_to_markdown(doc_path: Path) -> str:
         except RuntimeError:
             # File format not supported, fall back to reading the text.
             doc = doc_path.read_text()
-    # Improve Markdown quality.
-    doc = mdformat.text(doc)
     return doc
+
+
+def document_to_markdown(doc_path: Path, *, config: RAGLiteConfig | None = None) -> str:
+    """Convert any document to GitHub Flavored Markdown.
+
+    Parameters
+    ----------
+    doc_path
+        Path to the document file.
+    config
+        Optional RAGLite configuration. If document_processor is set to a
+        MistralOCRConfig, uses MistralOCR instead of the default processor.
+
+    Returns
+    -------
+    str
+        Document content as GitHub Flavored Markdown.
+    """
+    config = config or RAGLiteConfig()
+
+    if isinstance(config.document_processor, MistralOCRConfig):
+        # Lazy import to avoid requiring mistralai when not using MistralOCR.
+        from raglite._mistral_ocr import SUPPORTED_EXTENSIONS, mistral_ocr_to_markdown
+
+        if doc_path.suffix.lower() in SUPPORTED_EXTENSIONS:
+            return mistral_ocr_to_markdown(doc_path, processor_config=config.document_processor)
+        logger.debug(
+            "Mistral does not support file type: %s\nFalling back to default processor.", doc_path
+        )
+
+    return _default_document_to_markdown(doc_path)

@@ -6,6 +6,9 @@ Changes:
     b. ✨ Add function descriptions to the system message so that tool use is better informed (fixes https://github.com/abetlen/llama-cpp-python/issues/1869).
     c. ✨ Replace `print` statements relating to JSON grammars with `RuntimeWarning` warnings.
     d. ✅ Add tests with fairly broad coverage of the different scenarios.
+    e. 🐛 Fix a 'content' KeyError in the prompt template.
+    f. ✨ Add support for Qwen3's <|endoftext|> separator.
+    g. ✨ Add support for Qwen3's <think>...</think> mode to (auto and fixed) function calling.
 4. Case "Tool choice by user":
     a. ✨ Add support for more than one function call by making this a special case of "Automatic tool choice" with a single tool (subsumes https://github.com/abetlen/llama-cpp-python/pull/1503).
 5. Case "Automatic tool choice -> respond with a message":
@@ -18,7 +21,7 @@ Changes:
     d. ✨ Set temperature=0 to determine whether to continue with another tool call, similar to the initial decision on whether to call a tool.
 """
 # This file uses old-style type hints and ignores certain ruff rules to minimise changes w.r.t. the original implementation:
-# ruff: noqa: C901, PLR0913, PLR0912, PLR0915, UP006, UP007, FBT001, FBT002, B006, TRY003, EM102, BLE001, PT018, W505
+# ruff: noqa: C901, PLR0913, PLR0912, PLR0915, UP006, UP007, FBT001, FBT002, B006, BLE001, W505
 
 import json
 import warnings
@@ -26,7 +29,6 @@ from typing import (  # noqa: UP035
     Any,
     Iterator,
     List,
-    Optional,
     Union,
     cast,
 )
@@ -57,14 +59,14 @@ def _convert_chunks_to_completion(
     """Convert a list of completion chunks to a completion."""
     # Accumulate completion response values
     text: str = ""
-    finish_reason: Optional[str] = None
-    logprobs: Optional[llama_types.CompletionLogprobs] = None
+    finish_reason: str | None = None
+    logprobs: llama_types.CompletionLogprobs | None = None
     prompt_tokens = 0
     completion_tokens = 0
     total_tokens = 0
-    completion_id: Optional[str] = None
-    completion_model: Optional[str] = None
-    completion_created: Optional[int] = None
+    completion_id: str | None = None
+    completion_model: str | None = None
+    completion_created: int | None = None
     for chunk in chunks:
         # Extract the id, model, and created values from the first chunk
         if completion_id is None:
@@ -196,48 +198,51 @@ def _convert_text_completion_logprobs_to_chat(
 ) -> llama_types.ChatCompletionLogprobs | None:
     if logprobs is None:
         return None
-    return {
-        "content": [
-            {
-                "token": token,
-                "bytes": None,
-                "logprob": logprob,  # type: ignore[typeddict-item]
-                "top_logprobs": [
-                    {
-                        "token": top_token,
-                        "logprob": top_logprob,
-                        "bytes": None,
-                    }
-                    for top_token, top_logprob in (top_logprobs or {}).items()
-                ],
-            }
-            for (token, logprob, top_logprobs) in zip(
-                logprobs["tokens"],
-                logprobs["token_logprobs"],
-                logprobs["top_logprobs"],
-                strict=False,
-            )
-        ],
-        "refusal": None,
-    }
+    return cast(
+        "llama_types.ChatCompletionLogprobs",
+        {
+            "content": [
+                {
+                    "token": token,
+                    "bytes": None,
+                    "logprob": logprob,
+                    "top_logprobs": [
+                        {
+                            "token": top_token,
+                            "logprob": top_logprob,
+                            "bytes": None,
+                        }
+                        for top_token, top_logprob in (top_logprobs or {}).items()
+                    ],
+                }
+                for (token, logprob, top_logprobs) in zip(
+                    logprobs["tokens"],
+                    logprobs["token_logprobs"],
+                    logprobs["top_logprobs"],
+                    strict=False,
+                )
+            ],
+            "refusal": None,
+        },
+    )
 
 
 def chatml_function_calling_with_streaming(
     llama: llama.Llama,
     messages: List[llama_types.ChatCompletionRequestMessage],
-    functions: Optional[List[llama_types.ChatCompletionFunction]] = None,
-    function_call: Optional[llama_types.ChatCompletionRequestFunctionCall] = None,
-    tools: Optional[List[llama_types.ChatCompletionTool]] = None,
-    tool_choice: Optional[llama_types.ChatCompletionToolChoiceOption] = None,
+    functions: List[llama_types.ChatCompletionFunction] | None = None,
+    function_call: llama_types.ChatCompletionRequestFunctionCall | None = None,
+    tools: List[llama_types.ChatCompletionTool] | None = None,
+    tool_choice: llama_types.ChatCompletionToolChoiceOption | None = None,
     temperature: float = 0.2,
     top_p: float = 0.95,
     top_k: int = 40,
     min_p: float = 0.05,
     typical_p: float = 1.0,
     stream: bool = False,
-    stop: Optional[Union[str, List[str]]] = [],
-    response_format: Optional[llama_types.ChatCompletionRequestResponseFormat] = None,
-    max_tokens: Optional[int] = None,
+    stop: Union[str, List[str]] | None = [],
+    response_format: llama_types.ChatCompletionRequestResponseFormat | None = None,
+    max_tokens: int | None = None,
     presence_penalty: float = 0.0,
     frequency_penalty: float = 0.0,
     repeat_penalty: float = 1.1,
@@ -245,11 +250,11 @@ def chatml_function_calling_with_streaming(
     mirostat_mode: int = 0,
     mirostat_tau: float = 5.0,
     mirostat_eta: float = 0.1,
-    model: Optional[str] = None,
-    logits_processor: Optional[llama.LogitsProcessorList] = None,
-    grammar: Optional[llama.LlamaGrammar] = None,  # type: ignore[name-defined]
-    logprobs: Optional[bool] = None,
-    top_logprobs: Optional[int] = None,
+    model: str | None = None,
+    logits_processor: llama.LogitsProcessorList | None = None,
+    grammar: llama.LlamaGrammar | None = None,  # type: ignore[name-defined]
+    logprobs: bool | None = None,
+    top_logprobs: int | None = None,
     **kwargs: Any,
 ) -> Union[
     llama_types.CreateChatCompletionResponse,
@@ -268,16 +273,17 @@ def chatml_function_calling_with_streaming(
         "\nfunctions.{{ tool.function.name }}:\n"
         "{{ tool.function.parameters | tojson }}"
         "\n{% endfor %}"
-        "\nYou must respond to user messages with either a single message or with one or more function calls."
-        "\n\nTo respond with a message use the following format:"
-        "\n\nmessage:"
-        "\n<message>"
-        "\n\nTo respond with one or more function calls use the following format:"
+        "\nYou must decide whether to respond to the user directly, or to first make one or more function calls before responding."
+        "\nUse the following format to respond directly:"
+        "\n\n<message>"
+        "\n..."
+        "\n</message>"
+        "\n\nUse the following format to first make one or more function calls:"
         "\n\n<function_calls>"
-        "\nfunctions.<function_name>:"
-        '\n{ "arg1": "value1", "arg2": "value2" }'
-        "\nfunctions.<function_name>:"
-        '\n{ "arg1": "value1", "arg2": "value2" }'
+        "\nfunctions.function_name_1:"
+        '\n{ "arg1": "value1", "arg2": "value2", ... }'
+        "\nfunctions.function_name_2:"
+        '\n{ "arg1": "value1", "arg2": "value2", ... }'
         "\n</function_calls>"
         "{% endif %}"
         "<|im_end|>\n"
@@ -290,19 +296,24 @@ def chatml_function_calling_with_streaming(
         # Assistant message
         "{% if message.role == 'assistant' %}"
         ## Regular message
-        "{% if message.content and message.content | length > 0 %}"
+        "{% if 'content' in message and message.content %}"
         "{% if tool_calls %}"
-        "message:\n"
+        "<message>\n"
         "{% endif %}"
         "{{ message.content }}"
+        "{% if tool_calls %}"
+        "\n</message>"
+        "{% endif %}"
         "<|im_end|>\n"
         "{% endif %}"
         ## Function calls
         "{% if 'tool_calls' in message %}"
+        "<function_calls>\n"
         "{% for tool_call in message.tool_calls %}"
         "functions.{{ tool_call.function.name }}:\n"
         "{{ tool_call.function.arguments }}"
         "{% endfor %}"
+        "\n<function_calls>"
         "<|im_end|>\n"
         "{% endif %}"
         "{% endif %}"
@@ -310,7 +321,6 @@ def chatml_function_calling_with_streaming(
         "{% if add_generation_prompt %}<|im_start|>assistant\n{% endif %}"
     )
     template_renderer = ImmutableSandboxedEnvironment(
-        autoescape=jinja2.select_autoescape(["html", "xml"]),
         undefined=jinja2.StrictUndefined,
     ).from_string(function_calling_template)
 
@@ -327,12 +337,13 @@ def chatml_function_calling_with_streaming(
 
     # Collect the llama.create_completion keyword arguments so we don't have to repeat these with
     # each completion call
+    default_stop = ["<|im_end|>", "<|endoftext|>"]
     stop = (
-        [stop, "<|im_end|>"]
+        [stop, *default_stop]
         if isinstance(stop, str)
-        else [*stop, "<|im_end|>"]
+        else [*stop, *default_stop]
         if stop
-        else ["<|im_end|>"]
+        else default_stop
     )
     grammar = (  # It is assumed the grammar applies to messages only, not tool calls
         grammar
@@ -389,7 +400,9 @@ def chatml_function_calling_with_streaming(
 
     # Case 2: Automatic or fixed tool choice
     # Case 2 step 1: Determine whether to respond with a message or a tool call
-    assert (isinstance(tool_choice, str) and tool_choice == "auto") or isinstance(tool_choice, dict)
+    assert (isinstance(tool_choice, str) and tool_choice in ("auto", "required")) or isinstance(
+        tool_choice, dict
+    )
     if isinstance(tool_choice, dict):
         tools = [t for t in tools if t["function"]["name"] == tool_choice["function"]["name"]]
         assert tools
@@ -399,11 +412,16 @@ def chatml_function_calling_with_streaming(
     )
     initial_gbnf_tool_grammar = (
         (
-            'root ::= "<function_calls>" "\\n" functions | "message:"\n'
+            'root ::= think? ("<function_calls>" "\\n" functions | "<message>")\n'
             f"functions ::= {function_names}\n"
+            'think ::= "<think>" [^<]* "</think>" "\\n\\n"\n'
         )
         if tool_choice == "auto"
-        else f'root ::= "<function_calls>" "\\n" functions\nfunctions ::= {function_names}\n'
+        else (
+            f'root ::= think? "<function_calls>" "\\n" functions\n'
+            f"functions ::= {function_names}\n"
+            'think ::= "<think>" [^<]* "</think>" "\\n\\n"\n'
+        )
     )
     completion = cast(
         "llama_types.CreateCompletionResponse",
@@ -413,7 +431,6 @@ def chatml_function_calling_with_streaming(
                 **completion_kwargs,
                 "temperature": 0,
                 "stream": False,
-                "stop": [":"],
                 "max_tokens": None,
                 "grammar": llama_grammar.LlamaGrammar.from_string(
                     initial_gbnf_tool_grammar, verbose=llama.verbose
@@ -421,14 +438,24 @@ def chatml_function_calling_with_streaming(
             },
         ),
     )
-    text = completion["choices"][0]["text"]
-    tool_name = None if text.startswith("message") else text.split("\n")[-1][len("functions.") :]
+    think, text = "", completion["choices"][0]["text"]
+    if "</think>\n\n" in text:
+        think, text = text.split("</think>\n\n", maxsplit=1)
+        think += "</think>\n\n"
+        prompt += think
+    text = text.strip()
+    tool_name = (
+        None
+        if text.startswith("<message>")
+        else text.split("\n")[-1][len("functions.") :].rstrip(":")
+    )
 
     # Case 2 step 2A: Respond with a message
     if tool_name is None:
         prompt = template_renderer.render(
             messages=messages, tools=[], tool_calls=None, add_generation_prompt=True
         )
+        prompt += think
         return llama_chat_format._convert_completion_to_chat(  # noqa: SLF001
             llama.create_completion(
                 prompt=prompt,
@@ -440,7 +467,8 @@ def chatml_function_calling_with_streaming(
 
     # Case 2 step 2B: One or more function calls
     follow_up_gbnf_tool_grammar = (
-        f'root ::= functions | "</function_calls>" | "<|im_end|>"\nfunctions ::= {function_names}\n'
+        'root ::= functions | "</function_calls>" | "<|im_end|>" | "<|endoftext|>"\n'
+        f"functions ::= {function_names}\n"
     )
     prompt += "<function_calls>\n"
     if stream:

@@ -11,6 +11,7 @@ from platformdirs import user_data_dir
 from sqlalchemy.engine import URL
 
 from raglite._lazy_llama import llama_supports_gpu_offload
+from raglite._typing import ChunkId, MetadataFilter, SearchMethod
 
 # Suppress rerankers output on import until [1] is fixed.
 # [1] https://github.com/AnswerDotAI/rerankers/issues/36
@@ -22,46 +23,84 @@ with contextlib.redirect_stdout(StringIO()):
 cache_path = Path(user_data_dir("raglite", ensure_exists=True))
 
 
+DEFAULT_IMAGE_TYPES = frozenset(
+    {"graph", "chart", "diagram", "table", "photo", "screenshot", "logo", "icon", "other"}
+)
+
+
+@dataclass(frozen=True)
+class MistralOCRConfig:
+    """Configuration for MistralOCR document processor."""
+
+    # API key - falls back to MISTRAL_API_KEY env var if None.
+    api_key: str | None = None
+    # Whether to use vision to describe images in documents.
+    include_image_descriptions: bool = True
+    # Image types that Mistral classifies each image into.
+    image_types: frozenset[str] = DEFAULT_IMAGE_TYPES
+    # Image types to exclude from the output (e.g., {"logo", "icon"}).
+    exclude_image_types: frozenset[str] = frozenset()
+    model: str = "mistral-ocr-latest"
+
+
+# Lazily load the default search method to avoid circular imports.
+# TODO: Replace with search_and_rerank_chunk_spans after benchmarking.
+def _vector_search(
+    query: str,
+    *,
+    num_results: int = 8,
+    metadata_filter: MetadataFilter | None = None,
+    config: "RAGLiteConfig | None" = None,
+) -> tuple[list[ChunkId], list[float]]:
+    from raglite._search import vector_search
+
+    return vector_search(
+        query, num_results=num_results, metadata_filter=metadata_filter, config=config
+    )
+
+
 @dataclass(frozen=True)
 class RAGLiteConfig:
     """RAGLite config."""
 
     # Database config.
-    db_url: str | URL = f"sqlite:///{(cache_path / 'raglite.db').as_posix()}"
+    db_url: str | URL = f"duckdb:///{(cache_path / 'raglite.db').as_posix()}"
     # LLM config used for generation.
     llm: str = field(
         default_factory=lambda: (
-            "llama-cpp-python/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/*Q4_K_M.gguf@8192"
+            "llama-cpp-python/unsloth/Qwen3-8B-GGUF/*Q4_K_M.gguf@8192"
             if llama_supports_gpu_offload()
-            else "llama-cpp-python/bartowski/Llama-3.2-3B-Instruct-GGUF/*Q4_K_M.gguf@4096"
+            else "llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192"
         )
     )
     llm_max_tries: int = 4
     # Embedder config used for indexing.
     embedder: str = field(
         default_factory=lambda: (  # Nomic-embed may be better if only English is used.
-            "llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024"
+            "llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512"
             if llama_supports_gpu_offload() or (os.cpu_count() or 1) >= 4  # noqa: PLR2004
-            else "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@1024"
+            else "llama-cpp-python/lm-kit/bge-m3-gguf/*Q4_K_M.gguf@512"
         )
     )
     embedder_normalize: bool = True
-    embedder_sentence_window_size: int = 3
     # Chunk config used to partition documents into chunks.
-    chunk_max_size: int = 1440  # Max number of characters per chunk.
+    chunk_max_size: int = 2048  # Max number of characters per chunk.
+    # Document processing config. None = default processor.
+    document_processor: MistralOCRConfig | None = None
     # Vector search config.
-    vector_search_index_metric: Literal["cosine", "dot", "l1", "l2"] = "cosine"
+    vector_search_distance_metric: Literal["cosine", "dot", "l2"] = "cosine"
+    vector_search_multivector: bool = True
     vector_search_query_adapter: bool = True  # Only supported for "cosine" and "dot" metrics.
     # Reranking config.
-    reranker: BaseRanker | tuple[tuple[str, BaseRanker], ...] | None = field(
-        default_factory=lambda: (
-            ("en", FlashRankRanker("ms-marco-MiniLM-L-12-v2", verbose=0, cache_dir=cache_path)),
-            ("other", FlashRankRanker("ms-marco-MultiBERT-L-12", verbose=0, cache_dir=cache_path)),
-        ),
+    reranker: BaseRanker | dict[str, BaseRanker] | None = field(
+        default_factory=lambda: {
+            "en": FlashRankRanker("ms-marco-MiniLM-L-12-v2", verbose=0, cache_dir=cache_path),
+            "other": FlashRankRanker("ms-marco-MultiBERT-L-12", verbose=0, cache_dir=cache_path),
+        },
         compare=False,  # Exclude the reranker from comparison to avoid lru_cache misses.
     )
-
-    def __post_init__(self) -> None:
-        # Late chunking with llama-cpp-python does not apply sentence windowing.
-        if self.embedder.startswith("llama-cpp-python"):
-            object.__setattr__(self, "embedder_sentence_window_size", 1)
+    # Search config: you can pick any search method that returns (list[ChunkId], list[float]),
+    # list[Chunk], or list[ChunkSpan].
+    search_method: SearchMethod = field(default=_vector_search, compare=False)
+    self_query: bool = False
+    agentic_iterations: int = 3

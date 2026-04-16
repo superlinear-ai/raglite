@@ -2,14 +2,14 @@
 
 # 🥤 RAGLite
 
-RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with PostgreSQL or SQLite.
+RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with DuckDB or PostgreSQL.
 
 ## Features
 
 ##### Configurable
 
 - 🧠 Choose any LLM provider with [LiteLLM](https://github.com/BerriAI/litellm), including local [llama-cpp-python](https://github.com/abetlen/llama-cpp-python) models
-- 💾 Choose either [PostgreSQL](https://github.com/postgres/postgres) or [SQLite](https://github.com/sqlite/sqlite) as a keyword & vector search database
+- 💾 Choose either [DuckDB](https://duckdb.org) or [PostgreSQL](https://github.com/postgres/postgres) as a keyword & vector search database
 - 🥇 Choose any reranker with [rerankers](https://github.com/AnswerDotAI/rerankers), including multilingual [FlashRank](https://github.com/PrithivirajDamodaran/FlashRank) as the default
 
 ##### Fast and permissive
@@ -23,7 +23,7 @@ RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with Postgr
 - 🧬 Multi-vector chunk embedding with [late chunking](https://weaviate.io/blog/late-chunking) and [contextual chunk headings](https://d-star.ai/solving-the-out-of-context-chunk-problem-for-rag)
 - ✏️ Optimal sentence splitting with [wtpsplit-lite](https://github.com/superlinear-ai/wtpsplit-lite) by solving a [binary integer programming problem](https://en.wikipedia.org/wiki/Integer_programming)
 - ✂️ Optimal [semantic chunking](https://www.youtube.com/watch?v=8OJC21T2SL4&t=1930s) by solving a [binary integer programming problem](https://en.wikipedia.org/wiki/Integer_programming)
-- 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) with the database's native keyword & vector search ([tsvector](https://www.postgresql.org/docs/current/datatype-textsearch.html)+[pgvector](https://github.com/pgvector/pgvector), [FTS5](https://www.sqlite.org/fts5.html)+[sqlite-vec](https://github.com/asg017/sqlite-vec)[^1])
+- 🔍 [Hybrid search](https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf) with the database's native keyword & vector search ([FTS](https://duckdb.org/docs/stable/extensions/full_text_search)+[VSS](https://duckdb.org/docs/stable/extensions/vss); [tsvector](https://www.postgresql.org/docs/current/datatype-textsearch.html)+[pgvector](https://github.com/pgvector/pgvector))
 - 💭 [Adaptive retrieval](https://arxiv.org/abs/2403.14403) where the LLM decides whether to and what to retrieve based on the query
 - 💰 Improved cost and latency with a [prompt caching-aware message array structure](https://platform.openai.com/docs/guides/prompt-caching)
 - 🍰 Improved output quality with [Anthropic's long-context prompt format](https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/long-context-tips)
@@ -34,9 +34,8 @@ RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with Postgr
 - 🔌 A built-in [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that any MCP client like [Claude desktop](https://claude.ai/download) can connect with
 - 💬 Optional customizable ChatGPT-like frontend for [web](https://docs.chainlit.io/deploy/copilot), [Slack](https://docs.chainlit.io/deploy/slack), and [Teams](https://docs.chainlit.io/deploy/teams) with [Chainlit](https://github.com/Chainlit/chainlit)
 - ✍️ Optional conversion of any input document to Markdown with [Pandoc](https://github.com/jgm/pandoc)
+- 🔎 Optional high-quality document processing with [Mistral OCR](https://docs.mistral.ai/capabilities/document/) for PDFs, images, DOCX, and PPTX with automatic image descriptions
 - ✅ Optional evaluation of retrieval and generation performance with [Ragas](https://github.com/explodinggradients/ragas)
-
-[^1]: We use [PyNNDescent](https://github.com/lmcinnes/pynndescent) until [sqlite-vec](https://github.com/asg017/sqlite-vec) is more mature.
 
 ## Installing
 
@@ -44,7 +43,7 @@ RAGLite is a Python toolkit for Retrieval-Augmented Generation (RAG) with Postgr
 > 🚀 If you want to use local models, it is recommended to install [an accelerated llama-cpp-python precompiled binary](https://github.com/abetlen/llama-cpp-python?tab=readme-ov-file#supported-backends) with:
 > ```sh
 > # Configure which llama-cpp-python precompiled binary to install (⚠️ not every combination is available):
-> LLAMA_CPP_PYTHON_VERSION=0.3.4
+> LLAMA_CPP_PYTHON_VERSION=0.3.9
 > PYTHON_VERSION=310|311|312
 > ACCELERATOR=metal|cu121|cu122|cu123|cu124
 > PLATFORM=macosx_11_0_arm64|linux_x86_64|win_amd64
@@ -71,6 +70,12 @@ To add support for filetypes other than PDF, use the `pandoc` extra:
 pip install raglite[pandoc]
 ```
 
+To add support for high-quality document processing with [Mistral OCR](https://docs.mistral.ai/capabilities/document/), use the `mistral-ocr` extra:
+
+```sh
+pip install raglite[mistral-ocr]
+```
+
 To add support for evaluation, use the `ragas` extra:
 
 ```sh
@@ -92,12 +97,12 @@ pip install raglite[ragas]
 ### 1. Configuring RAGLite
 
 > [!TIP]
-> 🧠 RAGLite extends [LiteLLM](https://github.com/BerriAI/litellm) with support for [llama.cpp](https://github.com/ggerganov/llama.cpp) models using [llama-cpp-python](https://github.com/abetlen/llama-cpp-python). To select a llama.cpp model (e.g., from [bartowski's collection](https://huggingface.co/bartowski)), use a model identifier of the form `"llama-cpp-python/<hugging_face_repo_id>/<filename>@<n_ctx>"`, where `n_ctx` is an optional parameter that specifies the context size of the model.
+> 🧠 RAGLite extends [LiteLLM](https://github.com/BerriAI/litellm) with support for [llama.cpp](https://github.com/ggerganov/llama.cpp) models using [llama-cpp-python](https://github.com/abetlen/llama-cpp-python). To select a llama.cpp model (e.g., from [Unsloth's collection](https://huggingface.co/unsloth)), use a model identifier of the form `"llama-cpp-python/<hugging_face_repo_id>/<filename>@<n_ctx>"`, where `n_ctx` is an optional parameter that specifies the context size of the model.
 
 > [!TIP]
 > 💾 You can create a PostgreSQL database in a few clicks at [neon.tech](https://neon.tech).
 
-First, configure RAGLite with your preferred PostgreSQL or SQLite database and [any LLM supported by LiteLLM](https://docs.litellm.ai/docs/providers/openai):
+First, configure RAGLite with your preferred DuckDB or PostgreSQL database and [any LLM supported by LiteLLM](https://docs.litellm.ai/docs/providers/openai):
 
 ```python
 from raglite import RAGLiteConfig
@@ -109,11 +114,11 @@ my_config = RAGLiteConfig(
     embedder="text-embedding-3-large",  # Or any embedder supported by LiteLLM
 )
 
-# Example 'local' config with a SQLite database and a llama.cpp LLM:
+# Example 'local' config with a DuckDB database and a llama.cpp LLM:
 my_config = RAGLiteConfig(
-    db_url="sqlite:///raglite.db",
-    llm="llama-cpp-python/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/*Q4_K_M.gguf@8192",
-    embedder="llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024",  # A context size of 1024 tokens is the sweet spot for bge-m3
+    db_url="duckdb:///raglite.db",
+    llm="llama-cpp-python/unsloth/Qwen3-8B-GGUF/*Q4_K_M.gguf@8192",
+    embedder="llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512", # More than 512 tokens degrades bge-m3's performance
 )
 ```
 
@@ -125,16 +130,27 @@ from rerankers import Reranker
 # Example remote API-based reranker:
 my_config = RAGLiteConfig(
     db_url="postgresql://my_username:my_password@my_host:5432/my_database"
-    reranker=Reranker("cohere", lang="en", api_key=COHERE_API_KEY)
+    reranker=Reranker("rerank-v3.5", model_type="cohere", api_key=COHERE_API_KEY, verbose=0)  # Multilingual
 )
 
 # Example local cross-encoder reranker per language (this is the default):
 my_config = RAGLiteConfig(
-    db_url="sqlite:///raglite.db",
-    reranker=(
-        ("en", Reranker("ms-marco-MiniLM-L-12-v2", model_type="flashrank")),  # English
-        ("other", Reranker("ms-marco-MultiBERT-L-12", model_type="flashrank")),  # Other languages
-    )
+    db_url="duckdb:///raglite.db",
+    reranker={
+        "en": Reranker("ms-marco-MiniLM-L-12-v2", model_type="flashrank", verbose=0),  # English
+        "other": Reranker("ms-marco-MultiBERT-L-12", model_type="flashrank", verbose=0),  # Other languages
+    }
+)
+```
+
+Self-query is also supported, allowing the LLM to automatically generate and apply metadata filters to refine search results based on the user's input. To enable self-query, set `self_query=True` in your `RAGLiteConfig`:
+
+```python
+my_config = RAGLiteConfig(
+    db_url="duckdb:///raglite.db",
+    llm="gpt-4o-mini",
+    embedder="text-embedding-3-large",
+    self_query=True,  # Enable self-query
 )
 ```
 
@@ -143,24 +159,67 @@ my_config = RAGLiteConfig(
 > [!TIP]
 > ✍️ To insert documents other than PDF, install the `pandoc` extra with `pip install raglite[pandoc]`.
 
+> [!TIP]
+> 🔎 For higher-quality document processing with automatic image descriptions, install the `mistral-ocr` extra with `pip install raglite[mistral-ocr]` and configure it as follows:
+> ```python
+> from raglite import RAGLiteConfig, MistralOCRConfig
+>
+> my_config = RAGLiteConfig(
+>     document_processor=MistralOCRConfig(
+>         include_image_descriptions=True,  # Describe images, charts, and diagrams as text
+>         image_types=frozenset({"chart", "diagram", "photo", "table", "logo", "icon"}),  # Custom image categories
+>         exclude_image_types=frozenset({"logo", "icon"}),  # Filter out specific types from the output
+>     ),
+> )
+> ```
+> The `image_types` parameter defines the categories that Mistral classifies each image into — you can use the defaults or provide your own domain-specific types. Use `exclude_image_types` to filter out any classified types that are not useful for retrieval.
+
 Next, insert some documents into the database. RAGLite will take care of the [conversion to Markdown](src/raglite/_markdown.py), [optimal level 4 semantic chunking](src/raglite/_split_chunks.py), and [multi-vector embedding with late chunking](src/raglite/_embed.py):
 
-
 ```python
-# Insert a document given its file path
+# Insert documents given their file path
 from pathlib import Path
-from raglite import insert_document
+from raglite import Document, insert_documents
 
-insert_document(Path("On the Measure of Intelligence.pdf"), config=my_config)
-insert_document(Path("Special Relativity.pdf"), config=my_config)
+documents = [
+    Document.from_path(Path("On the Measure of Intelligence.pdf")),
+    Document.from_path(Path("Special Relativity.pdf")),
+]
+insert_documents(documents, config=my_config)
 
-# Insert a document given its Markdown content
-markdown_content = """
+# Insert documents given their text/plain or text/markdown content
+content = """
 # ON THE ELECTRODYNAMICS OF MOVING BODIES
 ## By A. EINSTEIN  June 30, 1905
-It is known that Maxwell
+It is known that Maxwell...
 """
-insert_document(markdown_content, config=my_config)
+documents = [
+    Document.from_text(content, author="Einstein", topic="physics", year=1905)
+]
+insert_documents(documents, config=my_config)
+```
+
+> [!TIP]
+> 📝 Documents can include metadata by passing keyword arguments to `Document.from_text()` or `Document.from_path()`. This metadata can later be used for filtering during retrieval.
+> For list values, metadata is stored as-is (e.g. `domain=["open", "music"]`).
+
+You may also want to expand the document metadata before insertion:
+
+```python
+from typing import Annotated
+from pydantic import Field
+from raglite import expand_document_metadata
+
+# Expand the documents' metadata.
+metadata_fields = {
+    "title": Annotated[str, Field(..., description="Document title.")],
+    "author": Annotated[str, Field(..., description="Primary author.")],
+    "topics": Annotated[list[Literal["A", "B", "C"]], Field(..., description="Key themes.")],
+}
+documents = list(expand_document_metadata(documents, metadata_fields, config=my_config))
+
+# Insert documents given their text/plain or text/markdown content
+insert_documents(documents, config=my_config)
 ```
 
 ### 3. Retrieval-Augmented Generation (RAG)
@@ -196,15 +255,24 @@ The LLM will adaptively decide whether to retrieve information based on the comp
 If you need manual control over the RAG pipeline, you can run a basic but powerful pipeline that consists of retrieving the most relevant chunk spans with hybrid search and reranking, converting the user prompt to a RAG instruction and appending it to the message history, and finally generating the RAG response:
 
 ```python
-from raglite import create_rag_instruction, rag, retrieve_rag_context
+from raglite import add_context, rag, retrieve_context, vector_search
 
-# Retrieve relevant chunk spans with hybrid search and reranking
+# Choose a search method
+from dataclasses import replace
+my_config = replace(my_config, search_method=vector_search)  # Or `hybrid_search`, `search_and_rerank_chunks`, ...
+
+# Retrieve relevant chunk spans with the configured search method
 user_prompt = "How is intelligence measured?"
-chunk_spans = retrieve_rag_context(query=user_prompt, num_chunks=5, config=my_config)
+chunk_spans = retrieve_context(
+    query=user_prompt, 
+    num_chunks=5, 
+    metadata_filter={"author": "Einstein"},  # Optional: filter by metadata
+    config=my_config
+)
 
 # Append a RAG instruction based on the user prompt and context to the message history
 messages = []  # Or start with an existing message history
-messages.append(create_rag_instruction(user_prompt=user_prompt, context=chunk_spans))
+messages.append(add_context(user_prompt=user_prompt, context=chunk_spans, config=my_config))
 
 # Stream the RAG response and append it to the message history
 stream = rag(messages, config=my_config)
@@ -237,7 +305,17 @@ from raglite import hybrid_search, keyword_search, vector_search
 user_prompt = "How is intelligence measured?"
 chunk_ids_vector, _ = vector_search(user_prompt, num_results=20, config=my_config)
 chunk_ids_keyword, _ = keyword_search(user_prompt, num_results=20, config=my_config)
-chunk_ids_hybrid, _ = hybrid_search(user_prompt, num_results=20, config=my_config)
+chunk_ids_hybrid, _ = hybrid_search(
+    user_prompt, num_results=20, metadata_filter={"topic": "physics"}, config=my_config
+)  # Filter results to only include chunks from documents with topic="physics" (works with any search method)
+
+# Multi-value filter in one field uses OR semantics:
+chunk_ids_or, _ = hybrid_search(
+    user_prompt,
+    num_results=20,
+    metadata_filter={"domain": ["open", "music"]},
+    config=my_config,
+)  # Returns chunks where domain includes "open" OR "music".
 
 # Retrieve chunks
 from raglite import retrieve_chunks
@@ -256,10 +334,10 @@ from raglite import retrieve_chunk_spans
 chunk_spans = retrieve_chunk_spans(chunks_reranked, config=my_config)
 
 # Append a RAG instruction based on the user prompt and context to the message history
-from raglite import create_rag_instruction
+from raglite import add_context
 
 messages = []  # Or start with an existing message history
-messages.append(create_rag_instruction(user_prompt=user_prompt, context=chunk_spans))
+messages.append(add_context(user_prompt=user_prompt, context=chunk_spans, config=my_config))
 
 # Stream the RAG response and append it to the message history
 from raglite import rag
@@ -307,9 +385,9 @@ RAGLite comes with an [MCP server](https://modelcontextprotocol.io) implemented 
 
 ```
 raglite \
-    --db-url sqlite:///raglite.db \
-    --llm llama-cpp-python/bartowski/Llama-3.2-3B-Instruct-GGUF/*Q4_K_M.gguf@4096 \
-    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024 \
+    --db-url duckdb:///raglite.db \
+    --llm llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192 \
+    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512 \
     mcp install
 ```
 
@@ -343,9 +421,9 @@ You can specify the database URL, LLM, and embedder directly in the Chainlit fro
 
 ```sh
 raglite \
-    --db-url sqlite:///raglite.db \
-    --llm llama-cpp-python/bartowski/Llama-3.2-3B-Instruct-GGUF/*Q4_K_M.gguf@4096 \
-    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@1024 \
+    --db-url duckdb:///raglite.db \
+    --llm llama-cpp-python/unsloth/Qwen3-4B-GGUF/*Q4_K_M.gguf@8192 \
+    --embedder llama-cpp-python/lm-kit/bge-m3-gguf/*F16.gguf@512 \
     chainlit
 ```
 
