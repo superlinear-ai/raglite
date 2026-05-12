@@ -70,10 +70,10 @@ To add support for filetypes other than PDF, use the `pandoc` extra:
 pip install raglite[pandoc]
 ```
 
-To add support for high-quality document processing with [Mistral OCR](https://docs.mistral.ai/capabilities/document/), use the `mistral-ocr` extra:
+To add support for high-quality document processing with [Mistral OCR](https://docs.mistral.ai/capabilities/document/), install `mistralai`:
 
 ```sh
-pip install raglite[mistral-ocr]
+pip install mistralai
 ```
 
 To add support for evaluation, use the `ragas` extra:
@@ -160,7 +160,7 @@ my_config = RAGLiteConfig(
 > ✍️ To insert documents other than PDF, install the `pandoc` extra with `pip install raglite[pandoc]`.
 
 > [!TIP]
-> 🔎 For higher-quality document processing with automatic image descriptions, install the `mistral-ocr` extra with `pip install raglite[mistral-ocr]` and configure it as follows:
+> 🔎 For higher-quality document processing with automatic image descriptions, install `mistralai` and configure it as follows:
 > ```python
 > from raglite import RAGLiteConfig, MistralOCRConfig
 >

@@ -73,10 +73,7 @@ def _get_mistral_client(processor_config: MistralOCRConfig) -> Any:
     try:
         from mistralai import Mistral
     except ImportError as e:
-        error_msg = (
-            "To use MistralOCR, please install the `mistral-ocr` extra: "
-            "`pip install raglite[mistral-ocr]` or `uv add raglite[mistral-ocr]`."
-        )
+        error_msg = "To use MistralOCR, please install `mistralai`."
         raise ImportError(error_msg) from e
 
     api_key = _get_api_key(processor_config)
@@ -88,10 +85,7 @@ def _get_response_format_converter() -> Any:
     try:
         from mistralai.extra import response_format_from_pydantic_model
     except ImportError as e:
-        error_msg = (
-            "To use MistralOCR, please install the `mistral-ocr` extra: "
-            "`uv add raglite[mistral-ocr]` or `pip install raglite[mistral-ocr]`."
-        )
+        error_msg = "To use MistralOCR, please install `mistralai`."
         raise ImportError(error_msg) from e
     return response_format_from_pydantic_model
 
