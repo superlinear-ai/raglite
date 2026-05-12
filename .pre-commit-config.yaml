@@ -68,6 +68,7 @@ repos:
         types_or: [python, pyi]
       - id: mypy
         name: mypy
-        entry: mypy
+        entry: mypy src tests
         language: system
+        pass_filenames: false
         types: [python]
