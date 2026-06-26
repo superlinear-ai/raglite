@@ -206,7 +206,7 @@ insert_documents(documents, config=my_config)
 You may also want to expand the document metadata before insertion:
 
 ```python
-from typing import Annotated
+from typing import Annotated, Literal
 from pydantic import Field
 from raglite import expand_document_metadata
 
