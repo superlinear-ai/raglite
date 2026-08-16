@@ -498,10 +498,10 @@ The following development environments are supported:
 
 ## Star History
 
-<a href="https://star-history.com/#superlinear-ai/raglite&Timeline">
+<a href="https://star-history.dera.page/#superlinear-ai/raglite&type=Timeline">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=superlinear-ai/raglite&type=Timeline&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=superlinear-ai/raglite&type=Timeline" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=superlinear-ai/raglite&type=Timeline" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=superlinear-ai/raglite&type=Timeline&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=superlinear-ai/raglite&type=Timeline" />
+   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=superlinear-ai/raglite&type=Timeline" />
  </picture>
 </a>
