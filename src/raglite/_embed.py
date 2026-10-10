@@ -109,6 +109,15 @@ def embed_strings_with_late_chunking(  # noqa: C901,PLR0915
         segment_start_index, segment_end_index = _create_segment(
             content_start_index, max_tokens_preamble, max_tokens_content, num_tokens
         )
+        if segment_end_index <= content_start_index:
+            # The sentence at content_start_index alone needs more tokens than the content budget
+            # has available at this position, so the segment can't make any forward progress.
+            msg = (
+                f"Sentence {content_start_index} needs {num_tokens[content_start_index]} tokens, "
+                f"which exceeds the remaining segment content budget. Increase the embedder's "
+                f"context size (e.g. `@8192`) or lower `chunk_max_size`."
+            )
+            raise ValueError(msg)
         segments.append((segment_start_index, content_start_index, segment_end_index))
         content_start_index = segment_end_index
     # Embed the segments and apply late chunking.
