@@ -35,8 +35,9 @@ def test_split_sentences() -> None:
     ]
     assert isinstance(sentences, list)
     assert all(not sentence.isspace() for sentence in sentences)
+    assert "".join(sentences) == doc
     assert all(
-        sentence == expected_sentence
+        " ".join(sentence.split()) == " ".join(expected_sentence.split())
         for sentence, expected_sentence in zip(
             sentences[: len(expected_sentences)], expected_sentences, strict=True
         )

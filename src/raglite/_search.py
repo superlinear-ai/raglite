@@ -1,6 +1,5 @@
 """Search and retrieve chunks."""
 
-import contextlib
 import logging
 import re
 import string
@@ -377,9 +376,11 @@ def rerank_chunks(
     # Select the reranker.
     if isinstance(config.reranker, dict):
         # Detect the languages of the chunks and queries.
-        with contextlib.suppress(LangDetectException):
+        try:
             langs = {detect(str(chunk)) for chunk in chunks}
             langs.add(detect(query))
+        except LangDetectException:
+            langs = set()
         # If all chunks and the query are in the same language, use a language-specific reranker.
         rerankers = config.reranker
         if len(langs) == 1 and (lang := next(iter(langs))) in rerankers:

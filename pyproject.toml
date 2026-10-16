@@ -133,7 +133,13 @@ warn_unused_ignores = false
 
 [tool.pytest.ini_options]  # https://docs.pytest.org/en/latest/reference/reference.html#ini-options-ref
 addopts = "--color=yes --doctest-modules --ignore=src/raglite/_chainlit.py --exitfirst --failed-first --strict-config --strict-markers --verbosity=2 --junitxml=reports/pytest.xml"
-filterwarnings = ["error", "ignore::DeprecationWarning", "ignore::pytest.PytestUnraisableExceptionWarning", "ignore:The `local_dir_use_symlinks` argument is deprecated:UserWarning:huggingface_hub"]
+filterwarnings = [
+  "error",
+  "ignore::DeprecationWarning",
+  "ignore::pytest.PytestUnraisableExceptionWarning",
+  "ignore:The `local_dir_use_symlinks` argument is deprecated:UserWarning:huggingface_hub",
+  "ignore:Item '.*' on TypedDict class 'ChatCompletionReasoningItem' is using the `ReadOnly` qualifier.*:UserWarning:pydantic\\._internal\\._generate_schema",
+]
 markers = ["slow: mark test as slow"]
 testpaths = ["src", "tests"]
 xfail_strict = true
@@ -154,6 +160,10 @@ unfixable = ["ERA001", "F401", "F841", "T201", "T203"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
+
+[tool.ruff.lint.per-file-ignores]
+"src/raglite/_chatml_function_calling.py" = ["PLR0917"]
+"src/raglite/_litellm.py" = ["PLR0917"]
 
 [tool.ruff.lint.pycodestyle]
 max-doc-length = 100
