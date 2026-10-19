@@ -141,3 +141,22 @@ def isolated_raglite_test_config(raglite_test_config: RAGLiteConfig) -> RAGLiteC
         llm=raglite_test_config.llm,
         embedder=raglite_test_config.embedder,
     )
+
+
+@pytest.fixture
+def cp1252_default_text_encoding(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Emulate a platform whose default text encoding is cp1252, such as Windows.
+
+    `Path.read_text` and `Path.write_text` fall back to cp1252 when they are not given an explicit
+    encoding, regardless of the locale that the tests run in.
+    """
+    read_text, write_text = Path.read_text, Path.write_text
+
+    def read_text_cp1252(self: Path, encoding: str | None = None, **kwargs: Any) -> str:
+        return read_text(self, encoding=encoding or "cp1252", **kwargs)
+
+    def write_text_cp1252(self: Path, data: str, encoding: str | None = None, **kwargs: Any) -> int:
+        return write_text(self, data, encoding=encoding or "cp1252", **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text_cp1252)
+    monkeypatch.setattr(Path, "write_text", write_text_cp1252)

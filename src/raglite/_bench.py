@@ -265,7 +265,7 @@ class OpenAIVectorStoreEvaluator(IREvaluator):
                 if not doc.text.strip():
                     continue
                 temp_file = Path(temp_dir) / f"{slugify(doc.doc_id)}.txt"
-                temp_file.write_text(doc.text)
+                temp_file.write_text(doc.text, encoding="utf-8")
                 files.append(temp_file.open("rb"))
                 if len(files) == max_files_per_batch or (i == self.dataset.docs_count() - 1):
                     self.client.vector_stores.file_batches.upload_and_poll(
