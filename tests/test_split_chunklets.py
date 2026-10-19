@@ -2,7 +2,7 @@
 
 import pytest
 
-from raglite._split_chunklets import split_chunklets
+from raglite._split_chunklets import markdown_chunklet_boundaries, split_chunklets
 
 
 @pytest.mark.parametrize(
@@ -102,3 +102,28 @@ def test_split_chunklets(sentences_splits: tuple[list[str], list[int]]) -> None:
         chunklet == expected_chunklet
         for chunklet, expected_chunklet in zip(chunklets, expected_chunklets, strict=True)
     )
+
+
+@pytest.mark.parametrize(
+    "line_separator",
+    [
+        pytest.param("\n", id="lf"),
+        pytest.param("\r\n", id="crlf"),
+        pytest.param("\r", id="cr"),
+        pytest.param("\x0b", id="vertical_tab"),
+        pytest.param("\x0c", id="form_feed"),
+        pytest.param("\x1c", id="file_separator"),
+        pytest.param("\x1d", id="group_separator"),
+        pytest.param("\x1e", id="record_separator"),
+        pytest.param("\x85", id="next_line"),
+        pytest.param("\u2028", id="line_separator"),
+        pytest.param("\u2029", id="paragraph_separator"),
+    ],
+)
+def test_markdown_chunklet_boundaries_line_separators(line_separator: str) -> None:
+    """Test that boundaries stay aligned when a document has exotic line separators."""
+    # Only LF, CRLF, and CR are line endings to markdown-it, so the other separators must not shift
+    # the line numbers that markdown-it reports for the paragraphs and the heading.
+    sentences = [f"Intro one.{line_separator}", "Intro two.\n\n", "# Real Heading\n\n", "Body.\n"]
+    boundary_probas = markdown_chunklet_boundaries(sentences)
+    assert boundary_probas.tolist() == [0.5, 0.0, 1.0, 0.0]

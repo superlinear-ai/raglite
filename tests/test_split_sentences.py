@@ -2,10 +2,11 @@
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from raglite._markdown import document_to_markdown
-from raglite._split_sentences import split_sentences
+from raglite._split_sentences import markdown_sentence_boundaries, split_sentences
 
 
 def test_split_sentences() -> None:
@@ -77,3 +78,32 @@ def test_split_sentences_edge_cases(case: tuple[str, list[str], tuple[int, int |
             sentences[: len(expected_sentences)], expected_sentences, strict=True
         )
     )
+
+
+@pytest.mark.parametrize(
+    "line_separator",
+    [
+        pytest.param("\n", id="lf"),
+        pytest.param("\r\n", id="crlf"),
+        pytest.param("\r", id="cr"),
+        pytest.param("\x0b", id="vertical_tab"),
+        pytest.param("\x0c", id="form_feed"),
+        pytest.param("\x1c", id="file_separator"),
+        pytest.param("\x1d", id="group_separator"),
+        pytest.param("\x1e", id="record_separator"),
+        pytest.param("\x85", id="next_line"),
+        pytest.param("\u2028", id="line_separator"),
+        pytest.param("\u2029", id="paragraph_separator"),
+    ],
+)
+def test_markdown_sentence_boundaries_line_separators(line_separator: str) -> None:
+    """Test that heading boundaries stay aligned when a document has exotic line separators."""
+    # Only LF, CRLF, and CR are line endings to markdown-it, so the other separators must not shift
+    # the line numbers that markdown-it reports for the heading.
+    heading = "# Real Heading\n"
+    doc = f"Intro one.{line_separator}Intro two.\n\n{heading}\nBody.\n"
+    heading_start = doc.index(heading)
+    boundary_probas = markdown_sentence_boundaries(doc)
+    marked_indexes = np.flatnonzero(~np.isnan(boundary_probas))
+    assert marked_indexes.min() == heading_start - 1
+    assert marked_indexes.max() == heading_start + len(heading)
