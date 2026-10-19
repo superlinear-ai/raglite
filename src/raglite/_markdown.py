@@ -208,7 +208,7 @@ def _default_document_to_markdown(doc_path: Path) -> str:
         doc = "\n\n".join(parsed_pdf_to_markdown(pages))
     elif doc_path.suffix in (".md", ".txt"):
         # Read the Markdown file.
-        doc = doc_path.read_text()
+        doc = doc_path.read_text(encoding="utf-8")
     else:
         try:
             # Use pandoc for everything else.
@@ -222,7 +222,7 @@ def _default_document_to_markdown(doc_path: Path) -> str:
             raise ModuleNotFoundError(error_message) from error
         except RuntimeError:
             # File format not supported, fall back to reading the text.
-            doc = doc_path.read_text()
+            doc = doc_path.read_text(encoding="utf-8")
     return doc
 
 

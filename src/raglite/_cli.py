@@ -73,7 +73,9 @@ def install_mcp_server(
     claude_config_filepath = claude_config_path / "claude_desktop_config.json"
     # Parse the Claude config.
     claude_config = (
-        json.loads(claude_config_filepath.read_text()) if claude_config_filepath.exists() else {}
+        json.loads(claude_config_filepath.read_text(encoding="utf-8"))
+        if claude_config_filepath.exists()
+        else {}
     )
     # Update the Claude config with the MCP server.
     mcp_config = RAGLiteCLIConfig(
@@ -100,7 +102,7 @@ def install_mcp_server(
         },
     }
     # Write the updated Claude config to disk.
-    claude_config_filepath.write_text(json.dumps(claude_config, indent=2))
+    claude_config_filepath.write_text(json.dumps(claude_config, indent=2), encoding="utf-8")
 
 
 @mcp_cli.command("run")
