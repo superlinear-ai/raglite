@@ -1,5 +1,6 @@
 """Split a document into sentences."""
 
+import re
 from collections import deque
 from collections.abc import Callable
 from functools import cache
@@ -28,7 +29,10 @@ def markdown_sentence_boundaries(doc: str) -> FloatVector:
         md = MarkdownIt()
         tokens = md.parse(doc)
         headings = []
-        lines = doc.splitlines(keepends=True)
+        # Split lines like markdown-it does (on LF, CRLF, and CR only) rather than with
+        # `str.splitlines`, which also splits on form feeds, U+2028, etc., so that the line numbers
+        # in `token.map` stay aligned with the character indexes.
+        lines = re.findall(r"[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+", doc)
         line_start_char = [0]
         for line in lines:
             line_start_char.append(line_start_char[-1] + len(line))
