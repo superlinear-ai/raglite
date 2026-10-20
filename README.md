@@ -403,8 +403,9 @@ conversation; keep sessions separate even when sharing a `RAGLiteConfig`. Omitti
 require a model that supports function calling, and are suppressed when you provide
 manual RAG context, like local retrieval tools.
 
-Only the model's selected web queries and URLs are sent to Parallel. Opt in only
-when those inputs may leave your application. Retrieved web text is untrusted
+Web requests send model-selected queries and URLs to Parallel, together with an
+opaque conversation ID and the configured model name. Opt in only when those
+inputs may leave your application. Retrieved web text is untrusted
 source material. Metadata filters still apply only to your local knowledge base.
 Each RAG turn has one tool-call round followed by answer generation; page fetching
 can be requested in a follow-up turn as above. Web excerpts may be truncated to fit
