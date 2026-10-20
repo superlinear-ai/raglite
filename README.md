@@ -375,6 +375,46 @@ answered_evals_df = answer_evals(num_evals=10, config=my_config)
 evaluation_df = evaluate(answered_evals_df, config=my_config)
 ```
 
+#### Optional web search
+
+`rag` and `async_rag` can also search the web and fetch pages with
+[Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp).
+Anonymous search uses Fast mode and needs no account or API key. Local knowledge-base
+retrieval remains the default. To allow the model to use the web tools, pass a
+`ParallelSearchSession`:
+
+```python
+from raglite import ParallelSearchSession, rag
+
+# One session per conversation. Reuse it for follow-up turns.
+web_search = ParallelSearchSession(timeout=30)
+messages = [{"role": "user", "content": "Find the current DuckDB release notes and cite their URL."}]
+for token in rag(messages, config=my_config, web_search=web_search):
+    print(token, end="")
+
+messages.append({"role": "user", "content": "Fetch the release notes page and summarize the changes."})
+for token in rag(messages, config=my_config, web_search=web_search):
+    print(token, end="")
+```
+
+Use the same `web_search` argument with `async_rag`. Create a new session for a new
+conversation; keep sessions separate even when sharing a `RAGLiteConfig`. Omitting
+`web_search` disables the web tools and makes no requests to Parallel. Web tools
+require a model that supports function calling, and are suppressed when you provide
+manual RAG context, like local retrieval tools.
+
+Web requests send model-selected queries and URLs to Parallel, together with an
+opaque conversation ID and the configured model name. Opt in only when those
+inputs may leave your application. Retrieved web text is untrusted
+source material. Metadata filters still apply only to your local knowledge base.
+Each RAG turn has one tool-call round followed by answer generation; page fetching
+can be requested in a follow-up turn as above. Web excerpts may be truncated to fit
+the model context. Network, timeout and tool errors propagate to the caller without
+silently switching providers; retry with the same session. Canceling `async_rag`
+cancels pending web requests. Anonymous access has service rate limits; for higher
+limits explicitly pass `ParallelSearchSession(api_key=your_key)`. Environment API
+keys are not read automatically.
+
 ### 6. Running a Model Context Protocol (MCP) server
 
 RAGLite comes with an [MCP server](https://modelcontextprotocol.io) implemented with [FastMCP](https://github.com/jlowin/fastmcp) that exposes a `search_knowledge_base` [tool](https://github.com/jlowin/fastmcp?tab=readme-ov-file#tools). To use the server:

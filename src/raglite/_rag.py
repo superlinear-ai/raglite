@@ -1,5 +1,6 @@
 """Retrieval-augmented generation."""
 
+import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator, Callable, Generator, Iterator, Mapping, Sequence
@@ -18,6 +19,7 @@ from litellm import (  # type: ignore[attr-defined]
 from raglite._config import RAGLiteConfig
 from raglite._database import Chunk, ChunkSpan
 from raglite._litellm import get_context_size
+from raglite._parallel import ParallelSearchSession
 from raglite._search import retrieve_chunk_spans
 from raglite._typing import MetadataFilter
 
@@ -261,7 +263,9 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
 
 
 def _get_tools(
-    messages: list[dict[str, str]], config: RAGLiteConfig
+    messages: list[dict[str, str]],
+    config: RAGLiteConfig,
+    web_tools: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]] | None, dict[str, Any] | str | None]:
     """Get tools to search the knowledge base if no RAG context is provided in the messages."""
     # Check if messages already contain RAG context or if the LLM supports tool use.
@@ -301,6 +305,8 @@ def _get_tools(
         if not messages_contain_rag_context
         else None
     )
+    if tools and web_tools:
+        tools.extend(web_tools)
     tool_choice: dict[str, Any] | str | None = "auto" if tools else None
     return tools, tool_choice
 
@@ -470,14 +476,106 @@ def _run_tools(
     return tool_messages
 
 
+async def _run_rag_tools(  # noqa: PLR0913
+    tool_calls: list[ChatCompletionMessageToolCall],
+    on_retrieval: Callable[[list[ChunkSpan]], None] | None,
+    config: RAGLiteConfig,
+    *,
+    messages: list[dict[str, str]],
+    metadata_filter: MetadataFilter | None,
+    web_search: ParallelSearchSession,
+) -> list[dict[str, Any]]:
+    """Dispatch web and local retrieval tools without blocking the async caller."""
+    local_calls = [
+        call
+        for call in tool_calls
+        if call.function.name not in {"parallel_web_search", "parallel_web_fetch"}
+    ]
+    web_calls = [call for call in tool_calls if call not in local_calls]
+    # The final message is the assistant's proposed tool calls, so check the
+    # original caller input, including manual-context suppression.
+    original_tools = _get_tools(messages[:-1], config)[0]
+    if original_tools is None:
+        message = "Tools are unavailable when RAG context is already supplied."
+        raise ValueError(message)
+    allowed = {tool["function"]["name"] for tool in original_tools + await web_search.tools()}
+    if any(call.function.name not in allowed for call in tool_calls):
+        message = "The model requested a tool that was not offered."
+        raise ValueError(message)
+    tasks = [
+        asyncio.create_task(
+            web_search.call(call.function.name, call.function.arguments, model_name=config.llm)
+        )
+        for call in web_calls
+    ]
+    try:
+        web_results = await asyncio.gather(*tasks)
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+    local_results = (
+        await asyncio.to_thread(
+            _run_tools,
+            local_calls,
+            on_retrieval,
+            config,
+            messages=messages,
+            metadata_filter=metadata_filter,
+        )
+        if local_calls
+        else []
+    )
+    results = {result["tool_call_id"]: result for result in local_results}
+    # Reserve room for the final answer and local results before admitting web
+    # excerpts. This uses the same approximate token accounting as local RAG.
+    available_tokens = (
+        get_context_size(config)
+        - min(2048, get_context_size(config) // 4)
+        - _calculate_buffer_tokens(messages, None, RAG_INSTRUCTION_TEMPLATE)
+        - sum(_count_tokens(json.dumps(result, ensure_ascii=False)) for result in local_results)
+        - _count_tokens(NO_TOOLS_FOLLOW_UP_PROMPT)
+        - 128 * len(web_calls)
+    )
+    token_limit = max(0, available_tokens // max(1, len(web_calls)))
+    for call, web_result in zip(web_calls, web_results, strict=True):
+        tool_message = {"role": "tool", "content": web_result, "tool_call_id": call.id}
+        if _count_tokens(json.dumps(tool_message, ensure_ascii=False)) > token_limit:
+            # Escapes expand when a tool message is serialized. Search for the
+            # longest prefix that fits using the same accounting as _clip.
+            lower, upper = 0, len(web_result)
+            while lower < upper:
+                middle = (lower + upper + 1) // 2
+                tool_message["content"] = (
+                    web_result[:middle] + "\n[Web result truncated to fit context.]"
+                )
+                if _count_tokens(json.dumps(tool_message, ensure_ascii=False)) <= token_limit:
+                    lower = middle
+                else:
+                    upper = middle - 1
+            tool_message["content"] = (
+                web_result[:lower] + "\n[Web result truncated to fit context.]"
+            )
+            if _count_tokens(json.dumps(tool_message, ensure_ascii=False)) > token_limit:
+                message = "No room for web results in the model context. Shorten the conversation."
+                raise ValueError(message)
+        results[call.id] = tool_message
+    return [results[call.id] for call in tool_calls]
+
+
 def _stream_rag_response(
-    messages: list[dict[str, str]], config: RAGLiteConfig, *, use_tools: bool = True
+    messages: list[dict[str, str]],
+    config: RAGLiteConfig,
+    *,
+    use_tools: bool = True,
+    web_tools: list[dict[str, Any]] | None = None,
 ) -> Generator[str, None, list[Any]]:
     """Stream the RAG response, which may include tool calls for retrieval."""
     context_size = get_context_size(config)
     max_output_tokens = min(2048, context_size // 4)
     max_input_tokens = context_size - max_output_tokens
-    tools, tool_choice = _get_tools(messages, config) if use_tools else (None, None)
+    tools, tool_choice = _get_tools(messages, config, web_tools) if use_tools else (None, None)
     local_chunks: list[Any] = []
     stream = completion(
         model=config.llm,
@@ -500,12 +598,13 @@ async def _async_stream_rag_response(
     response_chunks: list[Any],
     *,
     use_tools: bool = True,
+    web_tools: list[dict[str, Any]] | None = None,
 ) -> AsyncIterator[str]:
     """Async version of _stream_rag_response."""
     context_size = get_context_size(config)
     max_output_tokens = min(2048, context_size // 4)
     max_input_tokens = context_size - max_output_tokens
-    tools, tool_choice = _get_tools(messages, config) if use_tools else (None, None)
+    tools, tool_choice = _get_tools(messages, config, web_tools) if use_tools else (None, None)
     async_stream = await acompletion(
         model=config.llm,
         messages=_clip(messages, max_input_tokens),
@@ -526,17 +625,34 @@ def rag(
     on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
     metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig,
+    web_search: ParallelSearchSession | None = None,
 ) -> Iterator[str]:
-    """Run retrieval-augmented generation with the given messages and config."""
+    """Run RAG, optionally enabling web tools for one conversation with web_search."""
     working = list(messages)
-    chunks = yield from _stream_rag_response(working, config)
+    web_tools = (
+        asyncio.run(web_search.tools())
+        if web_search is not None and _get_tools(working, config)[0]
+        else None
+    )
+    chunks = yield from _stream_rag_response(working, config, web_tools=web_tools)
     response = stream_chunk_builder(chunks, working)
     working.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
     tool_calls = response.choices[0].message.tool_calls  # type: ignore[union-attr]
 
     if tool_calls:
         working.extend(
-            _run_tools(
+            asyncio.run(
+                _run_rag_tools(
+                    tool_calls,
+                    on_retrieval,
+                    config,
+                    messages=working,
+                    metadata_filter=metadata_filter,
+                    web_search=web_search,
+                )
+            )
+            if web_search is not None
+            else _run_tools(
                 tool_calls,
                 on_retrieval,
                 config,
@@ -558,11 +674,17 @@ async def async_rag(
     on_retrieval: Callable[[list[ChunkSpan]], None] | None = None,
     metadata_filter: MetadataFilter | None = None,
     config: RAGLiteConfig,
+    web_search: ParallelSearchSession | None = None,
 ) -> AsyncIterator[str]:
-    """Run retrieval-augmented generation with the given messages and config."""
+    """Run RAG, optionally enabling web tools for one conversation with web_search."""
     working = list(messages)
     chunks: list[Any] = []
-    async for token in _async_stream_rag_response(working, config, chunks):
+    web_tools = (
+        await web_search.tools()
+        if web_search is not None and _get_tools(working, config)[0]
+        else None
+    )
+    async for token in _async_stream_rag_response(working, config, chunks, web_tools=web_tools):
         yield token
     response = stream_chunk_builder(chunks, working)
     working.append(response.choices[0].message.to_dict())  # type: ignore[arg-type,union-attr]
@@ -570,7 +692,16 @@ async def async_rag(
 
     if tool_calls:
         working.extend(
-            _run_tools(
+            await _run_rag_tools(
+                tool_calls,
+                on_retrieval,
+                config,
+                messages=working,
+                metadata_filter=metadata_filter,
+                web_search=web_search,
+            )
+            if web_search is not None
+            else _run_tools(
                 tool_calls,
                 on_retrieval,
                 config,
