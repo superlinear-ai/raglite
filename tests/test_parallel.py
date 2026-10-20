@@ -525,14 +525,16 @@ def test_incomplete_discovery_fails_without_model_or_search_call(
     assert not model.requests
 
 
+@pytest.mark.parametrize("evidence", ["web evidence ", '"\\\n\x01'])
 def test_web_excerpts_respect_context_budget_with_local_results(
     web_runtime: tuple[MCPEndpoint, ScriptedModel, RAGLiteConfig],
     monkeypatch: pytest.MonkeyPatch,
+    evidence: str,
 ) -> None:
     """Large web excerpts leave room for local evidence and the final answer."""
     endpoint, model, config = web_runtime
     model.multiple_calls = True
-    endpoint.result_text = "https://example.org/source " + "web evidence " * 10000
+    endpoint.result_text = "https://example.org/source " + evidence * 10000
     monkeypatch.setattr("raglite._rag.get_context_size", lambda _: 4096)
     monkeypatch.setattr(
         "raglite._rag._run_tools",
@@ -543,6 +545,11 @@ def test_web_excerpts_respect_context_budget_with_local_results(
     messages = [{"role": "user", "content": "Find local and web release facts"}]
     answer = "".join(rag(messages, config=config, web_search=ParallelSearchSession()))
     assert "Local document result" in answer
+    assert "https://example.org/source" in answer
+    assert any(
+        message["role"] == "user" and message["content"] == "Find local and web release facts"
+        for message in model.requests[-1]["messages"]
+    )
     web_result = next(
         message["content"] for message in messages if message.get("tool_call_id") == "web-call"
     )

@@ -538,14 +538,29 @@ async def _run_rag_tools(  # noqa: PLR0913
         - _count_tokens(NO_TOOLS_FOLLOW_UP_PROMPT)
         - 128 * len(web_calls)
     )
-    character_limit = max(0, available_tokens * 3 // max(1, len(web_calls)))
+    token_limit = max(0, available_tokens // max(1, len(web_calls)))
     for call, web_result in zip(web_calls, web_results, strict=True):
-        content = (
-            web_result[:character_limit] + "\n[Web result truncated to fit context.]"
-            if len(web_result) > character_limit
-            else web_result
-        )
-        results[call.id] = {"role": "tool", "content": content, "tool_call_id": call.id}
+        tool_message = {"role": "tool", "content": web_result, "tool_call_id": call.id}
+        if _count_tokens(json.dumps(tool_message, ensure_ascii=False)) > token_limit:
+            # Escapes expand when a tool message is serialized. Search for the
+            # longest prefix that fits using the same accounting as _clip.
+            lower, upper = 0, len(web_result)
+            while lower < upper:
+                middle = (lower + upper + 1) // 2
+                tool_message["content"] = (
+                    web_result[:middle] + "\n[Web result truncated to fit context.]"
+                )
+                if _count_tokens(json.dumps(tool_message, ensure_ascii=False)) <= token_limit:
+                    lower = middle
+                else:
+                    upper = middle - 1
+            tool_message["content"] = (
+                web_result[:lower] + "\n[Web result truncated to fit context.]"
+            )
+            if _count_tokens(json.dumps(tool_message, ensure_ascii=False)) > token_limit:
+                message = "No room for web results in the model context. Shorten the conversation."
+                raise ValueError(message)
+        results[call.id] = tool_message
     return [results[call.id] for call in tool_calls]
 
 
