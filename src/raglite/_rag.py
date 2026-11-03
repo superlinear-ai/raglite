@@ -236,6 +236,10 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
     """Left clip a messages array to avoid hitting the context limit."""
     token_counts = _get_token_counts(messages)
     cutoff_idx = _cutoff_idx(token_counts, max_tokens, reverse=True)
+    # A tool result is only valid with its preceding assistant tool call. If that
+    # call was clipped, discard the rest of its results (including parallel calls).
+    while cutoff_idx < len(messages) and messages[cutoff_idx].get("role") == "tool":
+        cutoff_idx += 1
     idx_user = _get_last_message_idx(messages, "user")
     if cutoff_idx == len(messages) or (idx_user is not None and idx_user < cutoff_idx):
         logger.warning(
@@ -256,7 +260,11 @@ def _clip(messages: list[dict[str, str]], max_tokens: int) -> list[dict[str, str
             return [messages[idx_system], messages[idx_user]]
         if idx_user is not None:
             return [messages[idx_user]]
-        return messages[-1:]
+        # Without a user message, keep the final complete exchange as a best effort.
+        # Returning just the last tool result would guarantee a provider protocol error.
+        cutoff_idx = max(0, len(messages) - 1)
+        while cutoff_idx > 0 and messages[cutoff_idx].get("role") == "tool":
+            cutoff_idx -= 1
     return messages[cutoff_idx:]
 
 
