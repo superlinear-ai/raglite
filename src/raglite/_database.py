@@ -615,6 +615,8 @@ def create_database_engine(config: RAGLiteConfig | None = None) -> Engine:  # no
                     text("SELECT COUNT(*) FROM fts_main_chunk.docs")
                 ).scalar_one()
             except ProgrammingError:
+                # A missing FTS table aborts the transaction in DuckDB.
+                session.rollback()
                 num_indexed_chunks = 0
             if num_indexed_chunks == 0 or num_indexed_chunks != num_chunks:
                 session.execute(
